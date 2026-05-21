@@ -1,0 +1,30 @@
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE SCHEMA IF NOT EXISTS portfolio_tracker;
+
+CREATE TABLE IF NOT EXISTS portfolio_tracker.clients (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    name         TEXT        NOT NULL,
+    phone        TEXT,
+    email        TEXT,
+    joining_date DATE,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS portfolio_tracker.trades (
+    id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id     UUID        NOT NULL REFERENCES portfolio_tracker.clients(id) ON DELETE CASCADE,
+    stock_symbol  TEXT        NOT NULL,
+    type          TEXT        NOT NULL CHECK (type IN ('BUY', 'SELL')),
+    quantity      INTEGER     NOT NULL,
+    price         NUMERIC(14,4) NOT NULL,
+    date          DATE        NOT NULL,
+    notes         TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_client_id    ON portfolio_tracker.trades(client_id);
+CREATE INDEX IF NOT EXISTS idx_trades_stock_symbol ON portfolio_tracker.trades(stock_symbol);
+CREATE INDEX IF NOT EXISTS idx_trades_date         ON portfolio_tracker.trades(date);
