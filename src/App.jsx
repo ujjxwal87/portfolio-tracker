@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "react";
 
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api`;
 
@@ -134,20 +134,26 @@ function resolvePortfolio(trades, cmp) {
     g.sells.sort((a, b) => a.date.localeCompare(b.date));
     let realizedPL = 0, totalSoldQty = 0;
     const matchDetails = [];
-    g.sells.forEach(sell => {
-      let remaining = sell.quantity;
+    const sellRemain = g.sells.map(s => ({ ...s, remaining: s.quantity }));
+    const consume = (sell, sameDayOnly) => {
       for (let buy of g.buys) {
-        if (remaining <= 0) break;
+        if (sell.remaining <= 0) break;
         if (buy.remainQty <= 0) continue;
-        const matched = Math.min(buy.remainQty, remaining);
+        if (sameDayOnly && buy.date !== sell.date) continue;
+        const matched = Math.min(buy.remainQty, sell.remaining);
         buy.remainQty -= matched;
-        remaining -= matched;
+        sell.remaining -= matched;
         const pl = (sell.price - buy.price) * matched;
         realizedPL += pl;
         totalSoldQty += matched;
-        matchDetails.push({ buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl });
+        matchDetails.push({ buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl, intraday: sameDayOnly });
       }
-    });
+    };
+    // Pass 1: match same-day (intraday) buy↔sell pairs first, so an intraday
+    // round-trip is booked against that day's buy, not older delivery holdings.
+    sellRemain.forEach(sell => consume(sell, true));
+    // Pass 2: FIFO the remaining sells against oldest remaining buys.
+    sellRemain.forEach(sell => consume(sell, false));
     const holdingLots = g.buys.filter(b => b.remainQty > 0);
     const netQty = holdingLots.reduce((s, b) => s + b.remainQty, 0);
     const totalBuys = g.buys.reduce((s, b) => s + b.quantity, 0);
@@ -161,6 +167,187 @@ function resolvePortfolio(trades, cmp) {
   return resolved;
 }
 
+// ── P&L-over-time helpers (realized bars + unrealized line) ────────────────────
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const isoOf = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+const lastDayOfMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+const todayIso = () => { const d = new Date(); return isoOf(d.getFullYear(), d.getMonth(), d.getDate()); };
+const fmtCompact = (v) => {
+  const s = v < 0 ? "-" : "", a = Math.abs(v);
+  if (a >= 1e7) return s + "₹" + (a / 1e7).toFixed(a >= 1e8 ? 0 : 1) + "Cr";
+  if (a >= 1e5) return s + "₹" + (a / 1e5).toFixed(a >= 1e6 ? 0 : 1) + "L";
+  if (a >= 1e3) return s + "₹" + (a / 1e3).toFixed(a >= 1e4 ? 0 : 1) + "k";
+  return s + "₹" + Math.round(a);
+};
+
+function makePriceAsOf(dailyPrices, cmp) {
+  const sorted = {};
+  Object.entries(dailyPrices || {}).forEach(([sym, m]) => {
+    sorted[sym] = Object.entries(m).sort((a, b) => a[0].localeCompare(b[0]));
+  });
+  return (sym, target) => {
+    const arr = sorted[sym];
+    if (!arr || arr.length === 0) return cmp[sym] ?? null;
+    if (target >= arr[arr.length - 1][0]) return cmp[sym] ?? arr[arr.length - 1][1];
+    let res = null;
+    for (let i = 0; i < arr.length; i++) { if (arr[i][0] <= target) res = arr[i][1]; else break; }
+    return res;
+  };
+}
+
+// Remaining holding lots per symbol as of a date (FIFO, intraday-first), using only trades on/before that date
+function holdingsAsOf(trades, dateIso) {
+  const groups = {};
+  trades.forEach(t => {
+    const d = String(t.date).slice(0, 10);
+    if (d > dateIso) return;
+    if (!groups[t.stock_symbol]) groups[t.stock_symbol] = { buys: [], sells: [] };
+    if (t.type === "BUY") groups[t.stock_symbol].buys.push({ price: Number(t.price), date: d, remainQty: t.quantity });
+    else groups[t.stock_symbol].sells.push({ date: d, quantity: t.quantity });
+  });
+  const held = {};
+  Object.entries(groups).forEach(([sym, g]) => {
+    g.buys.sort((a, b) => a.date.localeCompare(b.date));
+    const sells = g.sells.map(s => ({ ...s, remaining: s.quantity })).sort((a, b) => a.date.localeCompare(b.date));
+    const consume = (sell, sameDay) => {
+      for (const b of g.buys) {
+        if (sell.remaining <= 0) break;
+        if (b.remainQty <= 0) continue;
+        if (sameDay && b.date !== sell.date) continue;
+        const m = Math.min(b.remainQty, sell.remaining);
+        b.remainQty -= m; sell.remaining -= m;
+      }
+    };
+    sells.forEach(s => consume(s, true));
+    sells.forEach(s => consume(s, false));
+    held[sym] = g.buys.filter(b => b.remainQty > 0).map(b => ({ price: b.price, qty: b.remainQty }));
+  });
+  return held;
+}
+
+function unrealizedAsOf(trades, dateIso, priceAsOf) {
+  const held = holdingsAsOf(trades, dateIso);
+  let u = 0;
+  Object.entries(held).forEach(([sym, lots]) => {
+    const px = priceAsOf(sym, dateIso);
+    if (px == null) return;
+    lots.forEach(l => { u += (px - l.price) * l.qty; });
+  });
+  return u;
+}
+
+function realizedInRange(portfolio, startIso, endIso) {
+  let r = 0;
+  portfolio.forEach(p => p.matchDetails.forEach(m => {
+    const sd = String(m.sellDate).slice(0, 10);
+    if (sd >= startIso && sd <= endIso) r += m.pl;
+  }));
+  return r;
+}
+
+function computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, year, quarter, month) {
+  const priceAsOf = makePriceAsOf(dailyPrices, cmp);
+  const tIso = todayIso();
+  const clamp = (d) => (d > tIso ? tIso : d);
+  const points = [];
+  const monthPoint = (m) => {
+    const start = isoOf(year, m, 1), end = isoOf(year, m, lastDayOfMonth(year, m));
+    points.push({
+      label: MONTHS[m], sub: String(year), startIso: start, endIso: end,
+      realized: realizedInRange(portfolio, start, end),
+      unrealized: unrealizedAsOf(filteredTrades, clamp(end), priceAsOf),
+    });
+  };
+  if (month !== "All") {
+    const m = month, ld = lastDayOfMonth(year, m);
+    [[1, 7], [8, 14], [15, 21], [22, ld]].forEach(([a, b]) => {
+      const start = isoOf(year, m, a), end = isoOf(year, m, b);
+      points.push({
+        label: `${a}–${b}`, sub: `${MONTHS[m]} ${year}`, startIso: start, endIso: end,
+        realized: realizedInRange(portfolio, start, end),
+        unrealized: unrealizedAsOf(filteredTrades, clamp(end), priceAsOf),
+      });
+    });
+  } else if (quarter !== "All") {
+    const qm = (quarter - 1) * 3;
+    [qm, qm + 1, qm + 2].forEach(monthPoint);
+  } else {
+    for (let m = 0; m < 12; m++) monthPoint(m);
+  }
+  return points;
+}
+
+function PnlComboChart({ points }) {
+  const [hover, setHover] = useState(-1);
+  const W = 760, H = 300, ML = 58, MR = 16, MT = 18, MB = 40;
+  const plotW = W - ML - MR, plotH = H - MT - MB;
+  const vals = points.flatMap(p => [p.realized, p.unrealized]);
+  let vmax = Math.max(0, ...vals), vmin = Math.min(0, ...vals);
+  if (vmax === vmin) { vmax += 1; vmin -= 1; }
+  const pad = (vmax - vmin) * 0.08; vmax += pad; vmin -= pad;
+  const yOf = (v) => MT + plotH * (vmax - v) / (vmax - vmin);
+  const zeroY = yOf(0);
+  const band = plotW / points.length;
+  const cx = (i) => ML + band * (i + 0.5);
+  const barW = Math.min(band * 0.5, 46);
+  // y ticks (~5)
+  const ticks = [];
+  const nT = 5;
+  for (let i = 0; i <= nT; i++) ticks.push(vmin + (vmax - vmin) * i / nT);
+  const linePts = points.map((p, i) => `${cx(i)},${yOf(p.unrealized)}`).join(" ");
+  const C_BAR = "#2563eb", C_LINE = "#d97706";
+  return (
+    <div style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", overflow: "visible" }}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={ML} x2={W - MR} y1={yOf(t)} y2={yOf(t)} stroke={Math.abs(t) < 1e-6 ? "#cbd5e1" : "#f1f5f9"} strokeWidth={Math.abs(t) < 1e-6 ? 1.5 : 1} />
+            <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#94a3b8">{fmtCompact(t)}</text>
+          </g>
+        ))}
+        {points.map((p, i) => {
+          const y = yOf(p.realized), h = Math.abs(y - zeroY);
+          const top = p.realized >= 0 ? y : zeroY;
+          return (
+            <g key={i}>
+              <rect x={cx(i) - barW / 2} y={top} width={barW} height={Math.max(h, 0.5)} rx="3" fill={C_BAR} opacity={hover === -1 || hover === i ? 1 : 0.45} />
+            </g>
+          );
+        })}
+        <polyline points={linePts} fill="none" stroke={C_LINE} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => (
+          <circle key={i} cx={cx(i)} cy={yOf(p.unrealized)} r={hover === i ? 5.5 : 4} fill="#fff" stroke={C_LINE} strokeWidth="2.5" />
+        ))}
+        {points.map((p, i) => (
+          <g key={i}>
+            <text x={cx(i)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#475569" fontWeight="600">{p.label}</text>
+            <rect x={ML + band * i} y={MT} width={band} height={plotH} fill="transparent"
+                  onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "pointer" }} />
+          </g>
+        ))}
+      </svg>
+      {hover >= 0 && (
+        <div style={{
+          position: "absolute", left: `${((hover + 0.5) / points.length) * 100}%`, top: 0,
+          transform: `translateX(${hover > points.length / 2 ? "-105%" : "5%"})`,
+          background: "#0f172a", color: "#fff", borderRadius: 8, padding: "8px 10px", fontSize: 11,
+          pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "0 4px 14px rgba(0,0,0,.18)", zIndex: 5,
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{points[hover].label}{points[hover].sub ? ` · ${points[hover].sub}` : ""}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 9, height: 9, borderRadius: 2, background: C_BAR, display: "inline-block" }} />
+            Realized: <b>{fmt(points[hover].realized)}</b>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+            <span style={{ width: 9, height: 2, background: C_LINE, display: "inline-block" }} />
+            Unrealized: <b>{fmt(points[hover].unrealized)}</b>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "" };
 const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "" };
 
@@ -169,6 +356,10 @@ export default function App() {
   const [trades, setTrades] = useState([]);
   const [nifty, setNifty] = useState([]);
   const [monthlyPrices, setMonthlyPrices] = useState({});
+  const [dailyPrices, setDailyPrices] = useState({});
+  const [pnlYear, setPnlYear] = useState(null);
+  const [pnlQuarter, setPnlQuarter] = useState("All");   // "All" | 1..4
+  const [pnlMonth, setPnlMonth] = useState("All");        // "All" | 0..11
   const [cmp, setCmp] = useState({});
   const [appLoading, setAppLoading] = useState(true);
   const [appError, setAppError] = useState("");
@@ -192,6 +383,15 @@ export default function App() {
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  const [expandedRows, setExpandedRows] = useState({});
+  const [showRawLog, setShowRawLog] = useState(false);
+  const toggleRow = (k) => setExpandedRows(p => ({ ...p, [k]: !p[k] }));
+  const [sortCol, setSortCol] = useState("total");
+  const [sortDir, setSortDir] = useState("desc");
+  const setSort = (col) => {
+    if (sortCol === col) setSortDir(d => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("desc"); }
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -210,6 +410,7 @@ export default function App() {
       const stocks = [...new Set(t.map(tr => tr.stock_symbol))];
       if (stocks.length > 0) {
         apiFetch(`/prices/monthly?symbols=${stocks.join(",")}`).then(mp => setMonthlyPrices(mp)).catch(() => {});
+        apiFetch(`/prices/history?symbols=${stocks.join(",")}`).then(hp => setDailyPrices(hp)).catch(() => {});
       }
     } catch (e) {
       setAppError("Cannot connect to backend. Is the server running on port 8000?");
@@ -225,6 +426,37 @@ export default function App() {
   const portfolio = useMemo(() => resolvePortfolio(filteredTrades, cmp), [filteredTrades, cmp]);
   const holdings = useMemo(() => portfolio.filter(p => p.netQty > 0), [portfolio]);
   const allStocks = useMemo(() => [...new Set(trades.map(t => t.stock_symbol))], [trades]);
+  const positions = useMemo(() => {
+    const val = (p) => {
+      switch (sortCol) {
+        case "client": return p.client;
+        case "company": return p.stock;
+        case "qty": return p.netQty;
+        case "realized": return p.realizedPL;
+        case "unrealized": return p.netQty > 0 ? p.unrealizedPL : 0;
+        case "status": return p.status;
+        default: return p.totalPL;
+      }
+    };
+    return [...portfolio].sort((a, b) => {
+      const va = val(a), vb = val(b);
+      const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+      return sortDir === "asc" ? c : -c;
+    });
+  }, [portfolio, sortCol, sortDir]);
+  const pnlTotals = useMemo(() => ({
+    realized: portfolio.reduce((s, p) => s + p.realizedPL, 0),
+    unrealized: portfolio.reduce((s, p) => s + (p.netQty > 0 ? p.unrealizedPL : 0), 0),
+  }), [portfolio]);
+  const pnlYears = useMemo(() => {
+    const ys = new Set(filteredTrades.map(t => Number(String(t.date).slice(0, 4))));
+    return [...ys].sort();
+  }, [filteredTrades]);
+  const effYear = pnlYear ?? (pnlYears[pnlYears.length - 1] ?? new Date().getFullYear());
+  const pnlChartData = useMemo(
+    () => computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, effYear, pnlQuarter, pnlMonth),
+    [filteredTrades, portfolio, dailyPrices, cmp, effYear, pnlQuarter, pnlMonth]
+  );
 
   const stats = useMemo(() => {
     const totalRealizedPL = portfolio.reduce((s, p) => s + p.realizedPL, 0);
@@ -480,35 +712,43 @@ export default function App() {
             <Card title="Win Rate" value={stats.winRate.toFixed(0) + "%"} />
           </div>
           <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb", marginBottom: 16 }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Performance vs Benchmark</h3>
-            <MiniBar label="Your Portfolio" val={stats.totalReturn} max={Math.max(Math.abs(stats.totalReturn), Math.abs(stats.niftyReturn), 1)} color={stats.totalReturn >= 0 ? "#16a34a" : "#dc2626"} />
-            <MiniBar label="Nifty 50" val={stats.niftyReturn} max={Math.max(Math.abs(stats.totalReturn), Math.abs(stats.niftyReturn), 1)} color="#6366f1" />
-            <MiniBar label="Max Drawdown" val={-stats.maxDD} max={Math.max(stats.maxDD, 1)} color="#f59e0b" />
-          </div>
-          <div style={{ marginTop: 8 }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, borderTop: "2px solid #e5e7eb", paddingTop: 16 }}>P&L Summary</h3>
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
-                  {["Client","Stock","Bought","Sold","Avg Buy","Avg Sell","Realized P&L","Unrealized P&L","Total P&L","Status"].map(h => <th key={h} style={th}>{h}</th>)}
-                </tr></thead>
-                <tbody>{portfolio.map((p, i) => {
-                  const avgBuyAll = p.totalBuys > 0 ? filteredTrades.filter(t => t.client_name === p.client && t.stock_symbol === p.stock && t.type === "BUY").reduce((s, t) => s + Number(t.price) * t.quantity, 0) / p.totalBuys : 0;
-                  const avgSell = p.totalSells > 0 ? p.matchDetails.reduce((s, m) => s + m.sellPrice * m.qty, 0) / p.totalSells : 0;
-                  const statusMap = { holding: ["Holding","blue"], partially_booked: ["Partial","amber"], fully_booked: ["Booked","green"] };
-                  const [sLabel, sColor] = statusMap[p.status] || ["—","gray"];
-                  return (<tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={td}>{p.client}</td><td style={{ ...td, fontWeight: 700 }}>{p.stock}</td>
-                    <td style={td}>{p.totalBuys}</td><td style={td}>{p.totalSells > 0 ? p.totalSells : "—"}</td>
-                    <td style={td}>{fmt(avgBuyAll)}</td><td style={td}>{p.totalSells > 0 ? fmt(avgSell) : "—"}</td>
-                    <td style={{ ...td, fontWeight: 600, color: p.realizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.realizedPL !== 0 ? fmt(p.realizedPL) : "—"}</td>
-                    <td style={{ ...td, fontWeight: 600, color: p.unrealizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.netQty > 0 ? fmt(p.unrealizedPL) : "—"}</td>
-                    <td style={{ ...td, fontWeight: 700, color: p.totalPL >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(p.totalPL)}</td>
-                    <td style={td}><Badge color={sColor}>{sLabel}</Badge></td>
-                  </tr>);
-                })}</tbody>
-              </table>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Realized vs Unrealized P&L</h3>
+              <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#475569" }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 11, height: 11, borderRadius: 3, background: "#2563eb" }} />Realized (bars)</span>
+                <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 16, height: 3, borderRadius: 2, background: "#d97706" }} />Unrealized (line)</span>
+              </div>
             </div>
+            {(() => {
+              const selS = { padding: "5px 8px", fontSize: 12, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", color: "#374151", fontWeight: 600, cursor: "pointer" };
+              const qm = pnlQuarter === "All" ? null : (pnlQuarter - 1) * 3;
+              const monthOpts = qm === null ? [0,1,2,3,4,5,6,7,8,9,10,11] : [qm, qm + 1, qm + 2];
+              return (
+                <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>View:</span>
+                  <select style={selS} value={effYear} onChange={e => setPnlYear(Number(e.target.value))}>
+                    {(pnlYears.length ? pnlYears : [effYear]).map(y => <option key={y} value={y}>{y}</option>)}
+                  </select>
+                  <select style={selS} value={pnlQuarter} onChange={e => {
+                    const q = e.target.value === "All" ? "All" : Number(e.target.value);
+                    setPnlQuarter(q);
+                    if (q !== "All" && pnlMonth !== "All") { const s = (q - 1) * 3; if (pnlMonth < s || pnlMonth > s + 2) setPnlMonth("All"); }
+                  }}>
+                    <option value="All">All quarters</option>
+                    {[1,2,3,4].map(q => <option key={q} value={q}>Q{q}</option>)}
+                  </select>
+                  <select style={selS} value={pnlMonth} onChange={e => setPnlMonth(e.target.value === "All" ? "All" : Number(e.target.value))}>
+                    <option value="All">All months</option>
+                    {monthOpts.map(m => <option key={m} value={m}>{MONTHS[m]}</option>)}
+                  </select>
+                  <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                    {pnlMonth !== "All" ? "weekly" : pnlQuarter !== "All" ? "3 months" : "12 months"}
+                  </span>
+                </div>
+              );
+            })()}
+            {pnlChartData.length > 0 ? <PnlComboChart points={pnlChartData} /> :
+              <div style={{ padding: 30, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>No data for this period.</div>}
           </div>
         </>)}
       </>)}
@@ -618,32 +858,138 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
-              {["Client","Type","Stock","Qty","Price","Date","Notes","Status",""].map(h => <th key={h} style={th}>{h}</th>)}
-            </tr></thead>
-            <tbody>{[...filteredTrades].sort((a, b) => String(a.date).localeCompare(String(b.date))).map(t => {
-              const res = portfolio.find(p => p.client === t.client_name && p.stock === t.stock_symbol);
-              const statusMap = { holding: ["Holding","blue"], partially_booked: ["Partial","amber"], fully_booked: ["Booked","green"] };
-              const [sLabel, sColor] = res ? (statusMap[res.status] || ["—","gray"]) : ["—","gray"];
-              const isEditing = editingId === t.id;
-              return (<tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
-                <td style={td}>{t.client_name}</td>
-                <td style={td}><Badge color={t.type === "BUY" ? "green" : "red"}>{t.type}</Badge></td>
-                <td style={{ ...td, fontWeight: 700 }}>{t.stock_symbol}</td>
-                <td style={td}>{t.quantity}</td>
-                <td style={td}>{fmt(t.price)}</td>
-                <td style={{ ...td, whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
-                <td style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
-                <td style={td}><Badge color={sColor}>{sLabel}</Badge></td>
-                <td style={{ ...td, whiteSpace: "nowrap" }}>
-                  <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>
-                  <button onClick={() => handleDeleteTrade(t.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>
-                </td>
-              </tr>);
-            })}</tbody>
-          </table>
+        {/* Company-grouped positions: one row per company → Realised / Unrealised P&L, expand for lots */}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+          <Card title="Realized P&L" value={fmt(pnlTotals.realized)} accent={pnlTotals.realized >= 0 ? "#16a34a" : "#dc2626"} />
+          <Card title="Unrealized P&L" value={fmt(pnlTotals.unrealized)} accent={pnlTotals.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
+          <Card title="Total P&L" value={fmt(pnlTotals.realized + pnlTotals.unrealized)} accent={(pnlTotals.realized + pnlTotals.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
+        </div>
+
+        {positions.length === 0 ? (
+          <div style={{ background: "#fff", borderRadius: 12, padding: 32, border: "1px solid #e5e7eb", textAlign: "center" }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No trades yet</div>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                {[
+                  { label: "", key: null, align: "left" },
+                  ...(filterClient === "All" ? [{ label: "Client", key: "client", align: "left" }] : []),
+                  { label: "Company", key: "company", align: "left" },
+                  { label: "Qty Held", key: "qty", align: "right" },
+                  { label: "Realized P&L", key: "realized", align: "right" },
+                  { label: "Unrealized P&L", key: "unrealized", align: "right" },
+                  { label: "Total P&L", key: "total", align: "right" },
+                  { label: "Status", key: "status", align: "right" },
+                ].map((col, i) => (
+                  <th key={i} onClick={col.key ? () => setSort(col.key) : undefined}
+                      style={{ ...th, textAlign: col.align, cursor: col.key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
+                    {col.label}
+                    {col.key && <span style={{ marginLeft: 4, fontSize: 10, color: sortCol === col.key ? "#2563eb" : "#cbd5e1" }}>{sortCol === col.key ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>}
+                  </th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {positions.map((p) => {
+                  const k = `${p.client}||${p.stock}`;
+                  const open = expandedRows[k];
+                  const statusMap = { holding: ["Holding", "blue"], partially_booked: ["Partial", "amber"], fully_booked: ["Booked", "green"] };
+                  const [sLabel, sColor] = statusMap[p.status] || ["—", "gray"];
+                  return (
+                    <Fragment key={k}>
+                      <tr onClick={() => toggleRow(k)} style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer", background: open ? "#f8fafc" : "transparent" }}>
+                        <td style={{ ...td, width: 24, color: "#6b7280" }}>{open ? "▾" : "▸"}</td>
+                        {filterClient === "All" && <td style={{ ...td, color: "#6b7280" }}>{p.client}</td>}
+                        <td style={{ ...td, fontWeight: 700 }}>{p.stock}</td>
+                        <td style={{ ...td, textAlign: "right" }}>{p.netQty > 0 ? p.netQty : "—"}</td>
+                        <td style={{ ...td, textAlign: "right", fontWeight: 600, color: p.realizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.totalSells > 0 ? fmt(p.realizedPL) : "—"}</td>
+                        <td style={{ ...td, textAlign: "right", fontWeight: 600, color: p.unrealizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.netQty > 0 ? fmt(p.unrealizedPL) : "—"}</td>
+                        <td style={{ ...td, textAlign: "right", fontWeight: 700, color: p.totalPL >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(p.totalPL)}</td>
+                        <td style={{ ...td, textAlign: "right" }}><Badge color={sColor}>{sLabel}</Badge></td>
+                      </tr>
+                      {open && (
+                        <tr>
+                          <td colSpan={filterClient === "All" ? 8 : 7} style={{ padding: "0 0 10px", background: "#f8fafc" }}>
+                            <div style={{ padding: "8px 14px" }}>
+                              {p.matchDetails.length > 0 && (<>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", margin: "4px 0 4px" }}>BOOKED (realised lots · FIFO)</div>
+                                <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: 10 }}>
+                                  <thead><tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+                                    {["Buy Date", "Buy Avg", "Sell Date", "Sell Avg", "Qty", "P&L"].map((h, i) => <th key={h} style={{ ...th, fontSize: 10, textAlign: i < 4 ? "left" : "right" }}>{h}</th>)}
+                                  </tr></thead>
+                                  <tbody>{p.matchDetails.map((m, mi) => (
+                                    <tr key={mi} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                                      <td style={{ ...td, fontSize: 12 }}>{fmtDate(m.buyDate)}{m.intraday && <span style={{ marginLeft: 5, fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>INTRADAY</span>}</td>
+                                      <td style={{ ...td, fontSize: 12 }}>{fmt(m.buyPrice)}</td>
+                                      <td style={{ ...td, fontSize: 12 }}>{fmtDate(m.sellDate)}</td>
+                                      <td style={{ ...td, fontSize: 12 }}>{fmt(m.sellPrice)}</td>
+                                      <td style={{ ...td, fontSize: 12, textAlign: "right" }}>{m.qty}</td>
+                                      <td style={{ ...td, fontSize: 12, textAlign: "right", fontWeight: 600, color: m.pl >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(m.pl)}</td>
+                                    </tr>
+                                  ))}</tbody>
+                                </table>
+                              </>)}
+                              {p.holdingLots.length > 0 && (<>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", margin: "4px 0 4px" }}>OPEN (still held · live price {fmt(p.cmp)})</div>
+                                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                  <thead><tr style={{ borderBottom: "1px solid #e5e7eb" }}>
+                                    {["Buy Date", "Buy Avg", "Qty", "CMP", "Unrealized P&L"].map((h, i) => <th key={h} style={{ ...th, fontSize: 10, textAlign: i < 2 ? "left" : "right" }}>{h}</th>)}
+                                  </tr></thead>
+                                  <tbody>{p.holdingLots.map((b, bi) => (
+                                    <tr key={bi} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                                      <td style={{ ...td, fontSize: 12 }}>{fmtDate(b.date)}</td>
+                                      <td style={{ ...td, fontSize: 12 }}>{fmt(b.price)}</td>
+                                      <td style={{ ...td, fontSize: 12, textAlign: "right" }}>{b.remainQty}</td>
+                                      <td style={{ ...td, fontSize: 12, textAlign: "right" }}>{fmt(p.cmp)}</td>
+                                      <td style={{ ...td, fontSize: 12, textAlign: "right", fontWeight: 600, color: (p.cmp - b.price) >= 0 ? "#16a34a" : "#dc2626" }}>{fmt((p.cmp - b.price) * b.remainQty)}</td>
+                                    </tr>
+                                  ))}</tbody>
+                                </table>
+                              </>)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Raw editable trade log (collapsible) */}
+        <div style={{ marginTop: 18 }}>
+          <button onClick={() => setShowRawLog(v => !v)} style={{ ...btnS, fontSize: 12 }}>
+            {showRawLog ? "▾ Hide raw trade log" : "▸ Show raw trade log (edit / delete)"}
+          </button>
+          {showRawLog && (
+            <div style={{ overflowX: "auto", marginTop: 10 }}>
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                  {["Client","Type","Stock","Qty","Price","Date","Notes",""].map(h => <th key={h} style={th}>{h}</th>)}
+                </tr></thead>
+                <tbody>{[...filteredTrades].sort((a, b) => String(a.date).localeCompare(String(b.date))).map(t => {
+                  const isEditing = editingId === t.id;
+                  return (<tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
+                    <td style={td}>{t.client_name}</td>
+                    <td style={td}><Badge color={t.type === "BUY" ? "green" : "red"}>{t.type}</Badge></td>
+                    <td style={{ ...td, fontWeight: 700 }}>{t.stock_symbol}</td>
+                    <td style={td}>{t.quantity}</td>
+                    <td style={td}>{fmt(t.price)}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
+                    <td style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>
+                      <button onClick={() => handleDeleteTrade(t.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>
+                    </td>
+                  </tr>);
+                })}</tbody>
+              </table>
+            </div>
+          )}
         </div>
       </>)}
 

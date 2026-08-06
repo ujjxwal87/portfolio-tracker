@@ -290,6 +290,48 @@ def get_monthly_prices(symbols: str):
     return result
 
 
+# ── Daily price history (for period-boundary unrealized valuation) ─────────────
+
+@app.get("/api/prices/history")
+def get_price_history(symbols: str, start: str = "2026-01-01"):
+    """Returns daily closing prices per symbol: {sym: {'YYYY-MM-DD': close}}."""
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    try:
+        start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+    except ValueError:
+        start_dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    p1 = int(start_dt.timestamp())
+    p2 = int(datetime.now(tz=timezone.utc).timestamp())
+
+    def fetch(sym: str):
+        r = requests.get(
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}.NS",
+            params={"period1": p1, "period2": p2, "interval": "1d"},
+            headers=_YF_HEADERS,
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()["chart"]["result"][0]
+        timestamps = data.get("timestamp", [])
+        closes = data["indicators"]["quote"][0].get("close", [])
+        daily = {
+            datetime.utcfromtimestamp(ts).date().isoformat(): round(float(c), 2)
+            for ts, c in zip(timestamps, closes) if c is not None
+        }
+        return sym, daily
+
+    result = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(fetch, s): s for s in symbol_list}
+        for f in as_completed(futures):
+            try:
+                sym, daily = f.result()
+                result[sym] = daily
+            except Exception as e:
+                logger.warning(f"History fetch failed for {futures[f]}: {e}")
+    return result
+
+
 # ── Nifty 50 monthly data (Yahoo Finance — from Jan 2026) ──────────────────────
 
 @app.get("/api/nifty")
