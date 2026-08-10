@@ -357,6 +357,160 @@ def get_nifty():
     return result
 
 
+# ── Cash flows + money-weighted Nifty benchmark ────────────────────────────────
+
+class CashFlowCreate(BaseModel):
+    client_id: str
+    date: date
+    amount: float  # positive = deposit, negative = withdrawal
+    broker: Optional[str] = None
+    ref_id: Optional[str] = None
+    notes: Optional[str] = None
+
+
+@app.get("/api/cash-flows")
+def list_cash_flows(client_id: Optional[str] = None):
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            if client_id:
+                cur.execute(
+                    "SELECT * FROM portfolio_tracker.cash_flows WHERE client_id=%s ORDER BY date",
+                    (client_id,),
+                )
+            else:
+                cur.execute("SELECT * FROM portfolio_tracker.cash_flows ORDER BY date")
+            return cur.fetchall()
+
+
+@app.post("/api/cash-flows", status_code=201)
+def create_cash_flow(body: CashFlowCreate):
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                "INSERT INTO portfolio_tracker.cash_flows (client_id,date,amount,broker,ref_id,notes) "
+                "VALUES (%s,%s,%s,%s,%s,%s) RETURNING *",
+                (body.client_id, body.date, body.amount, body.broker, body.ref_id, body.notes),
+            )
+            return cur.fetchone()
+
+
+@app.delete("/api/cash-flows/{flow_id}", status_code=204)
+def delete_cash_flow(flow_id: str):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM portfolio_tracker.cash_flows WHERE id=%s", (flow_id,))
+            if cur.rowcount == 0:
+                raise HTTPException(404, "Cash flow not found")
+    return None
+
+
+def _nifty_daily(start: str = "2026-01-01"):
+    s = int(datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+    e = int(datetime.now(tz=timezone.utc).timestamp())
+    r = requests.get(
+        "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI",
+        params={"period1": s, "period2": e, "interval": "1d"},
+        headers=_YF_HEADERS,
+        timeout=15,
+    )
+    r.raise_for_status()
+    d = r.json()["chart"]["result"][0]
+    out = {}
+    for ts, close in zip(d.get("timestamp", []), d["indicators"]["quote"][0].get("close", [])):
+        if close is not None:
+            out[datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")] = round(close, 2)
+    return dict(sorted(out.items()))
+
+
+@app.get("/api/nifty/daily")
+def get_nifty_daily(start: str = "2026-01-01"):
+    return _nifty_daily(start)
+
+
+def _level_on_or_after(series, day):
+    """Money added on a holiday can only be invested on the next trading day."""
+    for d in series:
+        if d >= day:
+            return d, series[d]
+    return None, None
+
+
+def _xirr(flows):
+    if len(flows) < 2:
+        return None
+    d0 = min(f[0] for f in flows)
+    def npv(rate):
+        return sum(a / (1.0 + rate) ** ((d - d0).days / 365.0) for d, a in flows)
+    lo, hi = -0.9999, 100.0
+    if npv(lo) * npv(hi) > 0:
+        return None
+    for _ in range(300):
+        mid = (lo + hi) / 2
+        if npv(lo) * npv(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+    return round((lo + hi) / 2 * 100, 2)
+
+
+@app.get("/api/benchmark")
+def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
+    """What the client's own deposits would be worth had each gone into Nifty 50 that day."""
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT date, amount FROM portfolio_tracker.cash_flows WHERE client_id=%s ORDER BY date",
+                (client_id,),
+            )
+            flows = cur.fetchall()
+    if not flows:
+        raise HTTPException(400, "No cash flows recorded for this client")
+
+    series = _nifty_daily(min(f["date"] for f in flows).strftime("%Y-%m-%d"))
+    if not series:
+        raise HTTPException(502, "Nifty data unavailable")
+    latest_day, latest_level = list(series.items())[-1]
+
+    units, legs = 0.0, []
+    for f in flows:
+        day = f["date"].strftime("%Y-%m-%d")
+        used_day, level = _level_on_or_after(series, day)
+        if level is None:
+            continue
+        amt = float(f["amount"])
+        u = amt / level
+        units += u
+        legs.append({
+            "date": day, "amount": amt, "priced_on": used_day,
+            "nifty_level": level, "units": round(u, 6),
+            "deferred": used_day != day,
+        })
+
+    net_invested = sum(float(f["amount"]) for f in flows)
+    bench_value = round(units * latest_level, 2)
+    xirr_flows = [(f["date"], -float(f["amount"])) for f in flows]
+    end = datetime.strptime(latest_day, "%Y-%m-%d").date()
+
+    result = {
+        "client_id": client_id,
+        "net_invested": round(net_invested, 2),
+        "as_of": latest_day,
+        "nifty_now": latest_level,
+        "benchmark_value": bench_value,
+        "benchmark_gain": round(bench_value - net_invested, 2),
+        "benchmark_return_pct": round((bench_value - net_invested) / net_invested * 100, 2) if net_invested else None,
+        "benchmark_xirr_pct": _xirr(xirr_flows + [(end, bench_value)]),
+        "legs": legs,
+    }
+    if portfolio_value is not None:
+        result["portfolio_value"] = round(portfolio_value, 2)
+        result["portfolio_gain"] = round(portfolio_value - net_invested, 2)
+        result["portfolio_xirr_pct"] = _xirr(xirr_flows + [(end, portfolio_value)])
+        if result["portfolio_xirr_pct"] is not None and result["benchmark_xirr_pct"] is not None:
+            result["alpha_xirr_pp"] = round(result["portfolio_xirr_pct"] - result["benchmark_xirr_pct"], 2)
+    return result
+
+
 # ── Stock symbol autocomplete (Yahoo Finance search — free, no key needed) ─────
 
 @app.get("/api/stocks/search")
