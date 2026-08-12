@@ -25,6 +25,8 @@ const Badge = ({ children, color }) => {
   return <span style={{ background: bg, color: fg, padding: "2px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{children}</span>;
 };
 
+const INDEX_LABELS = { nifty50: "Nifty 50", midcap150: "Nifty Midcap 150", smallcap250: "Nifty Smallcap 250" };
+
 const Card = ({ title, value, sub, accent }) => (
   <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", border: "1px solid #e5e7eb", flex: "1 1 155px", minWidth: 155 }}>
     <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: .5 }}>{title}</div>
@@ -504,6 +506,12 @@ export default function App() {
     } catch { setPriceError("Failed to fetch prices. Try again."); }
     finally { setPriceLoading(false); }
   }, [allStocks]);
+
+  // Without this, holdings stay valued at last TRADE price while the index side is live.
+  const pricesPrimed = useRef(false);
+  useEffect(() => {
+    if (!pricesPrimed.current && allStocks.length > 0) { pricesPrimed.current = true; refreshPrices(); }
+  }, [allStocks, refreshPrices]);
 
   // ── Client CRUD ──────────────────────────────────────────────────────────────
 
@@ -1098,7 +1106,31 @@ export default function App() {
         for (let v = Math.ceil(yMin); v <= yMax; v += step) yTicks.push({ v, y: yOf(v) });
         const svgH = cH + PAD_TOP + PAD_BOT;
 
+        const bmk = benchmarkState === "ok" ? benchmark : null;
+        const ixCard = (key) => {
+          const ix = bmk?.indices?.[key];
+          if (!ix) return <Card key={key} title={INDEX_LABELS[key]} value="—" sub="needs deposit dates" accent="#6b7280" />;
+          return <Card key={key} title={ix.label} value={pct(ix.return_pct)}
+            sub={`XIRR ${ix.xirr_pct}%${ix.alpha_pct_pp != null ? ` · you ${ix.alpha_pct_pp >= 0 ? "+" : ""}${ix.alpha_pct_pp} pp` : ""}`}
+            accent={ix.alpha_pct_pp != null ? (ix.alpha_pct_pp >= 0 ? "#16a34a" : "#dc2626") : "#6b7280"} />;
+        };
         return (<>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+            <Card title="Amount Invested" value={fmt(bmk ? bmk.net_invested : stats.totalInvested)}
+                  sub={bmk ? "deposits − withdrawals" : "cost basis"} />
+            <Card title="Current Value" value={fmt(bmk ? bmk.portfolio_value : stats.currentVal)}
+                  sub={bmk ? "holdings + cash" : "holdings"} />
+            <Card title="Unrealized P&L" value={fmt(stats.totalUnrealizedPL)}
+                  accent={stats.totalUnrealizedPL >= 0 ? "#16a34a" : "#dc2626"} />
+            <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)}
+                  accent={stats.totalRealizedPL >= 0 ? "#16a34a" : "#dc2626"} />
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+            <Card title="Your Return" value={pct(bmk ? bmk.portfolio_return_pct : stats.totalReturn)}
+                  sub={bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on cost basis"}
+                  accent={(bmk ? bmk.portfolio_return_pct : stats.totalReturn) >= 0 ? "#16a34a" : "#dc2626"} />
+            {["nifty50", "midcap150", "smallcap250"].map(ixCard)}
+          </div>
           <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb", marginBottom: 16 }}>
             <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>Portfolio vs Nifty 50 — Cumulative Returns</h3>
             <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280" }}>{monthKeys[0]} – {monthKeys[monthKeys.length - 1]} • {filterClient === "All" ? "All Clients" : filterClient}</p>
@@ -1149,20 +1181,29 @@ export default function App() {
               ))}
             </svg>
           </div>
-          <div style={{ background: stats.alpha >= 0 ? "#f0fdf4" : "#fef2f2", borderRadius: 12, padding: 16, border: `1px solid ${stats.alpha >= 0 ? "#bbf7d0" : "#fecaca"}`, marginBottom: 16, textAlign: "center" }}>
-            <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Alpha Generated vs Nifty 50</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: stats.alpha >= 0 ? "#16a34a" : "#dc2626", marginTop: 4 }}>{pct(stats.alpha)}</div>
-            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Portfolio {pct(stats.totalReturn)} vs Nifty {pct(stats.niftyReturn)}</div>
-          </div>
+          {bmk && (
+            <div style={{ background: bmk.alpha_pct_pp >= 0 ? "#f0fdf4" : "#fef2f2", borderRadius: 12, padding: 16, border: `1px solid ${bmk.alpha_pct_pp >= 0 ? "#bbf7d0" : "#fecaca"}`, marginBottom: 16, textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Alpha Generated vs Nifty 50</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: bmk.alpha_pct_pp >= 0 ? "#16a34a" : "#dc2626", marginTop: 4 }}>{pct(bmk.alpha_pct_pp)}</div>
+              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Portfolio {pct(bmk.portfolio_return_pct)} vs Nifty {pct(bmk.benchmark_return_pct)} · {fmt(bmk.portfolio_value - bmk.benchmark_value)} ahead</div>
+            </div>
+          )}
           <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb" }}>
             <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Summary Report</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 13 }}>
-              <div><span style={{ color: "#6b7280" }}>Your Return:</span><br /><strong style={{ color: stats.totalReturn >= 0 ? "#16a34a" : "#dc2626" }}>{pct(stats.totalReturn)}</strong></div>
-              <div><span style={{ color: "#6b7280" }}>Nifty 50:</span><br /><strong>{pct(stats.niftyReturn)}</strong></div>
-              <div><span style={{ color: "#6b7280" }}>Alpha:</span><br /><strong style={{ color: stats.alpha >= 0 ? "#16a34a" : "#dc2626" }}>{pct(stats.alpha)}</strong></div>
+              <div><span style={{ color: "#6b7280" }}>Your Return:</span><br /><strong style={{ color: (bmk ? bmk.portfolio_return_pct : stats.totalReturn) >= 0 ? "#16a34a" : "#dc2626" }}>{pct(bmk ? bmk.portfolio_return_pct : stats.totalReturn)}</strong></div>
+              <div><span style={{ color: "#6b7280" }}>Your XIRR:</span><br /><strong>{bmk ? `${bmk.portfolio_xirr_pct}%` : "—"}</strong></div>
+              {bmk && ["nifty50", "midcap150", "smallcap250"].map(k => bmk.indices?.[k] && (
+                <div key={k}><span style={{ color: "#6b7280" }}>{bmk.indices[k].label}:</span><br />
+                  <strong>{pct(bmk.indices[k].return_pct)}</strong>
+                  <span style={{ color: bmk.indices[k].alpha_pct_pp >= 0 ? "#16a34a" : "#dc2626", fontSize: 12 }}>
+                    {" "}(you {bmk.indices[k].alpha_pct_pp >= 0 ? "+" : ""}{bmk.indices[k].alpha_pct_pp} pp)
+                  </span>
+                </div>
+              ))}
               <div><span style={{ color: "#6b7280" }}>Win Rate:</span><br /><strong>{stats.winRate.toFixed(0)}%</strong></div>
               <div><span style={{ color: "#6b7280" }}>Max Drawdown:</span><br /><strong style={{ color: "#dc2626" }}>{pct(-stats.maxDD)}</strong></div>
-              <div><span style={{ color: "#6b7280" }}>Total Invested:</span><br /><strong>{fmt(stats.totalInvested)}</strong></div>
+              <div><span style={{ color: "#6b7280" }}>{bmk ? "Net Deposits:" : "Total Invested:"}</span><br /><strong>{fmt(bmk ? bmk.net_invested : stats.totalInvested)}</strong></div>
             </div>
           </div>
         </>);

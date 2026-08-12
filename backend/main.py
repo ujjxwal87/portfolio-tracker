@@ -404,11 +404,18 @@ def delete_cash_flow(flow_id: str):
     return None
 
 
-def _nifty_daily(start: str = "2026-01-01"):
+INDEXES = {
+    "nifty50": ("^NSEI", "Nifty 50"),
+    "midcap150": ("NIFTYMIDCAP150.NS", "Nifty Midcap 150"),
+    "smallcap250": ("NIFTYSMLCAP250.NS", "Nifty Smallcap 250"),
+}
+
+
+def _index_daily(symbol: str = "^NSEI", start: str = "2026-01-01"):
     s = int(datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
     e = int(datetime.now(tz=timezone.utc).timestamp())
     r = requests.get(
-        "https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI",
+        f"https://query1.finance.yahoo.com/v8/finance/chart/{requests.utils.quote(symbol)}",
         params={"period1": s, "period2": e, "interval": "1d"},
         headers=_YF_HEADERS,
         timeout=15,
@@ -420,6 +427,10 @@ def _nifty_daily(start: str = "2026-01-01"):
         if close is not None:
             out[datetime.utcfromtimestamp(ts).strftime("%Y-%m-%d")] = round(close, 2)
     return dict(sorted(out.items()))
+
+
+def _nifty_daily(start: str = "2026-01-01"):
+    return _index_daily("^NSEI", start)
 
 
 @app.get("/api/nifty/daily")
@@ -466,29 +477,50 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
     if not flows:
         raise HTTPException(400, "No cash flows recorded for this client")
 
-    series = _nifty_daily(min(f["date"] for f in flows).strftime("%Y-%m-%d"))
-    if not series:
-        raise HTTPException(502, "Nifty data unavailable")
-    latest_day, latest_level = list(series.items())[-1]
-
-    units, legs = 0.0, []
-    for f in flows:
-        day = f["date"].strftime("%Y-%m-%d")
-        used_day, level = _level_on_or_after(series, day)
-        if level is None:
-            continue
-        amt = float(f["amount"])
-        u = amt / level
-        units += u
-        legs.append({
-            "date": day, "amount": amt, "priced_on": used_day,
-            "nifty_level": level, "units": round(u, 6),
-            "deferred": used_day != day,
-        })
-
+    start = min(f["date"] for f in flows).strftime("%Y-%m-%d")
     net_invested = sum(float(f["amount"]) for f in flows)
-    bench_value = round(units * latest_level, 2)
     xirr_flows = [(f["date"], -float(f["amount"])) for f in flows]
+
+    indices, legs, latest_day = {}, [], None
+    for key, (symbol, label) in INDEXES.items():
+        try:
+            series = _index_daily(symbol, start)
+        except Exception:
+            continue
+        if not series:
+            continue
+        day_i, level_i = list(series.items())[-1]
+        units = 0.0
+        for f in flows:
+            day = f["date"].strftime("%Y-%m-%d")
+            used_day, level = _level_on_or_after(series, day)
+            if level is None:
+                continue
+            amt = float(f["amount"])
+            units += amt / level
+            if key == "nifty50":
+                legs.append({
+                    "date": day, "amount": amt, "priced_on": used_day,
+                    "nifty_level": level, "units": round(amt / level, 6),
+                    "deferred": used_day != day,
+                })
+        value = round(units * level_i, 2)
+        end_i = datetime.strptime(day_i, "%Y-%m-%d").date()
+        indices[key] = {
+            "label": label, "as_of": day_i, "level_now": level_i,
+            "value": value,
+            "gain": round(value - net_invested, 2),
+            "return_pct": round((value - net_invested) / net_invested * 100, 2) if net_invested else None,
+            "xirr_pct": _xirr(xirr_flows + [(end_i, value)]),
+        }
+        if key == "nifty50":
+            latest_day = day_i
+
+    if "nifty50" not in indices:
+        raise HTTPException(502, "Index data unavailable")
+    n50 = indices["nifty50"]
+    latest_level = n50["level_now"]
+    bench_value = n50["value"]
     end = datetime.strptime(latest_day, "%Y-%m-%d").date()
 
     result = {
@@ -497,9 +529,10 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
         "as_of": latest_day,
         "nifty_now": latest_level,
         "benchmark_value": bench_value,
-        "benchmark_gain": round(bench_value - net_invested, 2),
-        "benchmark_return_pct": round((bench_value - net_invested) / net_invested * 100, 2) if net_invested else None,
-        "benchmark_xirr_pct": _xirr(xirr_flows + [(end, bench_value)]),
+        "benchmark_gain": n50["gain"],
+        "benchmark_return_pct": n50["return_pct"],
+        "benchmark_xirr_pct": n50["xirr_pct"],
+        "indices": indices,
         "legs": legs,
     }
     if portfolio_value is not None:
@@ -513,6 +546,11 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
             result["alpha_pct_pp"] = round(result["portfolio_return_pct"] - result["benchmark_return_pct"], 2)
         if result["portfolio_xirr_pct"] is not None and result["benchmark_xirr_pct"] is not None:
             result["alpha_xirr_pp"] = round(result["portfolio_xirr_pct"] - result["benchmark_xirr_pct"], 2)
+        for ix in result["indices"].values():
+            if ix["return_pct"] is not None and result["portfolio_return_pct"] is not None:
+                ix["alpha_pct_pp"] = round(result["portfolio_return_pct"] - ix["return_pct"], 2)
+            if ix["xirr_pct"] is not None and result["portfolio_xirr_pct"] is not None:
+                ix["alpha_xirr_pp"] = round(result["portfolio_xirr_pct"] - ix["xirr_pct"], 2)
     return result
 
 
