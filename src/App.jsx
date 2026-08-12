@@ -356,8 +356,6 @@ const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantit
 export default function App() {
   const [clients, setClients] = useState([]);
   const [trades, setTrades] = useState([]);
-  const [nifty, setNifty] = useState([]);
-  const [monthlyPrices, setMonthlyPrices] = useState({});
   const [dailyPrices, setDailyPrices] = useState({});
   const [pnlYear, setPnlYear] = useState(null);
   const [pnlQuarter, setPnlQuarter] = useState("All");   // "All" | 1..4
@@ -397,21 +395,17 @@ export default function App() {
 
   const loadData = useCallback(async () => {
     try {
-      const [c, t, n] = await Promise.all([
+      const [c, t] = await Promise.all([
         apiFetch("/clients"),
         apiFetch("/trades"),
-        apiFetch("/nifty"),
       ]);
       setClients(c);
       setTrades(t);
-      setNifty(n);
       const initCmp = {};
       t.forEach(tr => { if (!initCmp[tr.stock_symbol]) initCmp[tr.stock_symbol] = Number(tr.price); });
       setCmp(prev => ({ ...initCmp, ...prev }));
-      // Fire-and-forget: monthly historical prices for benchmark chart
       const stocks = [...new Set(t.map(tr => tr.stock_symbol))];
       if (stocks.length > 0) {
-        apiFetch(`/prices/monthly?symbols=${stocks.join(",")}`).then(mp => setMonthlyPrices(mp)).catch(() => {});
         apiFetch(`/prices/history?symbols=${stocks.join(",")}`).then(hp => setDailyPrices(hp)).catch(() => {});
       }
     } catch (e) {
@@ -466,18 +460,14 @@ export default function App() {
     const totalPL = totalRealizedPL + totalUnrealizedPL;
     const totalInvested = portfolio.reduce((s, p) => s + p.investedHolding, 0) + portfolio.reduce((s, p) => s + p.matchDetails.reduce((ss, m) => ss + m.buyPrice * m.qty, 0), 0);
     const totalReturn = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
-    const nBase = nifty.length > 0 ? nifty[0].value : 0;
-    const nEnd  = nifty.length > 0 ? nifty[nifty.length - 1].value : 0;
-    const niftyReturn = nBase > 0 ? ((nEnd - nBase) / nBase) * 100 : 0;
-    const alpha = totalReturn - niftyReturn;
     const realizedTrades = portfolio.flatMap(p => p.matchDetails);
     const wins = realizedTrades.filter(m => m.pl > 0).length;
     const winRate = realizedTrades.length > 0 ? (wins / realizedTrades.length) * 100 : 0;
     let maxDD = 0, peak = 0, running = 0;
     realizedTrades.sort((a, b) => a.sellDate.localeCompare(b.sellDate)).forEach(m => { running += m.pl; if (running > peak) peak = running; const dd = peak > 0 ? ((peak - running) / peak) * 100 : 0; if (dd > maxDD) maxDD = dd; });
     const currentVal = holdings.reduce((s, h) => s + h.currentVal, 0);
-    return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, totalReturn, niftyReturn, alpha, winRate, maxDD, currentVal };
-  }, [portfolio, holdings, nifty]);
+    return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, totalReturn, winRate, maxDD, currentVal };
+  }, [portfolio, holdings]);
 
   // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
   const [benchmark, setBenchmark] = useState(null);
@@ -630,7 +620,7 @@ export default function App() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 21, fontWeight: 800 }}>Portfolio Tracker</h1>
-          <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>Benchmark: Nifty 50 • FIFO Cost Basis • NSE Live Prices</p>
+          <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>Benchmarks: Nifty 50 · Midcap 150 · Smallcap 250 • FIFO Cost Basis • NSE Live Prices</p>
         </div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {views.map(v => (
@@ -1034,78 +1024,6 @@ export default function App() {
 
       {/* ── BENCHMARK TAB ───────────────────────────────────────────────────── */}
       {view === "benchmark" && (() => {
-        if (nifty.length === 0) return (
-          <div style={{ background: "#fff", borderRadius: 12, padding: 32, border: "1px solid #e5e7eb", textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📈</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>Loading Nifty 50 data…</div>
-          </div>
-        );
-        const monthKeys = nifty.map(n => n.month);
-        const parseMonth = (d) => { if (!d) return null; const dt = new Date(d); return `${dt.toLocaleString("en-US",{month:"short"})} ${String(dt.getFullYear()).slice(2)}`; };
-
-        // Nifty return — cumulative from Jan 26 baseline
-        const nBase = nifty[0].value;
-        const niftyRets = nifty.map(n => ((n.value - nBase) / nBase) * 100);
-
-        // Portfolio return — value on 1st trading day of each month vs total invested
-        // A month's data point shows: (value of all holdings at START of that month + sell proceeds) / total buy cost − 1
-        // "First non-zero" naturally appears the month AFTER the first trade month.
-        const portRets = monthKeys.map((mk, mkIdx) => {
-          // Only trades whose month comes BEFORE this month
-          const prior = filteredTrades.filter(t => {
-            const tm = parseMonth(t.date);
-            const tmIdx = monthKeys.indexOf(tm);
-            return tmIdx >= 0 && tmIdx < mkIdx;
-          });
-          if (!prior.some(t => t.type === "BUY")) return 0;
-
-          const totalBuyCost = prior.filter(t => t.type === "BUY").reduce((s, t) => s + t.quantity * Number(t.price), 0);
-          if (totalBuyCost <= 0) return 0;
-
-          // FIFO: track remaining lots
-          const lots = {};
-          [...prior].sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(t => {
-            const sym = t.stock_symbol;
-            if (t.type === "BUY") {
-              if (!lots[sym]) lots[sym] = [];
-              lots[sym].push({ qty: t.quantity, price: Number(t.price) });
-            } else {
-              if (!lots[sym]) return;
-              let rem = t.quantity;
-              while (rem > 0 && lots[sym].length > 0) {
-                if (lots[sym][0].qty <= rem) { rem -= lots[sym][0].qty; lots[sym].shift(); }
-                else { lots[sym][0].qty -= rem; rem = 0; }
-              }
-            }
-          });
-
-          // Value of remaining holdings at start of this month (first trading-day price)
-          let holdingsValue = 0;
-          Object.entries(lots).forEach(([sym, symLots]) => {
-            const qty = symLots.reduce((s, l) => s + l.qty, 0);
-            if (qty > 0) {
-              const price = monthlyPrices?.[sym]?.[mk] ?? cmp[sym] ?? 0;
-              holdingsValue += qty * price;
-            }
-          });
-
-          const sellProceeds = prior.filter(t => t.type === "SELL").reduce((s, t) => s + t.quantity * Number(t.price), 0);
-          return ((holdingsValue + sellProceeds - totalBuyCost) / totalBuyCost) * 100;
-        });
-
-        const allV = [...niftyRets, ...portRets];
-        const yMin = Math.min(...allV, 0) - 3, yMax = Math.max(...allV, 0) + 3;
-        const cW = 540, cH = 180, PAD_TOP = 22, PAD_BOT = 40;
-        const xOf = (i) => 42 + (monthKeys.length > 1 ? i / (monthKeys.length - 1) : 0.5) * (cW - 62);
-        const yOf = (v) => PAD_TOP + (1 - (v - yMin) / (yMax - yMin)) * cH;
-        const toXY = (vals) => vals.map((v, i) => ({ x: xOf(i), y: yOf(v) }));
-        const nPts = toXY(niftyRets), pPts = toXY(portRets);
-        const poly = (pts) => pts.map(p => `${p.x},${p.y}`).join(" ");
-        const zeroY = yOf(0);
-        const yTicks = []; const step = Math.max(Math.ceil((yMax - yMin) / 5), 1);
-        for (let v = Math.ceil(yMin); v <= yMax; v += step) yTicks.push({ v, y: yOf(v) });
-        const svgH = cH + PAD_TOP + PAD_BOT;
-
         const bmk = benchmarkState === "ok" ? benchmark : null;
         const ixCard = (key) => {
           const ix = bmk?.indices?.[key];
@@ -1130,56 +1048,6 @@ export default function App() {
                   sub={bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on cost basis"}
                   accent={(bmk ? bmk.portfolio_return_pct : stats.totalReturn) >= 0 ? "#16a34a" : "#dc2626"} />
             {["nifty50", "midcap150", "smallcap250"].map(ixCard)}
-          </div>
-          <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb", marginBottom: 16 }}>
-            <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 700 }}>Portfolio vs Nifty 50 — Cumulative Returns</h3>
-            <p style={{ margin: "0 0 8px", fontSize: 11, color: "#6b7280" }}>{monthKeys[0]} – {monthKeys[monthKeys.length - 1]} • {filterClient === "All" ? "All Clients" : filterClient}</p>
-            <div style={{ display: "flex", gap: 20, marginBottom: 10, fontSize: 12 }}>
-              <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 18, height: 3, background: "#16a34a", borderRadius: 2 }} /><strong style={{ fontSize: 12 }}>Portfolio</strong></span>
-              <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 18, height: 3, background: "#6366f1", borderRadius: 2 }} /><strong style={{ fontSize: 12 }}>Nifty 50</strong></span>
-              {Object.keys(monthlyPrices).length === 0 && filteredTrades.length > 0 && <span style={{ fontSize: 11, color: "#f59e0b" }}>⟳ Loading historical prices…</span>}
-            </div>
-            <svg viewBox={`0 0 ${cW} ${svgH}`} width="100%" style={{ maxHeight: 300, overflow: "visible" }}>
-              {/* Grid lines + Y-axis labels */}
-              {yTicks.map((t, i) => (
-                <g key={i}>
-                  <line x1={42} y1={t.y} x2={cW - 10} y2={t.y} stroke="#e5e7eb" strokeWidth=".5" />
-                  <text x={38} y={t.y + 3} textAnchor="end" fontSize="9" fill="#9ca3af">{t.v > 0 ? "+" : ""}{t.v}%</text>
-                </g>
-              ))}
-              {/* Zero baseline */}
-              <line x1={42} y1={zeroY} x2={cW - 10} y2={zeroY} stroke="#9ca3af" strokeWidth="1" strokeDasharray="4,3" />
-              {/* Lines */}
-              <polyline points={poly(nPts)} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinejoin="round" opacity=".8" />
-              <polyline points={poly(pPts)} fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinejoin="round" />
-              {/* Nifty dots + labels (below dot) */}
-              {nPts.map((p, i) => {
-                const v = niftyRets[i];
-                const labelY = v >= 0 ? p.y + 15 : p.y - 6;
-                return (
-                  <g key={"n" + i}>
-                    <circle cx={p.x} cy={p.y} r="3" fill="#6366f1" opacity=".8" />
-                    {i > 0 && <text x={p.x} y={labelY} textAnchor="middle" fontSize="9" fontWeight="600" fill="#6366f1">{v > 0 ? "+" : ""}{v.toFixed(1)}%</text>}
-                  </g>
-                );
-              })}
-              {/* Portfolio dots + labels (above dot) */}
-              {pPts.map((p, i) => {
-                const v = portRets[i];
-                const isZero = Math.abs(v) < 0.01;
-                const labelY = v >= 0 ? p.y - 8 : p.y + 15;
-                return (
-                  <g key={"p" + i}>
-                    <circle cx={p.x} cy={p.y} r="3.5" fill={isZero ? "#d1d5db" : v >= 0 ? "#16a34a" : "#dc2626"} />
-                    {!isZero && <text x={p.x} y={labelY} textAnchor="middle" fontSize="9" fontWeight="700" fill={v >= 0 ? "#15803d" : "#dc2626"}>{v > 0 ? "+" : ""}{v.toFixed(1)}%</text>}
-                  </g>
-                );
-              })}
-              {/* X-axis month labels */}
-              {monthKeys.map((mk, i) => (
-                <text key={mk} x={xOf(i)} y={svgH - 6} textAnchor="middle" fontSize="10" fill="#374151" fontWeight="600">{mk}</text>
-              ))}
-            </svg>
           </div>
           {bmk && (
             <div style={{ background: bmk.alpha_pct_pp >= 0 ? "#f0fdf4" : "#fef2f2", borderRadius: 12, padding: 16, border: `1px solid ${bmk.alpha_pct_pp >= 0 ? "#bbf7d0" : "#fecaca"}`, marginBottom: 16, textAlign: "center" }}>
