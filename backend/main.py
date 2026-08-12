@@ -511,6 +511,47 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
     return result
 
 
+@app.get("/api/benchmark/series")
+def get_benchmark_series(client_id: str):
+    """Daily curve of the Nifty-equivalent value, for plotting against the real portfolio."""
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT date, amount FROM portfolio_tracker.cash_flows WHERE client_id=%s ORDER BY date",
+                (client_id,),
+            )
+            flows = cur.fetchall()
+    if not flows:
+        raise HTTPException(400, "No cash flows recorded for this client")
+
+    series = _nifty_daily(min(f["date"] for f in flows).strftime("%Y-%m-%d"))
+    if not series:
+        raise HTTPException(502, "Nifty data unavailable")
+
+    pending = {}
+    for f in flows:
+        used_day, level = _level_on_or_after(series, f["date"].strftime("%Y-%m-%d"))
+        if level:
+            pending.setdefault(used_day, []).append((float(f["amount"]), level))
+
+    out, units, invested = [], 0.0, 0.0
+    for day, close in series.items():
+        for amt, lvl in pending.get(day, []):
+            units += amt / lvl
+            invested += amt
+        if invested <= 0 and not out:
+            continue
+        value = units * close
+        out.append({
+            "date": day,
+            "nifty_close": close,
+            "invested": round(invested, 2),
+            "benchmark_value": round(value, 2),
+            "benchmark_return_pct": round((value - invested) / invested * 100, 2) if invested else None,
+        })
+    return out
+
+
 # ── Stock symbol autocomplete (Yahoo Finance search — free, no key needed) ─────
 
 @app.get("/api/stocks/search")
