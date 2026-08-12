@@ -477,6 +477,22 @@ export default function App() {
     return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, totalReturn, niftyReturn, alpha, winRate, maxDD, currentVal };
   }, [portfolio, holdings, nifty]);
 
+  // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
+  const [benchmark, setBenchmark] = useState(null);
+  const [benchmarkState, setBenchmarkState] = useState("idle");
+  useEffect(() => {
+    const client = clients.find(c => c.name === filterClient);
+    if (!client) { setBenchmark(null); setBenchmarkState(filterClient === "All" ? "all" : "idle"); return; }
+    const pv = stats.currentVal + Number(client.cash_balance || 0);
+    if (!(pv > 0)) { setBenchmark(null); setBenchmarkState("idle"); return; }
+    let cancelled = false;
+    setBenchmarkState("loading");
+    apiFetch(`/benchmark?client_id=${client.id}&portfolio_value=${pv}`)
+      .then(b => { if (!cancelled) { setBenchmark(b); setBenchmarkState("ok"); } })
+      .catch(() => { if (!cancelled) { setBenchmark(null); setBenchmarkState("nodata"); } });
+    return () => { cancelled = true; };
+  }, [clients, filterClient, stats.currentVal]);
+
   const refreshPrices = useCallback(async () => {
     if (allStocks.length === 0) return;
     setPriceLoading(true);
@@ -706,9 +722,24 @@ export default function App() {
             <Card title="Current Value" value={fmt(stats.currentVal)} />
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-            <Card title="Your Return" value={pct(stats.totalReturn)} accent={stats.totalReturn >= 0 ? "#16a34a" : "#dc2626"} />
-            <Card title="Nifty 50" value={pct(stats.niftyReturn)} accent="#6b7280" />
-            <Card title="Alpha" value={pct(stats.alpha)} accent={stats.alpha >= 0 ? "#16a34a" : "#dc2626"} />
+            {benchmarkState === "ok" ? (<>
+              <Card title="Your Return" value={pct(benchmark.portfolio_return_pct)}
+                    sub={`XIRR ${benchmark.portfolio_xirr_pct}% · on ${fmt(benchmark.net_invested)} invested`}
+                    accent={benchmark.portfolio_return_pct >= 0 ? "#16a34a" : "#dc2626"} />
+              <Card title="Nifty 50 — same timing" value={pct(benchmark.benchmark_return_pct)}
+                    sub={`XIRR ${benchmark.benchmark_xirr_pct}% · ${fmt(benchmark.benchmark_value)}`}
+                    accent="#6b7280" />
+              <Card title="Alpha" value={pct(benchmark.alpha_pct_pp)}
+                    sub={`XIRR ${benchmark.alpha_xirr_pp >= 0 ? "+" : ""}${benchmark.alpha_xirr_pp} pp · ${fmt(benchmark.portfolio_value - benchmark.benchmark_value)}`}
+                    accent={benchmark.alpha_pct_pp >= 0 ? "#16a34a" : "#dc2626"} />
+            </>) : (<>
+              <Card title="Your Return" value={pct(stats.totalReturn)} sub="on cost basis"
+                    accent={stats.totalReturn >= 0 ? "#16a34a" : "#dc2626"} />
+              <Card title="Nifty 50" value="—"
+                    sub={benchmarkState === "all" ? "select a client" : benchmarkState === "loading" ? "loading…" : "no deposits recorded"}
+                    accent="#6b7280" />
+              <Card title="Alpha" value="—" sub="needs deposit dates" accent="#6b7280" />
+            </>)}
             <Card title="Win Rate" value={stats.winRate.toFixed(0) + "%"} />
           </div>
           <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb", marginBottom: 16 }}>

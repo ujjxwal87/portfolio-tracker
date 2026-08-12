@@ -59,7 +59,7 @@ def list_clients():
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT id, name, phone, email, joining_date, created_at, updated_at "
+                "SELECT id, name, phone, email, joining_date, cash_balance, created_at, updated_at "
                 "FROM portfolio_tracker.clients ORDER BY created_at DESC"
             )
             return cur.fetchall()
