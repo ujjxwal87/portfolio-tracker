@@ -505,7 +505,12 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
     if portfolio_value is not None:
         result["portfolio_value"] = round(portfolio_value, 2)
         result["portfolio_gain"] = round(portfolio_value - net_invested, 2)
+        result["portfolio_return_pct"] = (
+            round((portfolio_value - net_invested) / net_invested * 100, 2) if net_invested else None
+        )
         result["portfolio_xirr_pct"] = _xirr(xirr_flows + [(end, portfolio_value)])
+        if result["portfolio_return_pct"] is not None and result["benchmark_return_pct"] is not None:
+            result["alpha_pct_pp"] = round(result["portfolio_return_pct"] - result["benchmark_return_pct"], 2)
         if result["portfolio_xirr_pct"] is not None and result["benchmark_xirr_pct"] is not None:
             result["alpha_xirr_pp"] = round(result["portfolio_xirr_pct"] - result["benchmark_xirr_pct"], 2)
     return result
