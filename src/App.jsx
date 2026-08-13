@@ -176,13 +176,18 @@ const Segmented = ({ options, value, onChange }) => (
 // ONLY where the value itself is the good/bad signal (P&L, your own return) — an
 // index's return is neutral information, so its card leaves the value in ink and
 // lets the delta line carry direction.
-const Card = ({ title, value, sub, accent, tone }) => (
-  <div className="card-hover" style={{ ...PANEL, borderRadius: 16, padding: "16px 18px 17px" }}>
+// `size` bumps the figure when fewer cards share a row. `hypothetical` switches the
+// shell to a dashed, shadowless surface so a counterfactual never reads as real money.
+const Card = ({ title, value, sub, accent, tone, size = 23, hypothetical }) => (
+  <div className={hypothetical ? "" : "card-hover"} style={{
+    ...PANEL, borderRadius: 16, padding: "16px 18px 17px",
+    ...(hypothetical ? { background: "#FAFBFD", border: "1px dashed #D7DEE8", boxShadow: "none" } : {}),
+  }}>
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ width: 3, height: 13, borderRadius: 2, background: accent || "var(--ink-3)", flex: "none" }} />
       <span style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{title}</span>
     </div>
-    <div className="fig" style={{ fontSize: 23, lineHeight: 1.22, fontWeight: 600, color: tone || "var(--ink)", marginTop: 8, letterSpacing: "-.02em" }}>{value}</div>
+    <div className="fig" style={{ fontSize: size, lineHeight: 1.22, fontWeight: 600, color: tone || "var(--ink)", marginTop: 8, letterSpacing: "-.02em" }}>{value}</div>
     {sub && <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4, lineHeight: 1.35 }}>{sub}</div>}
   </div>
 );
@@ -1346,25 +1351,53 @@ export default function App() {
             </div>
           </Hero>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-            <Card title="Amount Invested" value={fmt(bmk ? bmk.net_invested : stats.totalInvested)}
-                  sub={bmk ? "net of withdrawals" : "cost basis"} accent="var(--accent)" />
-            <Card title="Current Value" value={fmt(bmk ? bmk.portfolio_value : stats.currentVal)}
-                  sub="live NSE prices" accent="var(--accent)" />
-            <Card title="Total P&L" value={fmt(stats.totalPL)}
-                  sub={`${pct(stats.totalReturn)} · ${realizedLots} matched lots · ${holdings.length} open`}
+          {/* Tier 1 — the shared cost basis both columns below are measured against */}
+          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px", display: "flex",
+                        alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 18 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 3, height: 13, borderRadius: 2, background: "var(--accent)", flex: "none" }} />
+                <span style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Amount invested</span>
+              </div>
+              <div className="fig" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-.02em", marginTop: 9 }}>
+                {fmt(bmk ? bmk.net_invested : stats.totalInvested)}
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 5 }}>
+                Net of withdrawals · the cost basis both columns below are measured against
+              </div>
+            </div>
+            {sel && (
+              <div style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "right", maxWidth: 230 }}>
+                Same money, same dates — your portfolio on the left, {sel.label} on the right.
+              </div>
+            )}
+          </div>
+
+          {/* Tier 2 — what actually happened */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            <Card title="Current Value" size={26} accent="var(--accent)"
+                  value={fmt(bmk ? bmk.portfolio_value : stats.currentVal)}
+                  sub={`Live NSE prices · ${holdings.length} open positions`} />
+            <Card title="Total P&L" size={26} value={fmt(stats.totalPL)}
+                  sub={`${pct(stats.totalReturn)} · ${realizedLots} matched lots`}
                   tone={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"}
                   accent={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} />
-            {sel ? (
-              <Card title={`If invested in ${sel.label}`} value={fmt(sel.value)}
-                    sub={<>{pct(sel.return_pct)} · XIRR {sel.xirr_pct}%{sel.alpha_pct_pp != null && <>
-                      {" · "}<strong style={{ color: sel.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)" }}>
-                        you {sel.alpha_pct_pp >= 0 ? "+" : ""}{sel.alpha_pct_pp} pp
-                      </strong></>}</>}
-                    accent="var(--ink-3)" />
-            ) : (
-              <Card title="If invested in the index" value="—" sub="needs deposit dates" />
-            )}
+          </div>
+
+          {/* Tier 3 — the counterfactual, in the same columns so it reads vertically */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+            {sel ? (<>
+              <Card hypothetical size={26} accent="var(--ink-3)"
+                    title={`If invested in ${sel.label}`} value={fmt(sel.value)}
+                    sub="Each deposit at that day's index close" />
+              <Card hypothetical size={26} accent="var(--ink-3)"
+                    title={`P&L if invested in ${sel.label}`} value={fmt(sel.gain)}
+                    sub={`${pct(sel.return_pct)} · XIRR ${sel.xirr_pct}%${sel.alpha_pct_pp != null ? ` · you ${sel.alpha_pct_pp >= 0 ? "+" : ""}${sel.alpha_pct_pp} pp` : ""}`}
+                    tone={sel.gain >= 0 ? "var(--good)" : "var(--bad)"} />
+            </>) : (<>
+              <Card hypothetical size={26} title="If invested in the index" value="—" sub="needs deposit dates" />
+              <Card hypothetical size={26} title="P&L if invested in the index" value="—" sub="needs deposit dates" />
+            </>)}
           </div>
 
           {bmk && sel && (

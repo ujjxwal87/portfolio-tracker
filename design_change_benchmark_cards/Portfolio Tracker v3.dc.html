@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  body { margin:0; background:#F6F7F9; color:#0F172A; font-family:'Plus Jakarta Sans',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#2563EB; text-decoration:none; }
+  a:hover { color:#1D4ED8; }
+  ::-webkit-scrollbar { width:11px; height:11px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#D4DAE2; border-radius:99px; border:3px solid transparent; background-clip:content-box; }
+</style>
+</helmet>
+
+<div style="display:grid;grid-template-columns:246px 1fr;min-height:100vh">
+
+  <div style="position:sticky;top:0;height:100vh;box-sizing:border-box;background:#fff;border-right:1px solid #E8ECF1;padding:20px 14px;display:flex;flex-direction:column;gap:20px">
+    <div style="display:flex;align-items:center;gap:11px;padding:0 8px">
+      <div style="width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,#2563EB,#0EA5E9);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff">P</div>
+      <div>
+        <div style="font-weight:700;font-size:14.5px;letter-spacing:-.01em">Portfolio Tracker</div>
+        <div style="font-size:10.5px;color:#94A3B8;font-weight:600">FIFO · NSE live</div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <sc-for list="{{ nav }}" as="n" hint-placeholder-count="5">
+        <div onClick="{{ n.go }}" style="position:relative;display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:10px;cursor:pointer;font-size:13.5px" style-hover="background:#F4F6F9">
+          <sc-if value="{{ n.active }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;inset:0;border-radius:10px;background:#0F172A"></div>
+          </sc-if>
+          <div style="position:relative;width:18px;text-align:center;font-size:13px">{{ n.icon }}</div>
+          <sc-if value="{{ n.active }}" hint-placeholder-val="{{ false }}"><div style="position:relative;color:#fff;font-weight:600">{{ n.label }}</div></sc-if>
+          <sc-if value="{{ n.idle }}" hint-placeholder-val="{{ true }}"><div style="position:relative;color:#475569;font-weight:500">{{ n.label }}</div></sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;color:#94A3B8;padding:0 10px 8px">CLIENT FILTER</div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ clientFilters }}" as="c" hint-placeholder-count="4">
+          <div onClick="{{ c.go }}" style="position:relative;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;cursor:pointer" style-hover="background:#F4F6F9">
+            <sc-if value="{{ c.active }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;inset:0;border-radius:9px;background:#EFF6FF;border:1px solid #BFDBFE"></div>
+            </sc-if>
+            <div style="position:relative;width:6px;height:6px;border-radius:50%;background:{{ c.dot }}"></div>
+            <div style="position:relative;flex:1;font-size:12.5px;font-weight:600;color:#334155;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</div>
+            <div style="position:relative;font-size:11px;color:#94A3B8;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em">{{ c.n }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;border:1px solid #E8ECF1;border-radius:12px;padding:12px">
+      <div style="font-size:11px;color:#94A3B8;font-weight:600">Prices last refreshed</div>
+      <div style="font-size:12.5px;font-weight:600;margin-top:4px">{{ lastRefreshed }}</div>
+      <div onClick="{{ refresh }}" style="margin-top:10px;text-align:center;font-size:12.5px;font-weight:700;color:#fff;background:#2563EB;padding:8px;border-radius:9px;cursor:pointer" style-hover="background:#1D4ED8">Refresh prices</div>
+    </div>
+  </div>
+
+  <div style="min-width:0;padding:24px 30px 44px;display:flex;flex-direction:column;gap:20px">
+
+    <!-- DASHBOARD -->
+    <sc-if value="{{ isDash }}" hint-placeholder-val="{{ true }}">
+    <div data-screen-label="Dashboard" style="position:relative;isolation:isolate;display:flex;flex-direction:column;gap:20px;margin:-24px -30px 0;padding:24px 30px 0;background-image:radial-gradient(circle at 92% 13%,transparent 337px,rgba(37,99,235,0.15) 338px 341px,transparent 342px),radial-gradient(circle at 92% 13%,transparent 227px,rgba(37,99,235,0.13) 228px 231px,transparent 232px),radial-gradient(circle at 92% 13%,transparent 137px,rgba(37,99,235,0.12) 138px 141px,transparent 142px),radial-gradient(760px 580px at 97% 2%,rgba(59,130,246,.20),transparent 68%),repeating-linear-gradient(90deg,rgba(37,99,235,.055) 0 1px,transparent 1px 74px),linear-gradient(180deg,#E6EEFF 0px,rgba(246,247,249,0) 780px);background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,repeat-x,no-repeat;background-size:100% 1240px,100% 1240px,100% 1240px,100% 1240px,74px 720px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0,0 0">
+      <div style="position:relative;z-index:1;overflow:hidden;border-radius:24px;padding:30px 32px;color:#fff;background:linear-gradient(135deg,#070E24 0%,#152C6B 52%,#2563EB 100%)">
+        <div style="position:absolute;width:520px;height:520px;right:-130px;top:-230px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(59,130,246,.85),rgba(59,130,246,0) 66%)"></div>
+        <div style="position:absolute;width:320px;height:320px;right:150px;bottom:-210px;border-radius:50%;background:radial-gradient(circle,rgba(56,189,248,.5),rgba(56,189,248,0) 68%)"></div>
+        <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.055) 1px,transparent 1px);background-size:54px 54px;mask-image:linear-gradient(100deg,#000,transparent 74%)"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-start;gap:30px">
+          <div>
+            <div style="font-size:11.5px;font-weight:700;letter-spacing:.11em;color:rgba(255,255,255,.55)">TOTAL P&amp;L · {{ scopeLabel }}</div>
+            <div style="display:flex;align-items:flex-end;gap:13px;margin-top:11px">
+              <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:46px;font-weight:600;letter-spacing:-.03em;line-height:1">{{ totalPL }}</div>
+              <div style="display:flex;align-items:center;gap:6px;background:rgba(16,185,129,.18);border:1px solid rgba(16,185,129,.42);color:#6EE7B7;padding:6px 11px;border-radius:99px;font-size:12.5px;font-weight:700;margin-bottom:6px">▲ {{ totalReturn }} on cost</div>
+            </div>
+            <div style="margin-top:13px;display:flex;gap:24px;font-size:12.5px;color:rgba(255,255,255,.62);flex-wrap:wrap;white-space:nowrap">
+              <div>Invested <span style="color:#fff;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em">{{ totalInvested }}</span></div>
+              <div>Current <span style="color:#fff;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em">{{ currentVal }}</span></div>
+              <div>Nifty 50 · same timing <span style="color:#fff;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em">{{ niftyReturn }}</span></div>
+              <div>Alpha <span style="color:#6EE7B7;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em">{{ alphaPP }}</span></div>
+            </div>
+          </div>
+          <div style="width:280px;height:100px;flex:none;opacity:.95">{{ heroChart }}</div>
+        </div>
+      </div>
+
+      <div style="position:relative;z-index:1;display:grid;grid-template-columns:repeat(4,1fr);gap:14px">
+        <sc-for list="{{ dashCards }}" as="c" hint-placeholder-count="8">
+          <div style="background:#fff;border:1px solid #E8ECF1;border-radius:16px;padding:16px 18px;box-shadow:0 1px 2px rgba(15,23,42,.04),0 1px 3px rgba(15,23,42,.06);transition:box-shadow .18s ease,transform .18s ease" style-hover="transform:translateY(-1px);box-shadow:0 2px 4px rgba(15,23,42,.04),0 8px 20px -6px rgba(15,23,42,.14)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:3px;height:13px;border-radius:2px;background:{{ c.accent }}"></div>
+              <div style="font-size:11.5px;font-weight:700;letter-spacing:.05em;color:#94A3B8;text-transform:uppercase">{{ c.title }}</div>
+            </div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:23px;font-weight:600;letter-spacing:-.02em;margin-top:11px;color:{{ c.tone }}">{{ c.value }}</div>
+            <div style="font-size:11.5px;color:#94A3B8;margin-top:6px">{{ c.sub }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="position:relative;z-index:1;background:#fff;border:1px solid #E8ECF1;border-radius:18px;padding:20px 22px;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+          <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+            <div style="font-size:14.5px;font-weight:700">Realized vs Unrealized P&amp;L</div>
+            <div style="display:flex;gap:14px;font-size:11.5px;color:#475569;font-weight:600">
+              <div style="display:flex;align-items:center;gap:6px"><div style="width:11px;height:11px;border-radius:3px;background:#2563EB"></div>Realized (bars)</div>
+              <div style="display:flex;align-items:center;gap:6px"><div style="width:16px;height:3px;border-radius:2px;background:#D97706"></div>Unrealized (line)</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:4px;background:#F1F4F8;padding:4px;border-radius:10px">
+            <sc-for list="{{ quarters }}" as="qf" hint-placeholder-count="5">
+              <div onClick="{{ qf.go }}" style="position:relative;padding:6px 12px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;color:#64748B" style-hover="color:#0F172A">
+                <sc-if value="{{ qf.active }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;inset:0;background:#fff;border-radius:7px;box-shadow:0 1px 3px rgba(15,23,42,.12)"></div>
+                </sc-if>
+                <div style="position:relative">{{ qf.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="height:280px;margin-top:16px">{{ comboChart }}</div>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- CLIENTS -->
+    <sc-if value="{{ isClients }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Clients" style="position:relative;isolation:isolate;display:flex;flex-direction:column;gap:20px;margin:-24px -30px 0;padding:24px 30px 0;background-image:radial-gradient(circle at 92% 13%,transparent 337px,rgba(124,58,237,0.15) 338px 341px,transparent 342px),radial-gradient(circle at 92% 13%,transparent 227px,rgba(124,58,237,0.13) 228px 231px,transparent 232px),radial-gradient(circle at 92% 13%,transparent 137px,rgba(124,58,237,0.12) 138px 141px,transparent 142px),radial-gradient(760px 580px at 97% 2%,rgba(167,139,250,.22),transparent 68%),radial-gradient(rgba(124,58,237,.13) 1.6px,transparent 1.7px),linear-gradient(180deg,#F1EBFF 0px,rgba(246,247,249,0) 780px);background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,repeat,no-repeat;background-size:100% 1240px,100% 1240px,100% 1240px,100% 1240px,36px 36px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0,0 0">
+      <div style="position:relative;z-index:1;overflow:hidden;border-radius:24px;padding:28px 32px;color:#fff;background:linear-gradient(135deg,#17082E 0%,#4C1D95 52%,#7C3AED 100%)">
+        <div style="position:absolute;width:500px;height:500px;right:-140px;top:-240px;border-radius:50%;background:radial-gradient(circle at 40% 45%,rgba(167,139,250,.7),rgba(167,139,250,0) 66%)"></div>
+        <div style="position:absolute;left:-70px;bottom:-180px;width:340px;height:340px;border-radius:50%;border:1px solid rgba(255,255,255,.18)"></div>
+        <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.05) 0 1px,transparent 1px 22px)"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:18px">
+          <div>
+            <div style="font-size:11.5px;font-weight:700;letter-spacing:.11em;color:rgba(255,255,255,.55)">CLIENTS</div>
+            <div style="font-size:34px;font-weight:800;letter-spacing:-.03em;margin-top:7px">{{ clientCount }} under management</div>
+            <div style="margin-top:8px;font-size:13.5px;color:rgba(255,255,255,.72)">{{ tradeCount }} trades booked · {{ currentVal }} combined value</div>
+          </div>
+          <div onClick="{{ openClientForm }}" style="background:#fff;color:#4C1D95;border-radius:11px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer" style-hover="background:#F5F3FF">+ Add client</div>
+        </div>
+      </div>
+
+      <sc-if value="{{ showClientForm }}" hint-placeholder-val="{{ false }}">
+        <div style="position:relative;z-index:1;background:#fff;border:1px solid #DDD6FE;border-radius:18px;padding:20px 22px;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+          <div style="font-size:14.5px;font-weight:700;margin-bottom:14px">New client</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+            <div>
+              <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:6px">Name</div>
+              <input placeholder="Full name" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid #E1E6EE;font-family:inherit;font-size:13.5px;outline:none" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.16)" />
+            </div>
+            <div>
+              <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:6px">Email</div>
+              <input placeholder="name@mail.com" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid #E1E6EE;font-family:inherit;font-size:13.5px;outline:none" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.16)" />
+            </div>
+            <div>
+              <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:6px">Phone</div>
+              <input placeholder="+91" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid #E1E6EE;font-family:inherit;font-size:13.5px;outline:none" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.16)" />
+            </div>
+            <div>
+              <div style="font-size:11.5px;font-weight:600;color:#475569;margin-bottom:6px">Joining date</div>
+              <input placeholder="DD/MM/YYYY" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:10px;border:1px solid #E1E6EE;font-family:inherit;font-size:13.5px;outline:none" style-focus="border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.16)" />
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px">
+            <div onClick="{{ closeClientForm }}" style="background:#0F172A;color:#fff;padding:9px 18px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer" style-hover="background:#1E293B">Save client</div>
+            <div onClick="{{ closeClientForm }}" style="border:1px solid #E1E6EE;padding:9px 18px;border-radius:10px;font-size:13px;font-weight:600;color:#475569;cursor:pointer" style-hover="background:#F8FAFC">Cancel</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="position:relative;z-index:1;background:#fff;border:1px solid #E8ECF1;border-radius:18px;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden">
+        <div style="display:grid;grid-template-columns:1.7fr 1.6fr 1.1fr 1fr .7fr .5fr;padding:12px 22px;background:#FAFBFD;border-bottom:1px solid #EEF1F6;font-size:10.5px;font-weight:700;letter-spacing:.07em;color:#94A3B8">
+          <div>NAME</div><div>EMAIL</div><div>PHONE</div><div>JOINING DATE</div><div style="text-align:right">TRADES</div><div></div>
+        </div>
+        <sc-for list="{{ clients }}" as="c" hint-placeholder-count="3">
+          <div style="display:grid;grid-template-columns:1.7fr 1.6fr 1.1fr 1fr .7fr .5fr;align-items:center;padding:14px 22px;border-bottom:1px solid #F2F4F8;font-size:13.5px" style-hover="background:#F7F9FC">
+            <div style="display:flex;align-items:center;gap:11px">
+              <div style="width:32px;height:32px;border-radius:10px;background:{{ c.bg }};color:{{ c.fg }};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">{{ c.mark }}</div>
+              <div style="font-weight:600">{{ c.name }}</div>
+            </div>
+            <div style="color:#475569">{{ c.email }}</div>
+            <div style="color:#475569;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:12.5px">{{ c.phone }}</div>
+            <div style="color:#475569;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:12.5px">{{ c.joining }}</div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:600">{{ c.n }}</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;font-size:12.5px;font-weight:600">
+              <div style="color:#2563EB;cursor:pointer">Edit</div>
+              <div style="color:#DC2626;cursor:pointer">Delete</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- PORTFOLIO -->
+    <sc-if value="{{ isPort }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Portfolio" style="position:relative;isolation:isolate;display:flex;flex-direction:column;gap:20px;margin:-24px -30px 0;padding:24px 30px 0;background-image:radial-gradient(circle at 92% 13%,transparent 337px,rgba(13,148,136,0.15) 338px 341px,transparent 342px),radial-gradient(circle at 92% 13%,transparent 227px,rgba(13,148,136,0.13) 228px 231px,transparent 232px),radial-gradient(circle at 92% 13%,transparent 137px,rgba(13,148,136,0.12) 138px 141px,transparent 142px),radial-gradient(760px 580px at 97% 2%,rgba(45,212,191,.22),transparent 68%),repeating-linear-gradient(0deg,rgba(13,148,136,.06) 0 2px,transparent 2px 28px),linear-gradient(180deg,#E3F6F1 0px,rgba(246,247,249,0) 780px);background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,repeat-y,no-repeat;background-size:100% 1240px,100% 1240px,100% 1240px,100% 1240px,660px 28px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0,0 0">
+      <div style="position:relative;z-index:1;overflow:hidden;border-radius:24px;padding:28px 32px;color:#fff;background:linear-gradient(135deg,#03201F 0%,#08544C 55%,#0D9488 100%)">
+        <div style="position:absolute;width:470px;height:470px;right:-140px;top:-200px;border-radius:50%;background:radial-gradient(circle at 40% 40%,rgba(45,212,191,.72),rgba(45,212,191,0) 66%)"></div>
+        <div style="position:absolute;right:70px;bottom:-150px;width:300px;height:300px;border-radius:50%;border:1px solid rgba(255,255,255,.18)"></div>
+        <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(115deg,rgba(255,255,255,.06) 0 1px,transparent 1px 26px);mask-image:linear-gradient(90deg,transparent,#000)"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:11.5px;font-weight:700;letter-spacing:.11em;color:rgba(255,255,255,.55)">PORTFOLIO · {{ scopeLabel }}</div>
+            <div style="font-size:34px;font-weight:800;letter-spacing:-.03em;margin-top:7px">{{ holdingCount }} active holdings</div>
+            <div style="margin-top:8px;font-size:13.5px;color:rgba(255,255,255,.72)">Invested {{ investedHolding }} · Current {{ holdingValue }}</div>
+          </div>
+          <div style="background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);border-radius:13px;padding:12px 18px">
+            <div style="font-size:11px;color:rgba(255,255,255,.62);font-weight:700;letter-spacing:.05em">UNREALIZED P&amp;L</div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:20px;font-weight:600;margin-top:5px">{{ unrealized }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="position:relative;z-index:1;background:#fff;border:1px solid #E8ECF1;border-radius:18px;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden">
+        <div style="display:grid;grid-template-columns:1.2fr 1.1fr .7fr .8fr .8fr 1fr 1fr 1.1fr;padding:12px 22px;background:#FAFBFD;border-bottom:1px solid #EEF1F6;font-size:10.5px;font-weight:700;letter-spacing:.07em;color:#94A3B8">
+          <div>CLIENT</div><div>STOCK</div><div style="text-align:right">NET QTY</div><div style="text-align:right">AVG BUY</div><div style="text-align:right">CMP</div><div style="text-align:right">INVESTED</div><div style="text-align:right">CURRENT VALUE</div><div style="text-align:right">WEIGHT</div>
+        </div>
+        <sc-for list="{{ holdings }}" as="h" hint-placeholder-count="7">
+          <div style="display:grid;grid-template-columns:1.2fr 1.1fr .7fr .8fr .8fr 1fr 1fr 1.1fr;align-items:center;padding:13px 22px;border-bottom:1px solid #F2F4F8;font-size:13px" style-hover="background:#F7F9FC">
+            <div style="color:#475569;font-size:12.5px">{{ h.client }}</div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <sc-if value="{{ h.logo }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:none;width:78px;height:34px;border-radius:8px;background:#fff;border:1px solid #E8ECF1;display:flex;align-items:center;justify-content:center;padding:7px;box-sizing:border-box;overflow:hidden"><div role="img" style="width:100%;height:100%;background-repeat:no-repeat;background-position:center;background-size:contain;background-image:{{ h.logoBg }}"></div></div>
+              </sc-if>
+              <sc-if value="{{ h.noLogo }}" hint-placeholder-val="{{ true }}">
+                <div style="flex:none;width:78px;height:34px;border-radius:8px;background:{{ h.bg }};color:{{ h.fg }};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;letter-spacing:.04em">{{ h.mark }}</div>
+              </sc-if>
+              <div style="font-weight:600;font-size:13px">{{ h.stock }}</div>
+            </div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ h.qty }}</div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ h.avg }}</div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:600">{{ h.cmp }}</div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ h.invested }}</div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:600">{{ h.value }}</div>
+            <div style="display:flex;align-items:center;gap:9px;justify-content:flex-end">
+              <div style="width:54px;height:5px;border-radius:99px;background:#EEF1F6;overflow:hidden"><div style="height:100%;border-radius:99px;background:{{ h.fg }};width:{{ h.wBar }}"></div></div>
+              <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:12.5px;font-weight:600;min-width:44px;text-align:right">{{ h.weight }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- TRADES -->
+    <sc-if value="{{ isTrades }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Trades" style="position:relative;isolation:isolate;display:flex;flex-direction:column;gap:20px;margin:-24px -30px 0;padding:24px 30px 0;background-image:radial-gradient(circle at 92% 13%,transparent 337px,rgba(217,119,6,0.15) 338px 341px,transparent 342px),radial-gradient(circle at 92% 13%,transparent 227px,rgba(217,119,6,0.13) 228px 231px,transparent 232px),radial-gradient(circle at 92% 13%,transparent 137px,rgba(217,119,6,0.12) 138px 141px,transparent 142px),radial-gradient(760px 580px at 97% 2%,rgba(252,211,77,.26),transparent 68%),repeating-linear-gradient(118deg,rgba(217,119,6,.075) 0 2px,transparent 2px 32px),linear-gradient(180deg,#FFF1DF 0px,rgba(246,247,249,0) 780px);background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,repeat,no-repeat;background-size:100% 1240px,100% 1240px,100% 1240px,100% 1240px,100% 760px,100% 100%;background-position:0 0,0 0,0 0,0 0,0 0,0 0">
+      <div style="position:relative;z-index:1;overflow:hidden;border-radius:24px;padding:28px 32px;color:#fff;background:linear-gradient(135deg,#241203 0%,#7C3E06 55%,#D97706 100%)">
+        <div style="position:absolute;width:450px;height:450px;left:40%;top:-230px;border-radius:50%;background:radial-gradient(circle,rgba(252,211,77,.6),rgba(252,211,77,0) 68%)"></div>
+        <div style="position:absolute;inset:0;background-image:repeating-linear-gradient(90deg,rgba(255,255,255,.07) 0 1px,transparent 1px 34px);mask-image:linear-gradient(180deg,transparent,#000)"></div>
+        <div style="position:absolute;right:-90px;bottom:-160px;width:330px;height:330px;border-radius:50%;border:1px solid rgba(255,255,255,.2)"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:18px">
+          <div>
+            <div style="font-size:11.5px;font-weight:700;letter-spacing:.11em;color:rgba(255,255,255,.55)">TRADES · {{ scopeLabel }}</div>
+            <div style="font-size:34px;font-weight:800;letter-spacing:-.03em;margin-top:7px">{{ tradeCount }} trades, FIFO matched</div>
+            <div style="margin-top:8px;font-size:13.5px;color:rgba(255,255,255,.72)">Realized {{ realized }} · Unrealized {{ unrealized }} · Win rate {{ winRate }}</div>
+          </div>
+          <div onClick="{{ openTradeForm }}" style="background:#fff;color:#7C3E06;border-radius:11px;padding:11px 18px;font-size:13px;font-weight:700;cursor:pointer" style-hover="background:#FFFBEB">+ Add trade</div>
+        </div>
+      </div>
+
+      <div style="position:relative;z-index:1;background:#fff;border:1px solid #E8ECF1;border-radius:18px;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden">
+        <div style="display:flex;align-items:center;padding:15px 22px;border-bottom:1px solid #EEF1F6">
+          <div style="font-size:14.5px;font-weight:700">Positions</div>
+          <div style="margin-left:auto;font-size:12px;color:#94A3B8">Click a row to see FIFO lot matching</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.1fr .7fr .8fr .8fr 1fr 1fr 1fr .5fr;padding:12px 22px;background:#FAFBFD;border-bottom:1px solid #EEF1F6;font-size:10.5px;font-weight:700;letter-spacing:.07em;color:#94A3B8">
+          <div>STOCK</div><div style="text-align:right">NET QTY</div><div style="text-align:right">AVG BUY</div><div style="text-align:right">CMP</div><div style="text-align:right">REALIZED P&amp;L</div><div style="text-align:right">UNREALIZED P&amp;L</div><div style="text-align:right">TOTAL P&amp;L</div><div></div>
+        </div>
+        <sc-for list="{{ positions }}" as="p" hint-placeholder-count="8">
+          <div>
+            <div onClick="{{ p.toggle }}" style="display:grid;grid-template-columns:1.1fr .7fr .8fr .8fr 1fr 1fr 1fr .5fr;align-items:center;padding:13px 22px;border-bottom:1px solid #F2F4F8;font-size:13px;cursor:pointer" style-hover="background:#F7F9FC">
+              <div style="display:flex;align-items:center;gap:10px">
+                <sc-if value="{{ p.logo }}" hint-placeholder-val="{{ false }}">
+                  <div style="flex:none;width:78px;height:34px;border-radius:8px;background:#fff;border:1px solid #E8ECF1;display:flex;align-items:center;justify-content:center;padding:7px;box-sizing:border-box;overflow:hidden"><div role="img" style="width:100%;height:100%;background-repeat:no-repeat;background-position:center;background-size:contain;background-image:{{ p.logoBg }}"></div></div>
+                </sc-if>
+                <sc-if value="{{ p.noLogo }}" hint-placeholder-val="{{ true }}">
+                  <div style="flex:none;width:78px;height:34px;border-radius:8px;background:{{ p.bg }};color:{{ p.fg }};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;letter-spacing:.04em">{{ p.mark }}</div>
+                </sc-if>
+                <div>
+                  <div style="font-weight:600">{{ p.stock }}</div>
+                  <div style="font-size:11px;color:#94A3B8">{{ p.client }}</div>
+                </div>
+              </div>
+              <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ p.qty }}</div>
+              <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ p.avg }}</div>
+              <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:600">{{ p.cmp }}</div>
+              <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:600;color:{{ p.rTone }}">{{ p.realized }}</div>
+              <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:600;color:{{ p.uTone }}">{{ p.unrealized }}</div>
+              <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-weight:700;color:{{ p.tTone }}">{{ p.total }}</div>
+              <div style="text-align:right;color:#94A3B8;font-size:11px">{{ p.caret }}</div>
+            </div>
+            <sc-if value="{{ p.open }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#FAFBFD;border-bottom:1px solid #F2F4F8;padding:16px 22px 18px 62px;display:flex;flex-direction:column;gap:16px">
+                <sc-if value="{{ p.hasMatches }}" hint-placeholder-val="{{ true }}">
+                  <div>
+                    <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;color:#94A3B8;margin-bottom:8px">FIFO MATCHED (REALIZED)</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr .7fr 1fr;font-size:10px;font-weight:700;letter-spacing:.06em;color:#94A3B8;padding-bottom:7px;border-bottom:1px solid #E8ECF1">
+                      <div>BUY DATE</div><div>BUY AVG</div><div>SELL DATE</div><div>SELL AVG</div><div style="text-align:right">QTY</div><div style="text-align:right">P&amp;L</div>
+                    </div>
+                    <sc-for list="{{ p.matches }}" as="m" hint-placeholder-count="2">
+                      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr .7fr 1fr;font-size:12px;padding:8px 0;border-bottom:1px solid #F1F4F8;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">
+                        <div>{{ m.buyDate }}</div><div>{{ m.buyAvg }}</div><div>{{ m.sellDate }}</div><div>{{ m.sellAvg }}</div>
+                        <div style="text-align:right">{{ m.qty }}</div>
+                        <div style="text-align:right;font-weight:600;color:{{ m.tone }}">{{ m.pl }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ p.hasLots }}" hint-placeholder-val="{{ true }}">
+                  <div>
+                    <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;color:#94A3B8;margin-bottom:8px">OPEN LOTS (UNREALIZED)</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr .7fr 1fr 1fr;font-size:10px;font-weight:700;letter-spacing:.06em;color:#94A3B8;padding-bottom:7px;border-bottom:1px solid #E8ECF1">
+                      <div>BUY DATE</div><div>BUY AVG</div><div style="text-align:right">QTY</div><div style="text-align:right">CMP</div><div style="text-align:right">UNREALIZED P&amp;L</div>
+                    </div>
+                    <sc-for list="{{ p.lots }}" as="l" hint-placeholder-count="2">
+                      <div style="display:grid;grid-template-columns:1fr 1fr .7fr 1fr 1fr;font-size:12px;padding:8px 0;border-bottom:1px solid #F1F4F8;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">
+                        <div>{{ l.date }}</div><div>{{ l.price }}</div>
+                        <div style="text-align:right">{{ l.qty }}</div>
+                        <div style="text-align:right">{{ l.cmp }}</div>
+                        <div style="text-align:right;font-weight:600;color:{{ l.tone }}">{{ l.pl }}</div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="position:relative;z-index:1;background:#fff;border:1px solid #E8ECF1;border-radius:18px;box-shadow:0 1px 2px rgba(15,23,42,.04);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:12px;padding:15px 22px;border-bottom:1px solid #EEF1F6">
+          <div style="font-size:14.5px;font-weight:700">Raw trade log</div>
+          <div style="margin-left:auto;display:flex;gap:4px;background:#F1F4F8;padding:4px;border-radius:10px">
+            <sc-for list="{{ typeFilters }}" as="f" hint-placeholder-count="3">
+              <div onClick="{{ f.go }}" style="position:relative;padding:6px 13px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;color:#64748B" style-hover="color:#0F172A">
+                <sc-if value="{{ f.active }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;inset:0;background:#fff;border-radius:7px;box-shadow:0 1px 3px rgba(15,23,42,.12)"></div>
+                </sc-if>
+                <div style="position:relative">{{ f.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr .7fr 1fr .6fr .9fr .9fr 1.4fr .5fr;padding:12px 22px;background:#FAFBFD;border-bottom:1px solid #EEF1F6;font-size:10.5px;font-weight:700;letter-spacing:.07em;color:#94A3B8">
+          <div>CLIENT</div><div>TYPE</div><div>STOCK</div><div style="text-align:right">QTY</div><div style="text-align:right">PRICE</div><div>DATE</div><div>NOTES</div><div></div>
+        </div>
+        <sc-for list="{{ rawTrades }}" as="t" hint-placeholder-count="10">
+          <div style="display:grid;grid-template-columns:1.2fr .7fr 1fr .6fr .9fr .9fr 1.4fr .5fr;align-items:center;padding:12px 22px;border-bottom:1px solid #F2F4F8;font-size:12.5px" style-hover="background:#F7F9FC">
+            <div style="color:#475569">{{ t.client }}</div>
+            <div><span style="font-size:11px;font-weight:700;color:{{ t.fg }};background:{{ t.bg }};padding:4px 9px;border-radius:6px">{{ t.type }}</span></div>
+            <div style="font-weight:600">{{ t.stock }}</div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ t.qty }}</div>
+            <div style="text-align:right;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ t.price }}</div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;color:#475569">{{ t.date }}</div>
+            <div style="color:#94A3B8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.notes }}</div>
+            <div style="display:flex;gap:8px;justify-content:flex-end;font-size:12px;font-weight:600">
+              <div style="color:#2563EB;cursor:pointer">Edit</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    </sc-if>
+
+    <!-- BENCHMARK -->
+    <sc-if value="{{ isBench }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Benchmark" style="position:relative;isolation:isolate;display:flex;flex-direction:column;gap:20px;margin:-24px -30px 0;padding:24px 30px 0;background-image:radial-gradient(circle at 92% 13%,transparent 337px,rgba(8,145,178,.15) 338px 341px,transparent 342px),radial-gradient(circle at 92% 13%,transparent 227px,rgba(8,145,178,.13) 228px 231px,transparent 232px),radial-gradient(circle at 92% 13%,transparent 137px,rgba(34,211,238,.16) 138px 141px,transparent 142px),radial-gradient(760px 580px at 97% 2%,rgba(34,211,238,.22),transparent 68%),linear-gradient(rgba(8,145,178,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(8,145,178,.06) 1px,transparent 1px),linear-gradient(180deg,#E2F5FD 0px,rgba(246,247,249,0) 780px);background-repeat:no-repeat,no-repeat,no-repeat,no-repeat,repeat,repeat,no-repeat;background-size:100% 1240px,100% 1240px,100% 1240px,100% 1240px,58px 58px,58px 58px,100% 100%">
+      <div style="position:relative;z-index:1;overflow:hidden;border-radius:24px;padding:28px 32px;color:#fff;background:linear-gradient(135deg,#04121F 0%,#0B4A63 52%,#0891B2 100%)">
+        <div style="position:absolute;width:560px;height:560px;left:36%;top:-300px;border-radius:50%;background:radial-gradient(circle,rgba(34,211,238,.55),rgba(34,211,238,0) 66%)"></div>
+        <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);background-size:44px 44px;mask-image:radial-gradient(70% 100% at 20% 100%,#000,transparent)"></div>
+        <div style="position:relative;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:20px">
+          <div>
+            <div style="font-size:11.5px;font-weight:700;letter-spacing:.11em;color:rgba(255,255,255,.55)">BENCHMARK · MONEY-WEIGHTED</div>
+            <div style="font-size:34px;font-weight:800;letter-spacing:-.03em;margin-top:7px">{{ alphaHeadline }}</div>
+            <div style="margin-top:8px;font-size:13.5px;color:rgba(255,255,255,.72)">Each deposit priced at the index close on its own date · XIRR {{ portXirr }}</div>
+          </div>
+          <div style="display:flex;gap:3px;background:rgba(255,255,255,.14);padding:4px;border-radius:99px;border:1px solid rgba(255,255,255,.18)">
+            <sc-for list="{{ indices }}" as="ix" hint-placeholder-count="3">
+              <div onClick="{{ ix.go }}" style="position:relative;padding:8px 15px;border-radius:99px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;color:rgba(255,255,255,.8)" style-hover="color:#fff">
+                <sc-if value="{{ ix.active }}" hint-placeholder-val="{{ false }}">
+                  <div style="position:absolute;inset:0;background:#fff;border-radius:99px"></div>
+                </sc-if>
+                <sc-if value="{{ ix.active }}" hint-placeholder-val="{{ false }}"><div style="position:relative;color:#0F172A;font-weight:700">{{ ix.label }}</div></sc-if>
+                <sc-if value="{{ ix.idle }}" hint-placeholder-val="{{ true }}"><div style="position:relative">{{ ix.label }}</div></sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="position:relative;z-index:1;background:#fff;border:1px solid #E8ECF1;border-radius:16px;padding:20px 24px;box-shadow:0 1px 2px rgba(15,23,42,.04);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px">
+        <div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:3px;height:13px;border-radius:2px;background:#2563EB"></div>
+            <div style="font-size:11.5px;font-weight:700;letter-spacing:.05em;color:#94A3B8;text-transform:uppercase">Amount invested</div>
+          </div>
+          <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em;font-size:32px;font-weight:600;margin-top:9px">{{ totalInvested }}</div>
+          <div style="font-size:11.5px;color:#94A3B8;margin-top:5px">Net of withdrawals · the cost basis both columns below are measured against</div>
+        </div>
+        <div style="font-size:12px;color:#94A3B8;text-align:right;max-width:230px">Same money, same dates — your portfolio on the left, {{ benchName }} on the right.</div>
+      </div>
+
+      <div style="position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <sc-for list="{{ benchRowA }}" as="c" hint-placeholder-count="2">
+          <div style="background:#fff;border:1px solid #E8ECF1;border-radius:16px;padding:16px 18px 17px;box-shadow:0 1px 2px rgba(15,23,42,.04)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:3px;height:13px;border-radius:2px;background:{{ c.accent }}"></div>
+              <div style="font-size:11.5px;font-weight:700;letter-spacing:.05em;color:#94A3B8;text-transform:uppercase">{{ c.title }}</div>
+            </div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em;font-size:26px;font-weight:600;margin-top:9px;color:{{ c.tone }}">{{ c.value }}</div>
+            <div style="font-size:11.5px;color:#94A3B8;margin-top:5px">{{ c.sub }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+        <sc-for list="{{ benchRowB }}" as="c" hint-placeholder-count="2">
+          <div style="background:#FAFBFD;border:1px dashed #D7DEE8;border-radius:16px;padding:16px 18px 17px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:3px;height:13px;border-radius:2px;background:{{ c.accent }}"></div>
+              <div style="font-size:11.5px;font-weight:700;letter-spacing:.05em;color:#94A3B8;text-transform:uppercase">{{ c.title }}</div>
+            </div>
+            <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.02em;font-size:26px;font-weight:600;margin-top:9px;color:{{ c.tone }}">{{ c.value }}</div>
+            <div style="font-size:11.5px;color:#94A3B8;margin-top:5px">{{ c.sub }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="position:relative;z-index:1;overflow:hidden;border-radius:18px;padding:22px 24px;background:#ECFDF3;border:1px solid #CDEEDA">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#15803D"></div>
+        <div style="font-size:10.5px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.7px">Alpha generated vs {{ benchName }}</div>
+        <div style="font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:34px;font-weight:700;margin-top:8px;color:{{ alphaTone }}">{{ alphaRetPP }}</div>
+        <div style="font-size:12.5px;color:#475569;margin-top:7px">Portfolio {{ totalReturn }} vs index {{ niftyReturn }} &nbsp;·&nbsp; <strong style="color:#0F172A">{{ alphaValue }}</strong> ahead in rupee terms</div>
+        <div style="display:flex;gap:30px;margin-top:18px;padding-top:16px;border-top:1px solid #CDEEDA;font-size:12.5px;color:#475569">
+          <div>Your XIRR<br /><strong style="color:#0F172A;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:15px">{{ portXirr }}</strong></div>
+          <sc-for list="{{ indexCards }}" as="i" hint-placeholder-count="3">
+            <div>{{ i.label }}<br /><strong style="color:#0F172A;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:15px">{{ i.xirr }}</strong> <span style="font-size:11.5px;color:{{ i.tone }};font-weight:700">(you {{ i.alpha }})</span></div>
+          </sc-for>
+          <div>Win rate<br /><strong style="color:#0F172A;font-family:'IBM Plex Sans',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-.01em;font-size:15px">{{ winRate }}</strong></div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:980},&quot;density&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Comfortable&quot;,&quot;Compact&quot;],&quot;default&quot;:&quot;Comfortable&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+const GOOD = '#15803D', BAD = '#DC2626', ACCENT = '#2563EB';
+const TINT = [
+  ['#EFF6FF','#1D4ED8'],['#ECFEFF','#0E7490'],['#ECFDF5','#047857'],
+  ['#FFF7ED','#C2410C'],['#FDF2F8','#BE185D'],['#F5F3FF','#6D28D9'],
+  ['#F1F5F9','#334155'],['#FEF2F2','#B91C1C']
+];
+
+const CLIENTS = [
+  {id:'c1', name:'Rohan Mehta', email:'rohan.mehta@gmail.com', phone:'+91 98200 41123', joining:'12/04/2023'},
+  {id:'c2', name:'Ananya Iyer', email:'ananya.iyer@outlook.com', phone:'+91 99401 77820', joining:'03/09/2023'},
+  {id:'c3', name:'Vikram Shah', email:'vikram@shahcapital.in', phone:'+91 98111 20934', joining:'21/01/2024'}
+];
+
+// client, stock, type, qty, price, date, notes
+const TRADES = [
+  ['c1','RELIANCE','BUY',120,2410.50,'2024-02-14','Initial position'],
+  ['c1','RELIANCE','BUY',80,2588.00,'2024-06-03','Added on dip'],
+  ['c1','RELIANCE','SELL',60,2910.00,'2025-01-22','Booked partial'],
+  ['c1','TCS','BUY',45,3620.00,'2024-03-11',''],
+  ['c1','TCS','SELL',45,4110.00,'2025-04-08','Full exit'],
+  ['c1','BEL','BUY',400,192.40,'2024-05-27','Defence theme'],
+  ['c1','HDFCBANK','BUY',90,1452.00,'2024-08-19',''],
+  ['c2','INFY','BUY',150,1385.00,'2024-01-30',''],
+  ['c2','INFY','SELL',50,1620.00,'2025-02-11','Trim'],
+  ['c2','ICICIBANK','BUY',110,1024.00,'2024-04-16',''],
+  ['c2','TATAMOTORS','BUY',200,872.00,'2024-07-09','EV cycle'],
+  ['c2','TATAMOTORS','SELL',200,1015.00,'2025-03-19','Exit on target'],
+  ['c3','LT','BUY',60,3480.00,'2024-02-26','Infra capex'],
+  ['c3','BEL','BUY',700,178.90,'2024-03-14',''],
+  ['c3','RELIANCE','BUY',50,2745.00,'2024-09-05',''],
+  ['c3','HDFCBANK','BUY',140,1498.00,'2024-11-21','Averaging in'],
+  ['c3','INFY','BUY',80,1512.00,'2025-01-08','']
+];
+
+const CMP = {RELIANCE:3042.80, TCS:4188.50, BEL:412.35, HDFCBANK:1961.40, INFY:1874.20, ICICIBANK:1408.65, TATAMOTORS:1042.10, LT:4310.00};
+
+const INDICES = {
+  'Nifty 50':      {xirr:12.4, ret:19.6, curve:[100,101.2,100.4,102.9,104.6,103.1,106.2,109.4,108.0,111.2,113.8,112.4,119.6]},
+  'Nifty Midcap 150': {xirr:18.9, ret:27.4, curve:[100,102.1,101.0,104.8,107.9,106.2,110.4,114.9,113.1,118.0,122.6,120.9,127.4]},
+  'Nifty Smallcap 250': {xirr:21.3, ret:31.0, curve:[100,102.8,100.9,105.6,109.4,107.0,112.6,118.2,115.4,121.8,127.0,124.1,131.0]}
+};
+
+const PORT_CURVE = [100,102.4,101.1,105.8,109.2,107.4,112.9,118.3,116.1,122.7,127.4,124.9,133.8];
+
+const DOMAINS = {
+  RELIANCE:'ril.com', TCS:'tcs.com', BEL:'bel-india.in', HDFCBANK:'hdfcbank.com',
+  INFY:'infosys.com', ICICIBANK:'icicibank.com', TATAMOTORS:'tatamotors.com', LT:'larsentoubro.com'
+};
+const WP = 'https://commons.wikimedia.org/wiki/Special:FilePath/';
+const WPEN = 'https://en.wikipedia.org/wiki/Special:FilePath/';
+const LOGOS = {
+  RELIANCE: WPEN + 'Reliance_Industries.svg?width=512',
+  TCS: WP + 'Tata_Consultancy_Services_Logo.svg?width=512',
+  BEL: WPEN + 'Bharat_Electronics_logo.svg?width=512',
+  HDFCBANK: WP + 'HDFC_Bank_Logo.svg?width=512',
+  INFY: WP + 'Infosys_logo.svg?width=512',
+  ICICIBANK: WP + 'ICICI_Bank_Logo.svg?width=512',
+  TATAMOTORS: WP + 'Tata_Motors_Logo.svg?width=512',
+  LT: WP + 'Larsen-%26-Toubro-Logo.svg?width=512'
+};
+const logoUrl = (sym) => LOGOS[sym] || '';
+
+const inr = (n) => '₹' + Number(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const inr0 = (n) => '₹' + Math.round(Number(n)).toLocaleString('en-IN');
+const pctS = (n) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+const dmy = (iso) => { const p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; };
+
+// FIFO resolver — mirrors resolvePortfolio() in src/App.jsx
+function resolve(trades) {
+  const groups = {};
+  trades.forEach(t => {
+    const key = t.client + '|' + t.stock;
+    (groups[key] = groups[key] || {client:t.client, stock:t.stock, rows:[]}).rows.push(t);
+  });
+  return Object.keys(groups).map(k => {
+    const g = groups[k];
+    const rows = g.rows.slice().sort((a,b) => a.date.localeCompare(b.date));
+    const lots = [], matches = [];
+    let realizedPL = 0;
+    rows.forEach(r => {
+      if (r.type === 'BUY') { lots.push({qty:r.qty, price:r.price, date:r.date}); return; }
+      let left = r.qty;
+      while (left > 0 && lots.length) {
+        const lot = lots[0];
+        const take = Math.min(left, lot.qty);
+        const pl = (r.price - lot.price) * take;
+        realizedPL += pl;
+        matches.push({buyDate:lot.date, buyAvg:lot.price, sellDate:r.date, sellAvg:r.price, qty:take, pl});
+        lot.qty -= take; left -= take;
+        if (lot.qty === 0) lots.shift();
+      }
+    });
+    const netQty = lots.reduce((a,l)=>a+l.qty,0);
+    const investedHolding = lots.reduce((a,l)=>a+l.qty*l.price,0);
+    const cmp = CMP[g.stock] || 0;
+    const currentVal = netQty * cmp;
+    return {client:g.client, stock:g.stock, netQty, avgBuyPrice: netQty ? investedHolding/netQty : 0,
+      investedHolding, currentVal, unrealizedPL: currentVal - investedHolding, realizedPL,
+      totalPL: realizedPL + (currentVal - investedHolding), cmp, matches, lots};
+  });
+}
+
+class Component extends DCLogic {
+  state = { view:'dashboard', client:'All', index:'Nifty 50', quarter:'All', typeFilter:'All', open:{}, showClientForm:false };
+
+  line(vals, w, h, color, sw) {
+    const mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), sp = (mx-mn)||1;
+    const d = vals.map((v,i) => (i?'L':'M') + ((i/(vals.length-1))*w).toFixed(1) + ' ' + (h-6-((v-mn)/sp)*(h-12)).toFixed(1)).join(' ');
+    return React.createElement('svg', {viewBox:'0 0 '+w+' '+h, width:'100%', height:'100%', preserveAspectRatio:'none'},
+      React.createElement('defs', null, React.createElement('linearGradient', {id:'hg', x1:'0',y1:'0',x2:'0',y2:'1'},
+        React.createElement('stop', {offset:'0%', stopColor:color, stopOpacity:0.3}),
+        React.createElement('stop', {offset:'100%', stopColor:color, stopOpacity:0}))),
+      React.createElement('path', {d:d+' L '+w+' '+h+' L 0 '+h+' Z', fill:'url(#hg)'}),
+      React.createElement('path', {d:d, fill:'none', stroke:color, strokeWidth:sw||2.5, strokeLinecap:'round', strokeLinejoin:'round', vectorEffect:'non-scaling-stroke'}));
+  }
+
+  combo(points, w, h) {
+    const vals = points.reduce((a,p) => a.concat([p.realized, p.unrealized, 0]), []);
+    const mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals), sp = (mx-mn)||1;
+    const pad = 18;
+    const yOf = (v) => h - pad - ((v-mn)/sp)*(h-pad*2);
+    const cx = (i) => pad + (i+0.5)*((w-pad*2)/points.length);
+    const zero = yOf(0), bw = Math.max(8, (w-pad*2)/points.length*0.42);
+    const grid = [0.25,0.5,0.75].map((f,i) => React.createElement('line',{key:'g'+i,x1:0,x2:w,y1:h*f,y2:h*f,stroke:'#EEF1F6',strokeWidth:1}));
+    const bars = points.map((p,i) => {
+      const y = yOf(p.realized);
+      return React.createElement('rect', {key:'b'+i, x:cx(i)-bw/2, y:Math.min(y,zero), width:bw,
+        height:Math.max(2,Math.abs(zero-y)), rx:3, fill: p.realized >= 0 ? ACCENT : '#F87171'});
+    });
+    const lp = points.map((p,i) => (i?'L':'M') + cx(i).toFixed(1) + ' ' + yOf(p.unrealized).toFixed(1)).join(' ');
+    const dots = points.map((p,i) => React.createElement('circle',{key:'c'+i,cx:cx(i),cy:yOf(p.unrealized),r:4,fill:'#D97706',stroke:'#fff',strokeWidth:2}));
+    const labels = points.map((p,i) => React.createElement('text',{key:'t'+i,x:cx(i),y:h-3,textAnchor:'middle',fontSize:10,fill:'#94A3B8',fontFamily:'Plus Jakarta Sans'}, p.label));
+    return React.createElement('svg', {viewBox:'0 0 '+w+' '+h, width:'100%', height:'100%'},
+      grid,
+      React.createElement('line',{x1:0,x2:w,y1:zero,y2:zero,stroke:'#CBD5E1',strokeWidth:1}),
+      bars,
+      React.createElement('path',{d:lp,fill:'none',stroke:'#D97706',strokeWidth:2.5,strokeLinecap:'round',strokeLinejoin:'round'}),
+      dots, labels);
+  }
+
+  compare(a, b, w, h) {
+    const all = a.concat(b);
+    const lo = Math.min.apply(null, all)-2, hi = Math.max.apply(null, all)+2, sp = hi-lo;
+    const P = (arr) => arr.map((v,i) => (i?'L':'M') + ((i/(arr.length-1))*w).toFixed(1) + ' ' + (h-10-((v-lo)/sp)*(h-20)).toFixed(1)).join(' ');
+    const da = P(a), db = P(b);
+    const grid = [0.25,0.5,0.75].map((f,i) => React.createElement('line',{key:'g'+i,x1:0,x2:w,y1:h*f,y2:h*f,stroke:'#EEF1F6',strokeWidth:1}));
+    return React.createElement('svg', {viewBox:'0 0 '+w+' '+h, width:'100%', height:'100%', preserveAspectRatio:'none'},
+      React.createElement('defs',null,React.createElement('linearGradient',{id:'cmp',x1:'0',y1:'0',x2:'0',y2:'1'},
+        React.createElement('stop',{offset:'0%',stopColor:ACCENT,stopOpacity:0.2}),
+        React.createElement('stop',{offset:'100%',stopColor:ACCENT,stopOpacity:0}))),
+      grid,
+      React.createElement('path',{d:da+' L '+w+' '+h+' L 0 '+h+' Z',fill:'url(#cmp)'}),
+      React.createElement('path',{d:db,fill:'none',stroke:'#94A3B8',strokeWidth:2,strokeDasharray:'6 5',vectorEffect:'non-scaling-stroke'}),
+      React.createElement('path',{d:da,fill:'none',stroke:ACCENT,strokeWidth:2.5,strokeLinecap:'round',strokeLinejoin:'round',vectorEffect:'non-scaling-stroke'}));
+  }
+
+  renderVals() {
+    const st = this.state;
+    const nameOf = (id) => (CLIENTS.filter(c => c.id === id)[0] || {}).name || id;
+
+    const allTrades = TRADES.map(t => ({client:t[0], stock:t[1], type:t[2], qty:t[3], price:t[4], date:t[5], notes:t[6]}));
+    const scoped = st.client === 'All' ? allTrades : allTrades.filter(t => t.client === st.client);
+    const port = resolve(scoped);
+
+    const totalRealized = port.reduce((a,p)=>a+p.realizedPL,0);
+    const totalUnrealized = port.reduce((a,p)=>a+(p.netQty>0?p.unrealizedPL:0),0);
+    const totalPL = totalRealized + totalUnrealized;
+    const totalInvested = port.reduce((a,p)=>a+p.investedHolding,0);
+    const currentVal = port.reduce((a,p)=>a+p.currentVal,0);
+    const totalReturn = totalInvested > 0 ? (totalPL/totalInvested)*100 : 0;
+    const allMatches = port.reduce((a,p)=>a.concat(p.matches),[]);
+    const wins = allMatches.filter(m => m.pl > 0).length;
+    const winRate = allMatches.length ? (wins/allMatches.length)*100 : 0;
+
+    const holdings = port.filter(p => p.netQty > 0).sort((a,b)=>b.currentVal-a.currentVal);
+    const holdingValue = holdings.reduce((a,h)=>a+h.currentVal,0);
+    const investedHolding = holdings.reduce((a,h)=>a+h.investedHolding,0);
+
+    const ix = INDICES[st.index];
+    const portXirr = 24.7;
+    const alphaPP = portXirr - ix.xirr;
+    const alphaRet = totalReturn - ix.ret;
+    const alphaValue = currentVal * (alphaRet/100);
+    const idxValue = currentVal * (1 + (ix.ret - totalReturn)/100);
+    const idxPL = idxValue - totalInvested;
+
+    const mLabels = ['Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'];
+    const qMap = {All:[0,12], Q1:[0,3], Q2:[3,6], Q3:[6,9], Q4:[9,12]};
+    const qr = qMap[st.quarter];
+    const realizedSeed = [0,0,0,142000,0,58000,0,196000,0,0,84000,0];
+    const points = mLabels.map((l,i) => ({label:l, realized: realizedSeed[i]*(st.client==='All'?1:0.42),
+      unrealized: (PORT_CURVE[i+1]-100)/33.8*totalUnrealized})).slice(qr[0], qr[1]);
+
+    const tint = (s) => TINT[(s.charCodeAt(0)+s.length) % TINT.length];
+
+    return {
+      nav: [['dashboard','Dashboard','◇'],['clients','Clients','◉'],['portfolio','Portfolio','▤'],['trades','Trades','⇄'],['benchmark','Benchmark','◈']].map(n => ({
+        label:n[1], icon:n[2], active: st.view===n[0], idle: st.view!==n[0], go: () => this.setState({view:n[0]})
+      })),
+      isDash: st.view==='dashboard', isClients: st.view==='clients', isPort: st.view==='portfolio',
+      isTrades: st.view==='trades', isBench: st.view==='benchmark',
+
+      clientFilters: [{id:'All', name:'All clients'}].concat(CLIENTS).map((c,i) => ({
+        name: c.name, active: st.client===c.id, dot: c.id==='All' ? '#94A3B8' : TINT[i%TINT.length][1],
+        n: c.id==='All' ? allTrades.length : allTrades.filter(t=>t.client===c.id).length,
+        go: () => this.setState({client:c.id, open:{}})
+      })),
+      scopeLabel: st.client==='All' ? 'All clients' : nameOf(st.client),
+      lastRefreshed: '13/08/2026, 14:52',
+      refresh: () => this.forceUpdate(),
+
+      totalPL: inr(totalPL), totalReturn: pctS(totalReturn),
+      totalInvested: inr0(totalInvested), currentVal: inr0(currentVal),
+      niftyReturn: pctS(ix.ret), alphaPP: (alphaPP>=0?'+':'') + alphaPP.toFixed(1) + ' pp',
+      alphaValue: inr0(Math.abs(alphaValue)),
+      portXirr: portXirr.toFixed(1) + '%',
+      winRate: winRate.toFixed(0) + '%',
+      realized: inr0(totalRealized), unrealized: inr0(totalUnrealized),
+      heroChart: this.line(PORT_CURVE, 280, 100, '#93C5FD', 2.5),
+      comboChart: this.combo(points, 900, 280),
+
+      dashCards: [
+        {title:'Total P&L', value:inr0(totalPL), sub:pctS(totalReturn) + ' on cost', accent: totalPL>=0?GOOD:BAD, tone: totalPL>=0?GOOD:BAD},
+        {title:'Realized P&L', value:inr0(totalRealized), sub:allMatches.length + ' matched lots', accent: totalRealized>=0?GOOD:BAD, tone: totalRealized>=0?GOOD:BAD},
+        {title:'Unrealized P&L', value:inr0(totalUnrealized), sub:holdings.length + ' open positions', accent: totalUnrealized>=0?GOOD:BAD, tone: totalUnrealized>=0?GOOD:BAD},
+        {title:'Current Value', value:inr0(currentVal), sub:'incl. live NSE prices', accent:ACCENT, tone:'#0F172A'},
+        {title:'Your Return', value:pctS(totalReturn), sub:'XIRR ' + portXirr + '% · on ' + inr0(totalInvested) + ' invested', accent:GOOD, tone:GOOD},
+        {title:'Nifty 50 — same timing', value:pctS(INDICES['Nifty 50'].ret), sub:'XIRR ' + INDICES['Nifty 50'].xirr + '%', accent:'#94A3B8', tone:'#0F172A'},
+        {title:'Alpha', value:pctS(totalReturn - INDICES['Nifty 50'].ret), sub:'XIRR +' + (portXirr - INDICES['Nifty 50'].xirr).toFixed(1) + ' pp', accent:GOOD, tone:GOOD},
+        {title:'Win Rate', value:winRate.toFixed(0) + '%', sub:wins + ' of ' + allMatches.length + ' exits profitable', accent:ACCENT, tone:'#0F172A'}
+      ],
+      quarters: ['All','Q1','Q2','Q3','Q4'].map(q => ({label:q, active: st.quarter===q, go: () => this.setState({quarter:q})})),
+
+      clientCount: CLIENTS.length, tradeCount: scoped.length,
+      showClientForm: st.showClientForm,
+      openClientForm: () => this.setState({showClientForm:true}),
+      closeClientForm: () => this.setState({showClientForm:false}),
+      clients: CLIENTS.map((c,i) => ({
+        name:c.name, email:c.email, phone:c.phone, joining:c.joining,
+        mark: c.name.split(' ').map(w=>w[0]).join(''),
+        bg: TINT[i%TINT.length][0], fg: TINT[i%TINT.length][1],
+        n: allTrades.filter(t=>t.client===c.id).length
+      })),
+
+      holdingCount: holdings.length,
+      holdingValue: inr0(holdingValue), investedHolding: inr0(investedHolding),
+      holdings: holdings.map(h => {
+        const t = tint(h.stock);
+        return {client: nameOf(h.client), stock:h.stock, mark:h.stock.slice(0,3), logo: logoUrl(h.stock), logoBg: 'url("' + logoUrl(h.stock) + '")', noLogo: !logoUrl(h.stock),
+          bg:t[0], fg:t[1], qty:h.netQty, avg:inr(h.avgBuyPrice), cmp:inr(h.cmp),
+          invested:inr0(h.investedHolding), value:inr0(h.currentVal),
+          weight:(h.currentVal/holdingValue*100).toFixed(1)+'%',
+          wBar: Math.min(100, h.currentVal/holdingValue*100*2.2).toFixed(1)+'%'};
+      }),
+
+      positions: port.slice().sort((a,b)=>b.totalPL-a.totalPL).map(p => {
+        const t = tint(p.stock), key = p.client + '|' + p.stock;
+        return {stock:p.stock, client: nameOf(p.client), mark:p.stock.slice(0,3), logo: logoUrl(p.stock), logoBg: 'url("' + logoUrl(p.stock) + '")', noLogo: !logoUrl(p.stock), bg:t[0], fg:t[1],
+          qty: p.netQty || '—', avg: p.netQty ? inr(p.avgBuyPrice) : '—', cmp: inr(p.cmp),
+          realized: p.matches.length ? inr0(p.realizedPL) : '—',
+          unrealized: p.netQty ? inr0(p.unrealizedPL) : '—',
+          total: inr0(p.totalPL),
+          rTone: p.realizedPL>=0?GOOD:BAD, uTone: p.unrealizedPL>=0?GOOD:BAD, tTone: p.totalPL>=0?GOOD:BAD,
+          caret: st.open[key] ? '▲' : '▼', open: !!st.open[key],
+          hasMatches: p.matches.length>0, hasLots: p.lots.length>0,
+          matches: p.matches.map(m => ({buyDate:dmy(m.buyDate), buyAvg:inr(m.buyAvg), sellDate:dmy(m.sellDate),
+            sellAvg:inr(m.sellAvg), qty:m.qty, pl:inr0(m.pl), tone: m.pl>=0?GOOD:BAD})),
+          lots: p.lots.map(l => ({date:dmy(l.date), price:inr(l.price), qty:l.qty, cmp:inr(p.cmp),
+            pl:inr0((p.cmp-l.price)*l.qty), tone:(p.cmp-l.price)>=0?GOOD:BAD})),
+          toggle: () => this.setState(s => ({open: Object.assign({}, s.open, {[key]: !s.open[key]})}))};
+      }),
+
+      typeFilters: ['All','BUY','SELL'].map(f => ({label:f, active: st.typeFilter===f, go: () => this.setState({typeFilter:f})})),
+      rawTrades: scoped.filter(t => st.typeFilter==='All' || t.type===st.typeFilter)
+        .slice().sort((a,b)=>b.date.localeCompare(a.date)).map(t => ({
+          client: nameOf(t.client), type:t.type, stock:t.stock, qty:t.qty,
+          price: inr(t.price), date: dmy(t.date), notes: t.notes || '—',
+          bg: t.type==='BUY' ? '#EFF6FF' : '#FFF7ED', fg: t.type==='BUY' ? '#1D4ED8' : '#C2410C'
+        })),
+      openTradeForm: () => this.setState({view:'trades'}),
+
+      benchName: st.index,
+      alphaHeadline: (alphaRet>=0?'Ahead of ':'Behind ') + st.index + ' by ' + Math.abs(alphaRet).toFixed(2) + ' pp',
+      alphaRetPP: (alphaRet>=0?'+':'') + alphaRet.toFixed(2) + ' pp',
+      alphaTone: alphaRet>=0?GOOD:BAD,
+      indices: Object.keys(INDICES).map(k => ({label:k, active: st.index===k, idle: st.index!==k, go: () => this.setState({index:k})})),
+      benchRowA: [
+        {title:'Current Value', value:inr0(currentVal), sub:'Live NSE prices · ' + holdings.length + ' open positions', accent:ACCENT, tone:'#0F172A'},
+        {title:'Total P&L', value:inr0(totalPL), sub:pctS(totalReturn) + ' · ' + allMatches.length + ' matched lots', accent: totalPL>=0?GOOD:BAD, tone: totalPL>=0?GOOD:BAD}
+      ],
+      benchRowB: [
+        {title:'If invested in ' + st.index, value:inr0(idxValue), sub:'Each deposit at that day\u2019s index close', accent:'#94A3B8', tone:'#0F172A'},
+        {title:'P&L if invested in ' + st.index, value:inr0(idxPL), sub:pctS(ix.ret) + ' · XIRR ' + ix.xirr.toFixed(1) + '% · you ' + (alphaPP>=0?'+':'') + alphaPP.toFixed(1) + ' pp', accent:'#94A3B8', tone: idxPL>=0?GOOD:BAD}
+      ],
+      indexCards: Object.keys(INDICES).map(k => {
+        const d = INDICES[k], a = portXirr - d.xirr;
+        return {label:k, ret:pctS(d.ret), xirr:d.xirr.toFixed(1)+'%',
+          value: inr0(currentVal * (1 + (d.ret - totalReturn)/100)),
+          alpha:(a>=0?'+':'') + a.toFixed(1) + ' pp',
+          tone: a>=0?GOOD:BAD, chipBg: a>=0?'#ECFDF3':'#FEF2F2',
+          barColor: a>=0?'#94A3B8':'#FCA5A5',
+          bar: Math.min(100, d.ret/totalReturn*100).toFixed(0)+'%'};
+      })
+    };
+  }
+}
+
+</script>
+</body>
+</html>
