@@ -597,7 +597,8 @@ export default function App() {
         default: return p.totalPL;
       }
     };
-    return [...portfolio].sort((a, b) => {
+    // Open Positions: only stocks still held. Fully-booked (closed) rows are excluded.
+    return portfolio.filter(p => p.netQty > 0).sort((a, b) => {
       const va = val(a), vb = val(b);
       const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
       return sortDir === "asc" ? c : -c;
@@ -1179,11 +1180,11 @@ export default function App() {
         {positions.length === 0 ? (
           <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No trades yet</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No open positions</div>
           </div>
         ) : (<>
           <div style={{ ...PANEL, overflow: "hidden" }}>
-            <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Click a row to see FIFO lot matching</span>}>Positions</PanelTitle>
+            <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Click a row to see FIFO lot matching</span>}>Open Positions</PanelTitle>
             {(() => {
               const COLS = "1.1fr .7fr .8fr .8fr 1fr 1fr 1fr .5fr";
               const HEAD = [
