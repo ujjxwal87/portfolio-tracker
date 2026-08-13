@@ -582,7 +582,8 @@ export default function App() {
   const portfolio = useMemo(() => resolvePortfolio(filteredTrades, cmp), [filteredTrades, cmp]);
   // Clients view is never client-filtered, so it needs the all-clients resolve.
   const portfolioAll = useMemo(() => resolvePortfolio(trades, cmp), [trades, cmp]);
-  const holdings = useMemo(() => portfolio.filter(p => p.netQty > 0), [portfolio]);
+  const holdings = useMemo(() => portfolio.filter(p => p.netQty > 0)
+    .sort((a, b) => b.currentVal - a.currentVal), [portfolio]);
   const allStocks = useMemo(() => [...new Set(trades.map(t => t.stock_symbol))], [trades]);
   const positions = useMemo(() => {
     const val = (p) => {
@@ -793,10 +794,9 @@ export default function App() {
                       padding: "20px 14px", display: "flex", flexDirection: "column", gap: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 4px" }}>
           <div style={{ width: 32, height: 32, borderRadius: 10, display: "grid", placeItems: "center",
-                        background: "linear-gradient(135deg,#2563EB,#0EA5E9)", color: "#fff", fontWeight: 700, fontSize: 15 }}>P</div>
+                        background: "linear-gradient(135deg,#2563EB,#0EA5E9)", color: "#fff", fontWeight: 700, fontSize: 15 }}>E</div>
           <div>
             <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Eros Financial Service</div>
-            <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--ink-3)" }}>FIFO · NSE live</div>
           </div>
         </div>
 
@@ -1351,44 +1351,20 @@ export default function App() {
                   sub={bmk ? "net of withdrawals" : "cost basis"} accent="var(--accent)" />
             <Card title="Current Value" value={fmt(bmk ? bmk.portfolio_value : stats.currentVal)}
                   sub="live NSE prices" accent="var(--accent)" />
-            <Card title="Unrealized P&L" value={fmt(stats.totalUnrealizedPL)} sub={`${holdings.length} open positions`}
-                  tone={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"}
-                  accent={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
-            <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)} sub={`${realizedLots} matched lots`}
-                  tone={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"}
-                  accent={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 14 }}>
-            {Object.keys(INDEX_LABELS).map(k => {
-              const ix = bmk?.indices?.[k];
-              if (!ix) return (
-                <div key={k} style={{ ...PANEL, borderRadius: 16, padding: "18px 20px" }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700 }}>{INDEX_LABELS[k]}</div>
-                  <div className="fig" style={{ fontSize: 26, fontWeight: 600, marginTop: 10, color: "var(--ink-3)" }}>—</div>
-                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>needs deposit dates</div>
-                </div>
-              );
-              const up = ix.alpha_pct_pp != null && ix.alpha_pct_pp >= 0;
-              const share = RET > 0 ? Math.max(0, Math.min(ix.return_pct / RET, 1)) * 100 : 0;
-              return (
-                <div key={k} className="card-hover" style={{ ...PANEL, borderRadius: 16, padding: "18px 20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 700 }}>{ix.label}</span>
-                    {ix.alpha_pct_pp != null && (
-                      <span className="fig" style={{ fontSize: 11.5, fontWeight: 600, padding: "4px 9px", borderRadius: 99,
-                            background: up ? "#ECFDF3" : "#FEF2F2", color: up ? "var(--good)" : "var(--bad)", whiteSpace: "nowrap" }}>
-                        you {up ? "+" : ""}{ix.alpha_pct_pp} pp
-                      </span>)}
-                  </div>
-                  <div className="fig" style={{ fontSize: 26, fontWeight: 600, marginTop: 10, letterSpacing: "-.02em" }}>{pct(ix.return_pct)}</div>
-                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>XIRR {ix.xirr_pct}% · {fmt(ix.value)}</div>
-                  <div style={{ height: 5, borderRadius: 99, background: "#EEF1F6", marginTop: 14, overflow: "hidden" }}>
-                    <div style={{ height: "100%", borderRadius: 99, width: `${share}%`, background: "var(--ink-3)" }} />
-                  </div>
-                </div>
-              );
-            })}
+            <Card title="Total P&L" value={fmt(stats.totalPL)}
+                  sub={`${pct(stats.totalReturn)} · ${realizedLots} matched lots · ${holdings.length} open`}
+                  tone={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"}
+                  accent={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} />
+            {sel ? (
+              <Card title={`If invested in ${sel.label}`} value={fmt(sel.value)}
+                    sub={<>{pct(sel.return_pct)} · XIRR {sel.xirr_pct}%{sel.alpha_pct_pp != null && <>
+                      {" · "}<strong style={{ color: sel.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)" }}>
+                        you {sel.alpha_pct_pp >= 0 ? "+" : ""}{sel.alpha_pct_pp} pp
+                      </strong></>}</>}
+                    accent="var(--ink-3)" />
+            ) : (
+              <Card title="If invested in the index" value="—" sub="needs deposit dates" />
+            )}
           </div>
 
           {bmk && sel && (
