@@ -7,5 +7,5 @@ __pycache__/
 .env.local
 .DS_Store
 scratch/
-"Shared link.zip"
-Dashboard.zip
+*.zip
+*.xlsx
