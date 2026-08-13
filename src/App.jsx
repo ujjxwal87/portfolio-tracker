@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "rea
 
 const API = `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api`;
 
-const fmt = (n) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const fmt = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 const fmtDate = (d) => { if (!d) return "—"; const dt = new Date(d); const dd = String(dt.getUTCDate()).padStart(2,"0"); const mm = String(dt.getUTCMonth()+1).padStart(2,"0"); return `${dd}/${mm}/${dt.getUTCFullYear()}`; };
 
@@ -27,11 +27,26 @@ const Badge = ({ children, color }) => {
 
 const INDEX_LABELS = { nifty50: "Nifty 50", midcap150: "Nifty Midcap 150", smallcap250: "Nifty Smallcap 250" };
 
-const Card = ({ title, value, sub, accent }) => (
-  <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", border: "1px solid #e5e7eb", flex: "1 1 155px", minWidth: 155 }}>
-    <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", letterSpacing: .5 }}>{title}</div>
-    <div style={{ fontSize: 20, fontWeight: 700, color: accent || "#111", marginTop: 3 }}>{value}</div>
-    {sub && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 1 }}>{sub}</div>}
+const PANEL = {
+  background: "var(--surface)",
+  borderRadius: "var(--r-lg)",
+  border: "1px solid var(--line)",
+  boxShadow: "var(--shadow-sm)",
+};
+
+// Stat tile: micro label · semibold value (proportional figures) · optional delta line.
+// A 2px rail carries direction so the value is never colour-alone.
+// `accent` colours the direction rail only. `tone` colours the value, and is used
+// ONLY where the value itself is the good/bad signal (P&L, your own return) — an
+// index's return is neutral information, so its card leaves the value in ink and
+// lets the delta line carry direction.
+const Card = ({ title, value, sub, accent, tone }) => (
+  <div className="card-hover" style={{ ...PANEL, position: "relative", overflow: "hidden",
+       padding: "15px 18px 16px", flex: "1 1 168px", minWidth: 168 }}>
+    {accent && <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: accent }} />}
+    <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: .6 }}>{title}</div>
+    <div style={{ fontSize: 22, lineHeight: 1.2, fontWeight: 650, color: tone || "var(--ink)", marginTop: 5, letterSpacing: "-.02em" }}>{value}</div>
+    {sub && <div style={{ fontSize: 11, color: "var(--ink-2)", marginTop: 3, lineHeight: 1.35 }}>{sub}</div>}
   </div>
 );
 
@@ -254,6 +269,7 @@ function computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, year, qua
   const points = [];
   const monthPoint = (m) => {
     const start = isoOf(year, m, 1), end = isoOf(year, m, lastDayOfMonth(year, m));
+    if (start > tIso) return;   // a month that hasn't started has no data to plot
     points.push({
       label: MONTHS[m], sub: String(year), startIso: start, endIso: end,
       realized: realizedInRange(portfolio, start, end),
@@ -287,15 +303,26 @@ function PnlComboChart({ points }) {
   let vmax = Math.max(0, ...vals), vmin = Math.min(0, ...vals);
   if (vmax === vmin) { vmax += 1; vmin -= 1; }
   const pad = (vmax - vmin) * 0.08; vmax += pad; vmin -= pad;
+  // Snap the scale to a clean step so ticks land on round numbers, not 1.9k / 37k / 72k.
+  const rawStep = (vmax - vmin) / 5;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].find(m => m * mag >= rawStep) * mag;
+  vmin = Math.floor(vmin / step) * step;
+  vmax = Math.ceil(vmax / step) * step;
   const yOf = (v) => MT + plotH * (vmax - v) / (vmax - vmin);
   const zeroY = yOf(0);
   const band = plotW / points.length;
   const cx = (i) => ML + band * (i + 0.5);
-  const barW = Math.min(band * 0.5, 46);
-  // y ticks (~5)
+  const barW = Math.min(band * 0.5, 24);   // cap the mark; the band's leftover is air
+  // 4px rounded data-end, square at the baseline
+  const barPath = (x, w, yTop, yBase) => {
+    const up = yTop <= yBase, h = Math.abs(yBase - yTop), r = Math.min(4, w / 2, h);
+    const s = up ? 1 : -1, yEnd = yBase - s * h;
+    return `M${x},${yBase} L${x},${yEnd + s * r} Q${x},${yEnd} ${x + r},${yEnd} `
+         + `L${x + w - r},${yEnd} Q${x + w},${yEnd} ${x + w},${yEnd + s * r} L${x + w},${yBase} Z`;
+  };
   const ticks = [];
-  const nT = 5;
-  for (let i = 0; i <= nT; i++) ticks.push(vmin + (vmax - vmin) * i / nT);
+  for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
   const linePts = points.map((p, i) => `${cx(i)},${yOf(p.unrealized)}`).join(" ");
   const C_BAR = "#2563eb", C_LINE = "#d97706";
   return (
@@ -307,18 +334,13 @@ function PnlComboChart({ points }) {
             <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#94a3b8">{fmtCompact(t)}</text>
           </g>
         ))}
-        {points.map((p, i) => {
-          const y = yOf(p.realized), h = Math.abs(y - zeroY);
-          const top = p.realized >= 0 ? y : zeroY;
-          return (
-            <g key={i}>
-              <rect x={cx(i) - barW / 2} y={top} width={barW} height={Math.max(h, 0.5)} rx="3" fill={C_BAR} opacity={hover === -1 || hover === i ? 1 : 0.45} />
-            </g>
-          );
-        })}
-        <polyline points={linePts} fill="none" stroke={C_LINE} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
-          <circle key={i} cx={cx(i)} cy={yOf(p.unrealized)} r={hover === i ? 5.5 : 4} fill="#fff" stroke={C_LINE} strokeWidth="2.5" />
+          <path key={i} d={barPath(cx(i) - barW / 2, barW, yOf(p.realized), zeroY)}
+                fill={C_BAR} opacity={hover === -1 || hover === i ? 1 : 0.4} />
+        ))}
+        <polyline points={linePts} fill="none" stroke={C_LINE} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        {points.map((p, i) => (
+          <circle key={i} cx={cx(i)} cy={yOf(p.unrealized)} r={hover === i ? 5.5 : 4.5} fill={C_LINE} stroke="var(--surface)" strokeWidth="2" />
         ))}
         {points.map((p, i) => (
           <g key={i}>
@@ -580,12 +602,12 @@ export default function App() {
     } catch (e) { alert(e.message); }
   };
 
-  const inp = { padding: "7px 10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 13, width: "100%", boxSizing: "border-box", background: "#fff", color: "#111" };
-  const btnP = { padding: "7px 16px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" };
-  const btnS = { padding: "7px 16px", borderRadius: 8, border: "1px solid #d1d5db", background: "transparent", color: "#374151", fontWeight: 600, fontSize: 13, cursor: "pointer" };
-  const btnD = { padding: "7px 16px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer" };
-  const th = { textAlign: "left", padding: "8px 6px", fontSize: 10, color: "#6b7280", fontWeight: 700, textTransform: "uppercase", whiteSpace: "nowrap" };
-  const td = { padding: "8px 6px", fontSize: 13 };
+  const inp = { padding: "8px 11px", borderRadius: "var(--r-sm)", border: "1px solid #d8dee6", fontSize: 13, width: "100%", boxSizing: "border-box", background: "var(--surface)", color: "var(--ink)" };
+  const btnP = { padding: "8px 17px", borderRadius: "var(--r-sm)", border: "none", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "0 2px 8px -2px rgba(37,99,235,.5)" };
+  const btnS = { padding: "8px 17px", borderRadius: "var(--r-sm)", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "var(--shadow-sm)" };
+  const btnD = { padding: "8px 17px", borderRadius: "var(--r-sm)", border: "none", background: "var(--bad)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "0 2px 8px -2px rgba(220,38,38,.45)" };
+  const th = { textAlign: "left", padding: "9px 8px", fontSize: 10, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: .5, whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" };
+  const td = { padding: "9px 8px", fontSize: 13, borderBottom: "1px solid #f2f5f8" };
 
   const MiniBar = ({ label, val, max, color }) => (
     <div style={{ marginBottom: 8 }}>
@@ -616,24 +638,46 @@ export default function App() {
   const views = ["dashboard", "clients", "portfolio", "trades", "benchmark"];
 
   return (
-    <div style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", maxWidth: 960, margin: "0 auto", padding: "16px 12px", color: "#111" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 21, fontWeight: 800 }}>Portfolio Tracker</h1>
-          <p style={{ margin: "2px 0 0", fontSize: 11, color: "#6b7280" }}>Benchmarks: Nifty 50 · Midcap 150 · Smallcap 250 • FIFO Cost Basis • NSE Live Prices</p>
+    <div style={{ maxWidth: 1120, margin: "0 auto", padding: "26px 20px 56px", color: "var(--ink)" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 11, display: "grid", placeItems: "center",
+                        background: "linear-gradient(145deg,#2563eb,#4f46e5)", color: "#fff",
+                        fontWeight: 700, fontSize: 17, letterSpacing: "-.02em",
+                        boxShadow: "0 4px 12px -2px rgba(37,99,235,.45)" }}>P</div>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, letterSpacing: "-.02em" }}>Portfolio Tracker</h1>
+            <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "var(--ink-3)" }}>
+              Nifty 50 · Midcap 150 · Smallcap 250 &nbsp;·&nbsp; FIFO cost basis &nbsp;·&nbsp; NSE live prices
+            </p>
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 2, flexWrap: "wrap", background: "rgba(255,255,255,.72)",
+                      padding: 4, borderRadius: 11, border: "1px solid var(--line)",
+                      boxShadow: "var(--shadow-sm)", backdropFilter: "blur(6px)" }}>
           {views.map(v => (
-            <button key={v} onClick={() => setView(v)} style={{ ...btnS, padding: "5px 12px", fontSize: 12, textTransform: "capitalize", background: view === v ? "#2563eb" : "transparent", color: view === v ? "#fff" : "#374151", borderColor: view === v ? "#2563eb" : "#d1d5db" }}>{v}</button>
+            <button key={v} onClick={() => setView(v)} style={{
+              padding: "6px 14px", fontSize: 12.5, fontWeight: 600, textTransform: "capitalize",
+              borderRadius: 8, border: "none", cursor: "pointer",
+              background: view === v ? "var(--accent)" : "transparent",
+              color: view === v ? "#fff" : "var(--ink-2)",
+              boxShadow: view === v ? "0 2px 8px -2px rgba(37,99,235,.5)" : "none",
+            }}>{v}</button>
           ))}
         </div>
       </div>
 
       {view !== "clients" && (
-        <div style={{ display: "flex", gap: 5, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: "#6b7280" }}>Client:</span>
+        <div style={{ display: "flex", gap: 6, marginBottom: 18, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: .6, marginRight: 2 }}>Client</span>
           {clientNames.map(c => (
-            <button key={c} onClick={() => setFilterClient(c)} style={{ padding: "3px 11px", borderRadius: 20, border: "1px solid #d1d5db", fontSize: 11, cursor: "pointer", fontWeight: 600, background: filterClient === c ? "#1e40af" : "transparent", color: filterClient === c ? "#fff" : "#374151", borderColor: filterClient === c ? "#1e40af" : "#d1d5db" }}>{c}</button>
+            <button key={c} onClick={() => setFilterClient(c)} style={{
+              padding: "5px 13px", borderRadius: 99, fontSize: 12, cursor: "pointer", fontWeight: 600,
+              border: `1px solid ${filterClient === c ? "transparent" : "var(--line)"}`,
+              background: filterClient === c ? "var(--ink)" : "var(--surface)",
+              color: filterClient === c ? "#fff" : "var(--ink-2)",
+              boxShadow: filterClient === c ? "0 2px 8px -2px rgba(15,23,42,.35)" : "var(--shadow-sm)",
+            }}>{c}</button>
           ))}
         </div>
       )}
@@ -670,13 +714,13 @@ export default function App() {
           )}
 
           {clients.length === 0 ? (
-            <div style={{ background: "#fff", borderRadius: 12, padding: 32, border: "1px solid #e5e7eb", textAlign: "center" }}>
+            <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No Clients Yet</div>
               <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>Add your first client to start tracking trades.</div>
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ ...PANEL, overflowX: "auto", padding: "4px 14px 8px" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
                   {["Name","Email","Phone","Joining Date","Trades",""].map(h => <th key={h} style={th}>{h}</th>)}
@@ -685,12 +729,12 @@ export default function App() {
                   const tradeCount = trades.filter(t => t.client_id === c.id).length;
                   return (
                     <tr key={c.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ ...td, fontWeight: 700 }}>{c.name}</td>
-                      <td style={{ ...td, color: "#6b7280" }}>{c.email || "—"}</td>
-                      <td style={{ ...td, color: "#6b7280" }}>{c.phone || "—"}</td>
+                      <td className="num" style={{ ...td, fontWeight: 700 }}>{c.name}</td>
+                      <td className="num" style={{ ...td, color: "#6b7280" }}>{c.email || "—"}</td>
+                      <td className="num" style={{ ...td, color: "#6b7280" }}>{c.phone || "—"}</td>
                       <td style={td}>{c.joining_date ? fmtDate(c.joining_date) : "—"}</td>
                       <td style={td}><Badge color="blue">{tradeCount} trade{tradeCount !== 1 ? "s" : ""}</Badge></td>
-                      <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>
                         <button onClick={() => openEditClient(c)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>
                         <button onClick={() => handleDeleteClient(c.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>
                       </td>
@@ -707,40 +751,44 @@ export default function App() {
       {view === "dashboard" && (<>
         <div style={{ marginBottom: 14 }}><RefreshButton /></div>
         {trades.length === 0 ? (
-          <div style={{ background: "#fff", borderRadius: 12, padding: 32, border: "1px solid #e5e7eb", textAlign: "center" }}>
+          <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No trades yet</div>
             <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>Add clients first, then log trades in the Trades tab.</div>
           </div>
         ) : (<>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-            <Card title="Total P&L" value={fmt(stats.totalPL)} sub={pct(stats.totalReturn)} accent={stats.totalPL >= 0 ? "#16a34a" : "#dc2626"} />
-            <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)} accent={stats.totalRealizedPL >= 0 ? "#16a34a" : "#dc2626"} />
-            <Card title="Unrealized P&L" value={fmt(stats.totalUnrealizedPL)} accent={stats.totalUnrealizedPL >= 0 ? "#16a34a" : "#dc2626"} />
+            <Card title="Total P&L" value={fmt(stats.totalPL)} sub={pct(stats.totalReturn)}
+                  tone={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} />
+            <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)}
+                  tone={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
+            <Card title="Unrealized P&L" value={fmt(stats.totalUnrealizedPL)}
+                  tone={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
             <Card title="Current Value" value={fmt(stats.currentVal)} />
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
             {benchmarkState === "ok" ? (<>
               <Card title="Your Return" value={pct(benchmark.portfolio_return_pct)}
                     sub={`XIRR ${benchmark.portfolio_xirr_pct}% · on ${fmt(benchmark.net_invested)} invested`}
-                    accent={benchmark.portfolio_return_pct >= 0 ? "#16a34a" : "#dc2626"} />
+                    tone={benchmark.portfolio_return_pct >= 0 ? "var(--good)" : "var(--bad)"}
+                    accent={benchmark.portfolio_return_pct >= 0 ? "var(--good)" : "var(--bad)"} />
               <Card title="Nifty 50 — same timing" value={pct(benchmark.benchmark_return_pct)}
-                    sub={`XIRR ${benchmark.benchmark_xirr_pct}% · ${fmt(benchmark.benchmark_value)}`}
-                    accent="#6b7280" />
+                    sub={`XIRR ${benchmark.benchmark_xirr_pct}% · ${fmt(benchmark.benchmark_value)}`} />
               <Card title="Alpha" value={pct(benchmark.alpha_pct_pp)}
                     sub={`XIRR ${benchmark.alpha_xirr_pp >= 0 ? "+" : ""}${benchmark.alpha_xirr_pp} pp · ${fmt(benchmark.portfolio_value - benchmark.benchmark_value)}`}
-                    accent={benchmark.alpha_pct_pp >= 0 ? "#16a34a" : "#dc2626"} />
+                    tone={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"}
+                    accent={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"} />
             </>) : (<>
               <Card title="Your Return" value={pct(stats.totalReturn)} sub="on cost basis"
-                    accent={stats.totalReturn >= 0 ? "#16a34a" : "#dc2626"} />
+                    tone={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"}
+                    accent={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"} />
               <Card title="Nifty 50" value="—"
-                    sub={benchmarkState === "all" ? "select a client" : benchmarkState === "loading" ? "loading…" : "no deposits recorded"}
-                    accent="#6b7280" />
-              <Card title="Alpha" value="—" sub="needs deposit dates" accent="#6b7280" />
+                    sub={benchmarkState === "all" ? "select a client" : benchmarkState === "loading" ? "loading…" : "no deposits recorded"} />
+              <Card title="Alpha" value="—" sub="needs deposit dates" />
             </>)}
             <Card title="Win Rate" value={stats.winRate.toFixed(0) + "%"} />
           </div>
-          <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb", marginBottom: 16 }}>
+          <div style={{ ...PANEL, padding: 18, marginBottom: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Realized vs Unrealized P&L</h3>
               <div style={{ display: "flex", gap: 16, fontSize: 11, color: "#475569" }}>
@@ -794,34 +842,36 @@ export default function App() {
             <Card title="Current Value" value={fmt(totalVal)} />
           </div>
           {holdings.length === 0 ? (
-            <div style={{ background: "#fff", borderRadius: 12, padding: 32, border: "1px solid #e5e7eb", textAlign: "center" }}>
+            <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>No Active Holdings</div>
             </div>
           ) : (<>
-            <div style={{ overflowX: "auto" }}>
+            <div style={{ ...PANEL, overflowX: "auto", padding: "4px 14px 8px" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
-                  {["Client","Stock","Net Qty","Avg Buy","CMP","Invested","Current Value","Weight"].map(h => <th key={h} style={th}>{h}</th>)}
+                <thead><tr>
+                  {[...(filterClient === "All" ? ["Client"] : []),"Stock","Net Qty","Avg Buy","CMP","Invested","Current Value","Weight"].map(h => <th key={h} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {holdings.map((h, i) => {
                     const weight = totalVal > 0 ? (h.currentVal / totalVal * 100) : 0;
-                    return (<tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={td}>{h.client}</td><td style={{ ...td, fontWeight: 700 }}>{h.stock}</td>
-                      <td style={{ ...td, fontWeight: 600 }}>{h.netQty}</td><td style={td}>{fmt(h.avgBuyPrice)}</td>
-                      <td style={td}>{fmt(h.cmp)}</td><td style={td}>{fmt(h.investedHolding)}</td>
-                      <td style={td}>{fmt(h.currentVal)}</td><td style={td}>{weight.toFixed(1) + "%"}</td>
+                    return (<tr key={i}>
+                      {filterClient === "All" && <td style={td}>{h.client}</td>}
+                      <td className="num" style={{ ...td, fontWeight: 700 }}>{h.stock}</td>
+                      <td className="num" style={{ ...td, fontWeight: 600 }}>{h.netQty}</td><td className="num" style={td}>{fmt(h.avgBuyPrice)}</td>
+                      <td className="num" style={td}>{fmt(h.cmp)}</td><td className="num" style={td}>{fmt(h.investedHolding)}</td>
+                      <td className="num" style={td}>{fmt(h.currentVal)}</td><td style={td}>{weight.toFixed(1) + "%"}</td>
                     </tr>);
                   })}
-                  <tr style={{ borderTop: "2px solid #e5e7eb", fontWeight: 700 }}>
-                    <td style={td}>Total</td><td style={td} /><td style={td} /><td style={td} /><td style={td} />
-                    <td style={td}>{fmt(totalInvested)}</td><td style={td}>{fmt(totalVal)}</td><td style={td}>100%</td>
+                  <tr style={{ borderTop: "1px solid var(--line)", fontWeight: 700 }}>
+                    <td style={td}>Total</td><td style={td} /><td style={td} /><td style={td} />
+                    {filterClient === "All" && <td style={td} />}
+                    <td className="num" style={td}>{fmt(totalInvested)}</td><td className="num" style={td}>{fmt(totalVal)}</td><td style={td}>100%</td>
                   </tr>
                 </tbody>
               </table>
             </div>
-            <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb", marginTop: 16 }}>
+            <div style={{ ...PANEL, padding: 18, marginTop: 16 }}>
               <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Portfolio Allocation</h3>
               {holdings.map((h, i) => {
                 const w = totalVal > 0 ? (h.currentVal / totalVal * 100) : 0;
@@ -895,12 +945,12 @@ export default function App() {
         </div>
 
         {positions.length === 0 ? (
-          <div style={{ background: "#fff", borderRadius: 12, padding: 32, border: "1px solid #e5e7eb", textAlign: "center" }}>
+          <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
             <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No trades yet</div>
           </div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ ...PANEL, overflowX: "auto", padding: "4px 14px 8px" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
                 {[
@@ -929,14 +979,14 @@ export default function App() {
                   return (
                     <Fragment key={k}>
                       <tr onClick={() => toggleRow(k)} style={{ borderBottom: "1px solid #f3f4f6", cursor: "pointer", background: open ? "#f8fafc" : "transparent" }}>
-                        <td style={{ ...td, width: 24, color: "#6b7280" }}>{open ? "▾" : "▸"}</td>
-                        {filterClient === "All" && <td style={{ ...td, color: "#6b7280" }}>{p.client}</td>}
-                        <td style={{ ...td, fontWeight: 700 }}>{p.stock}</td>
-                        <td style={{ ...td, textAlign: "right" }}>{p.netQty > 0 ? p.netQty : "—"}</td>
-                        <td style={{ ...td, textAlign: "right", fontWeight: 600, color: p.realizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.totalSells > 0 ? fmt(p.realizedPL) : "—"}</td>
-                        <td style={{ ...td, textAlign: "right", fontWeight: 600, color: p.unrealizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.netQty > 0 ? fmt(p.unrealizedPL) : "—"}</td>
-                        <td style={{ ...td, textAlign: "right", fontWeight: 700, color: p.totalPL >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(p.totalPL)}</td>
-                        <td style={{ ...td, textAlign: "right" }}><Badge color={sColor}>{sLabel}</Badge></td>
+                        <td className="num" style={{ ...td, width: 24, color: "#6b7280" }}>{open ? "▾" : "▸"}</td>
+                        {filterClient === "All" && <td className="num" style={{ ...td, color: "#6b7280" }}>{p.client}</td>}
+                        <td className="num" style={{ ...td, fontWeight: 700 }}>{p.stock}</td>
+                        <td className="num" style={{ ...td, textAlign: "right" }}>{p.netQty > 0 ? p.netQty : "—"}</td>
+                        <td className="num" style={{ ...td, textAlign: "right", fontWeight: 600, color: p.realizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.totalSells > 0 ? fmt(p.realizedPL) : "—"}</td>
+                        <td className="num" style={{ ...td, textAlign: "right", fontWeight: 600, color: p.unrealizedPL >= 0 ? "#16a34a" : "#dc2626" }}>{p.netQty > 0 ? fmt(p.unrealizedPL) : "—"}</td>
+                        <td className="num" style={{ ...td, textAlign: "right", fontWeight: 700, color: p.totalPL >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(p.totalPL)}</td>
+                        <td className="num" style={{ ...td, textAlign: "right" }}><Badge color={sColor}>{sLabel}</Badge></td>
                       </tr>
                       {open && (
                         <tr>
@@ -950,12 +1000,12 @@ export default function App() {
                                   </tr></thead>
                                   <tbody>{p.matchDetails.map((m, mi) => (
                                     <tr key={mi} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                                      <td style={{ ...td, fontSize: 12 }}>{fmtDate(m.buyDate)}{m.intraday && <span style={{ marginLeft: 5, fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>INTRADAY</span>}</td>
-                                      <td style={{ ...td, fontSize: 12 }}>{fmt(m.buyPrice)}</td>
-                                      <td style={{ ...td, fontSize: 12 }}>{fmtDate(m.sellDate)}</td>
-                                      <td style={{ ...td, fontSize: 12 }}>{fmt(m.sellPrice)}</td>
-                                      <td style={{ ...td, fontSize: 12, textAlign: "right" }}>{m.qty}</td>
-                                      <td style={{ ...td, fontSize: 12, textAlign: "right", fontWeight: 600, color: m.pl >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(m.pl)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12 }}>{fmtDate(m.buyDate)}{m.intraday && <span style={{ marginLeft: 5, fontSize: 9, color: "#f59e0b", fontWeight: 700 }}>INTRADAY</span>}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12 }}>{fmt(m.buyPrice)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12 }}>{fmtDate(m.sellDate)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12 }}>{fmt(m.sellPrice)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12, textAlign: "right" }}>{m.qty}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12, textAlign: "right", fontWeight: 600, color: m.pl >= 0 ? "#16a34a" : "#dc2626" }}>{fmt(m.pl)}</td>
                                     </tr>
                                   ))}</tbody>
                                 </table>
@@ -968,11 +1018,11 @@ export default function App() {
                                   </tr></thead>
                                   <tbody>{p.holdingLots.map((b, bi) => (
                                     <tr key={bi} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                                      <td style={{ ...td, fontSize: 12 }}>{fmtDate(b.date)}</td>
-                                      <td style={{ ...td, fontSize: 12 }}>{fmt(b.price)}</td>
-                                      <td style={{ ...td, fontSize: 12, textAlign: "right" }}>{b.remainQty}</td>
-                                      <td style={{ ...td, fontSize: 12, textAlign: "right" }}>{fmt(p.cmp)}</td>
-                                      <td style={{ ...td, fontSize: 12, textAlign: "right", fontWeight: 600, color: (p.cmp - b.price) >= 0 ? "#16a34a" : "#dc2626" }}>{fmt((p.cmp - b.price) * b.remainQty)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12 }}>{fmtDate(b.date)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12 }}>{fmt(b.price)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12, textAlign: "right" }}>{b.remainQty}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12, textAlign: "right" }}>{fmt(p.cmp)}</td>
+                                      <td className="num" style={{ ...td, fontSize: 12, textAlign: "right", fontWeight: 600, color: (p.cmp - b.price) >= 0 ? "#16a34a" : "#dc2626" }}>{fmt((p.cmp - b.price) * b.remainQty)}</td>
                                     </tr>
                                   ))}</tbody>
                                 </table>
@@ -1005,12 +1055,12 @@ export default function App() {
                   return (<tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
                     <td style={td}>{t.client_name}</td>
                     <td style={td}><Badge color={t.type === "BUY" ? "green" : "red"}>{t.type}</Badge></td>
-                    <td style={{ ...td, fontWeight: 700 }}>{t.stock_symbol}</td>
+                    <td className="num" style={{ ...td, fontWeight: 700 }}>{t.stock_symbol}</td>
                     <td style={td}>{t.quantity}</td>
-                    <td style={td}>{fmt(t.price)}</td>
-                    <td style={{ ...td, whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
-                    <td style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
-                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                    <td className="num" style={td}>{fmt(t.price)}</td>
+                    <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
+                    <td className="num" style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
+                    <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>
                       <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>
                       <button onClick={() => handleDeleteTrade(t.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>
                     </td>
@@ -1027,11 +1077,16 @@ export default function App() {
         const bmk = benchmarkState === "ok" ? benchmark : null;
         const ixCard = (key) => {
           const ix = bmk?.indices?.[key];
-          if (!ix) return <Card key={key} title={INDEX_LABELS[key]} value="—" sub="needs deposit dates" accent="#6b7280" />;
+          if (!ix) return <Card key={key} title={INDEX_LABELS[key]} value="—" sub="needs deposit dates" />;
+          const ahead = ix.alpha_pct_pp != null && ix.alpha_pct_pp >= 0;
           return <Card key={key} title={ix.label} value={pct(ix.return_pct)}
-            sub={`XIRR ${ix.xirr_pct}%${ix.alpha_pct_pp != null ? ` · you ${ix.alpha_pct_pp >= 0 ? "+" : ""}${ix.alpha_pct_pp} pp` : ""}`}
-            accent={ix.alpha_pct_pp != null ? (ix.alpha_pct_pp >= 0 ? "#16a34a" : "#dc2626") : "#6b7280"} />;
+            sub={<>XIRR {ix.xirr_pct}%{ix.alpha_pct_pp != null && <>
+              {" · "}<strong style={{ color: ahead ? "var(--good)" : "var(--bad)" }}>
+                you {ahead ? "+" : ""}{ix.alpha_pct_pp} pp
+              </strong></>}</>}
+            accent={ix.alpha_pct_pp != null ? (ahead ? "var(--good)" : "var(--bad)") : undefined} />;
         };
+        const RET = bmk ? bmk.portfolio_return_pct : stats.totalReturn;
         return (<>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
             <Card title="Amount Invested" value={fmt(bmk ? bmk.net_invested : stats.totalInvested)}
@@ -1039,24 +1094,34 @@ export default function App() {
             <Card title="Current Value" value={fmt(bmk ? bmk.portfolio_value : stats.currentVal)}
                   sub={bmk ? "holdings + cash" : "holdings"} />
             <Card title="Unrealized P&L" value={fmt(stats.totalUnrealizedPL)}
-                  accent={stats.totalUnrealizedPL >= 0 ? "#16a34a" : "#dc2626"} />
+                  tone={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"}
+                  accent={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
             <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)}
-                  accent={stats.totalRealizedPL >= 0 ? "#16a34a" : "#dc2626"} />
+                  tone={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"}
+                  accent={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-            <Card title="Your Return" value={pct(bmk ? bmk.portfolio_return_pct : stats.totalReturn)}
+            <Card title="Your Return" value={pct(RET)}
                   sub={bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on cost basis"}
-                  accent={(bmk ? bmk.portfolio_return_pct : stats.totalReturn) >= 0 ? "#16a34a" : "#dc2626"} />
+                  tone={RET >= 0 ? "var(--good)" : "var(--bad)"}
+                  accent={RET >= 0 ? "var(--good)" : "var(--bad)"} />
             {["nifty50", "midcap150", "smallcap250"].map(ixCard)}
           </div>
           {bmk && (
-            <div style={{ background: bmk.alpha_pct_pp >= 0 ? "#f0fdf4" : "#fef2f2", borderRadius: 12, padding: 16, border: `1px solid ${bmk.alpha_pct_pp >= 0 ? "#bbf7d0" : "#fecaca"}`, marginBottom: 16, textAlign: "center" }}>
-              <div style={{ fontSize: 12, color: "#6b7280", fontWeight: 600 }}>Alpha Generated vs Nifty 50</div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: bmk.alpha_pct_pp >= 0 ? "#16a34a" : "#dc2626", marginTop: 4 }}>{pct(bmk.alpha_pct_pp)}</div>
-              <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>Portfolio {pct(bmk.portfolio_return_pct)} vs Nifty {pct(bmk.benchmark_return_pct)} · {fmt(bmk.portfolio_value - bmk.benchmark_value)} ahead</div>
+            <div style={{ ...PANEL, marginBottom: 16, padding: "26px 20px", textAlign: "center", position: "relative", overflow: "hidden",
+                          background: bmk.alpha_pct_pp >= 0
+                            ? "linear-gradient(160deg,#f4fdf7 0%,#ffffff 62%)"
+                            : "linear-gradient(160deg,#fff5f5 0%,#ffffff 62%)",
+                          borderColor: bmk.alpha_pct_pp >= 0 ? "#cdeeda" : "#f6d4d4" }}>
+              <span style={{ position: "absolute", left: 0, right: 0, top: 0, height: 3,
+                             background: bmk.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)" }} />
+              <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: .7 }}>Alpha generated vs Nifty 50</div>
+              <div style={{ fontSize: 48, lineHeight: 1.05, fontWeight: 700, letterSpacing: "-.03em", marginTop: 8,
+                            color: bmk.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)" }}>{pct(bmk.alpha_pct_pp)}</div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 7 }}>Portfolio {pct(bmk.portfolio_return_pct)} vs Nifty {pct(bmk.benchmark_return_pct)} &nbsp;·&nbsp; <strong style={{ color: "var(--ink)" }}>{fmt(bmk.portfolio_value - bmk.benchmark_value)}</strong> ahead</div>
             </div>
           )}
-          <div style={{ background: "#fff", borderRadius: 12, padding: 18, border: "1px solid #e5e7eb" }}>
+          <div style={{ ...PANEL, padding: 18 }}>
             <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>Summary Report</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 13 }}>
               <div><span style={{ color: "#6b7280" }}>Your Return:</span><br /><strong style={{ color: (bmk ? bmk.portfolio_return_pct : stats.totalReturn) >= 0 ? "#16a34a" : "#dc2626" }}>{pct(bmk ? bmk.portfolio_return_pct : stats.totalReturn)}</strong></div>
