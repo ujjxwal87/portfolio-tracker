@@ -5,11 +5,15 @@ H = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/
 CDN = "https://assets-netstorage.groww.in/stock-assets/logos2/"
 OUT = "public/logos"
 
+def _is_image(b):
+    """Groww serves some logos as application/octet-stream, so sniff magic bytes."""
+    return len(b) > 200 and (b[:4] in (b"\x89PNG", b"RIFF", b"GIF8") or b[:3] == b"\xff\xd8\xff" or b.lstrip()[:5] in (b"<?xml", b"<svg "))
+
 def direct(sym):
     for ext in ("webp", "png"):
         try:
             r = requests.get(CDN + f"{sym}.{ext}", headers=H, timeout=12)
-            if r.status_code == 200 and r.headers.get("content-type","").startswith("image"):
+            if r.status_code == 200 and _is_image(r.content):
                 return r.content, ext
         except Exception: pass
     return None, None
@@ -26,7 +30,7 @@ def via_page(sym):
         if not m: return None, None
         u = m.group(1)
         r = requests.get(u, headers=H, timeout=15)
-        if r.status_code == 200 and r.headers.get("content-type","").startswith("image"):
+        if r.status_code == 200 and _is_image(r.content):
             return r.content, u.rsplit(".", 1)[-1].split("?")[0].lower()
     except Exception: pass
     return None, None
