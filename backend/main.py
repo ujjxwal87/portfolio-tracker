@@ -172,18 +172,20 @@ class TradeCreate(BaseModel):
 # ── Clients ────────────────────────────────────────────────────────────────────
 
 @app.get("/api/clients")
-def list_clients():
+def list_clients(user: auth.CurrentUser = Depends(auth.current_user)):
+    cols = ("SELECT id, name, phone, email, joining_date, cash_balance, created_at, updated_at "
+            "FROM portfolio_tracker.clients ")
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT id, name, phone, email, joining_date, cash_balance, created_at, updated_at "
-                "FROM portfolio_tracker.clients ORDER BY created_at DESC"
-            )
+            if user.is_admin:
+                cur.execute(cols + "ORDER BY created_at DESC")
+            else:
+                cur.execute(cols + "WHERE id = %s", (user.client_id,))
             return cur.fetchall()
 
 
 @app.post("/api/clients", status_code=201)
-def create_client(body: ClientCreate):
+def create_client(body: ClientCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -195,7 +197,7 @@ def create_client(body: ClientCreate):
 
 
 @app.put("/api/clients/{client_id}")
-def update_client(client_id: str, body: ClientCreate):
+def update_client(client_id: str, body: ClientCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -211,7 +213,7 @@ def update_client(client_id: str, body: ClientCreate):
 
 
 @app.delete("/api/clients/{client_id}", status_code=204)
-def delete_client(client_id: str):
+def delete_client(client_id: str, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -224,7 +226,9 @@ def delete_client(client_id: str):
 # ── Trades ─────────────────────────────────────────────────────────────────────
 
 @app.get("/api/trades")
-def list_trades():
+def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
+    where = "" if user.is_admin else "WHERE t.client_id = %s "
+    params = () if user.is_admin else (user.client_id,)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -234,14 +238,14 @@ def list_trades():
                        t.date, t.notes, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
-                ORDER BY t.date ASC, t.created_at ASC
-                """
+                """ + where + "ORDER BY t.date ASC, t.created_at ASC",
+                params,
             )
             return cur.fetchall()
 
 
 @app.post("/api/trades", status_code=201)
-def create_trade(body: TradeCreate):
+def create_trade(body: TradeCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -277,7 +281,7 @@ def create_trade(body: TradeCreate):
 
 
 @app.put("/api/trades/{trade_id}")
-def update_trade(trade_id: str, body: TradeCreate):
+def update_trade(trade_id: str, body: TradeCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -317,7 +321,7 @@ def update_trade(trade_id: str, body: TradeCreate):
 
 
 @app.delete("/api/trades/{trade_id}", status_code=204)
-def delete_trade(trade_id: str):
+def delete_trade(trade_id: str, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -341,7 +345,7 @@ def _fetch_one_price(sym: str):
 # ── Live prices (Yahoo Finance v8 chart API — free, no key needed) ─────────────
 
 @app.get("/api/prices")
-def get_prices(symbols: str):
+def get_prices(symbols: str, _: auth.CurrentUser = Depends(auth.current_user)):
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     prices = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
@@ -358,7 +362,7 @@ def get_prices(symbols: str):
 # ── Monthly first-trading-day prices for portfolio stocks ──────────────────────
 
 @app.get("/api/prices/monthly")
-def get_monthly_prices(symbols: str):
+def get_monthly_prices(symbols: str, _: auth.CurrentUser = Depends(auth.current_user)):
     """Returns the closing price on the first trading day of each month from Jan 2026."""
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     start = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
@@ -410,7 +414,7 @@ def get_monthly_prices(symbols: str):
 # ── Daily price history (for period-boundary unrealized valuation) ─────────────
 
 @app.get("/api/prices/history")
-def get_price_history(symbols: str, start: str = "2026-01-01"):
+def get_price_history(symbols: str, start: str = "2026-01-01", _: auth.CurrentUser = Depends(auth.current_user)):
     """Returns daily closing prices per symbol: {sym: {'YYYY-MM-DD': close}}."""
     symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     try:
@@ -452,7 +456,7 @@ def get_price_history(symbols: str, start: str = "2026-01-01"):
 # ── Nifty 50 monthly data (Yahoo Finance — from Jan 2026) ──────────────────────
 
 @app.get("/api/nifty")
-def get_nifty():
+def get_nifty(_: auth.CurrentUser = Depends(auth.current_user)):
     start = int(datetime(2026, 1, 1, tzinfo=timezone.utc).timestamp())
     end   = int(datetime.now(tz=timezone.utc).timestamp())
     r = requests.get(
@@ -486,7 +490,8 @@ class CashFlowCreate(BaseModel):
 
 
 @app.get("/api/cash-flows")
-def list_cash_flows(client_id: Optional[str] = None):
+def list_cash_flows(client_id: Optional[str] = None, user: auth.CurrentUser = Depends(auth.current_user)):
+    client_id = auth.scope_client_id(user, client_id)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             if client_id:
@@ -500,7 +505,7 @@ def list_cash_flows(client_id: Optional[str] = None):
 
 
 @app.post("/api/cash-flows", status_code=201)
-def create_cash_flow(body: CashFlowCreate):
+def create_cash_flow(body: CashFlowCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -512,7 +517,7 @@ def create_cash_flow(body: CashFlowCreate):
 
 
 @app.delete("/api/cash-flows/{flow_id}", status_code=204)
-def delete_cash_flow(flow_id: str):
+def delete_cash_flow(flow_id: str, _: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM portfolio_tracker.cash_flows WHERE id=%s", (flow_id,))
@@ -551,7 +556,7 @@ def _nifty_daily(start: str = "2026-01-01"):
 
 
 @app.get("/api/nifty/daily")
-def get_nifty_daily(start: str = "2026-01-01"):
+def get_nifty_daily(start: str = "2026-01-01", _: auth.CurrentUser = Depends(auth.current_user)):
     return _nifty_daily(start)
 
 
@@ -582,7 +587,8 @@ def _xirr(flows):
 
 
 @app.get("/api/benchmark")
-def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
+def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user: auth.CurrentUser = Depends(auth.current_user)):
+    client_id = auth.scope_client_id(user, client_id)
     """What the client's own deposits would be worth had each gone into Nifty 50 that day."""
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
@@ -672,7 +678,8 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None):
 
 
 @app.get("/api/benchmark/series")
-def get_benchmark_series(client_id: str):
+def get_benchmark_series(client_id: str, user: auth.CurrentUser = Depends(auth.current_user)):
+    client_id = auth.scope_client_id(user, client_id)
     """Daily curve of the Nifty-equivalent value, for plotting against the real portfolio."""
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
@@ -715,7 +722,7 @@ def get_benchmark_series(client_id: str):
 # ── Stock symbol autocomplete (Yahoo Finance search — free, no key needed) ─────
 
 @app.get("/api/stocks/search")
-def search_stocks(q: str = ""):
+def search_stocks(q: str = "", _: auth.CurrentUser = Depends(auth.current_user)):
     if not q or len(q) < 1:
         return []
     try:
