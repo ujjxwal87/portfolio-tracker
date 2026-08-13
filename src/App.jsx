@@ -184,6 +184,115 @@ const Card = ({ title, value, sub, accent, tone, size = 23, hypothetical }) => (
   </div>
 );
 
+// ── Mobile shell ─────────────────────────────────────────────────────────────
+// Inline styles can't carry media queries, so the breakpoint is read in JS and the
+// mobile tree is a separate render branch off the same state.
+const MOBILE_Q = "(max-width: 767px)";
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => typeof window !== "undefined" && window.matchMedia(MOBILE_Q).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_Q);
+    const onChange = (e) => setMobile(e.matches);
+    setMobile(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return mobile;
+}
+
+// Hero glow + browser chrome tint per view; gradients themselves stay in HERO_GRADIENT.
+const MOBILE_ART = {
+  dashboard: { glow: "radial-gradient(circle at 40% 40%,rgba(59,130,246,.8),rgba(59,130,246,0) 66%)", status: "#0B1B3F" },
+  clients:   { glow: "radial-gradient(circle at 40% 45%,rgba(167,139,250,.7),rgba(167,139,250,0) 66%)", status: "#1E0B3A" },
+  portfolio: { glow: "radial-gradient(circle at 40% 40%,rgba(45,212,191,.7),rgba(45,212,191,0) 66%)", status: "#04302C" },
+  trades:    { glow: "radial-gradient(circle,rgba(252,211,77,.6),rgba(252,211,77,0) 68%)", status: "#2E1704" },
+  benchmark: { glow: "radial-gradient(circle,rgba(34,211,238,.55),rgba(34,211,238,0) 66%)", status: "#06192A" },
+};
+
+// Full precision doesn't fit a 2-up card at 390px, so money is abbreviated on mobile only.
+const compactINR = (n) => {
+  const v = Number(n) || 0, a = Math.abs(v), sign = v < 0 ? "−₹" : "₹";
+  if (a >= 1e7) return sign + (a / 1e7).toFixed(2) + " Cr";
+  if (a >= 1e5) return sign + (a / 1e5).toFixed(2) + " L";
+  return sign + Math.round(a).toLocaleString("en-IN");
+};
+const inrRound = (n) => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
+
+const MCARD = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 16,
+                padding: "13px 14px", boxShadow: "0 1px 2px rgba(15,23,42,.04)" };
+const MMICRO = { fontSize: 9.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--ink-3)" };
+const MFOOTER = { display: "flex", alignItems: "flex-end", gap: 16, marginTop: 12,
+                  paddingTop: 11, borderTop: "1px solid #F1F4F8" };
+const MHEADLINE = { fontSize: 25, fontWeight: 800, letterSpacing: "-.03em", margin: "5px 0 0" };
+const MSUB = { fontSize: 11.5, color: "rgba(255,255,255,.7)", marginTop: 6 };
+const MEYEBROW = { fontSize: 10.5, fontWeight: 700, letterSpacing: ".11em", color: "rgba(255,255,255,.55)" };
+const MINPUT = { width: "100%", boxSizing: "border-box", padding: "13px", borderRadius: 11,
+                 border: "1px solid #E1E6EE", fontSize: 13.5, outline: "none",
+                 background: "var(--surface)", color: "var(--ink)" };
+
+// A labelled figure in a card footer. Micro-label at the 9.5px floor, value at 12.5px.
+const MStat = ({ label, value, tone, weight, align, grow }) => (
+  <div style={{ textAlign: align, ...(grow ? { flex: 1, minWidth: 0 } : {}) }}>
+    <div style={MMICRO}>{label}</div>
+    <div className="num" style={{ fontSize: 12.5, marginTop: 2, color: tone || "var(--ink-2)", fontWeight: weight || 400 }}>{value}</div>
+  </div>
+);
+
+const MKpi = ({ title, value, sub, accent, tone, hypothetical, size = 18 }) => (
+  <div style={{ ...MCARD, borderRadius: 14, padding: "12px 13px",
+                ...(hypothetical ? { background: "#FAFBFD", border: "1px dashed #D7DEE8", boxShadow: "none" } : {}) }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span style={{ width: 3, height: 11, borderRadius: 2, background: accent || "var(--ink-3)", flex: "none" }} />
+      <span style={{ ...MMICRO, letterSpacing: ".05em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</span>
+    </div>
+    <div className="fig" style={{ fontSize: size, fontWeight: 600, letterSpacing: "-.02em", marginTop: 8, color: tone || "var(--ink)" }}>{value}</div>
+    {sub && <div style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
+  </div>
+);
+
+const MSheet = ({ title, onClose, children, z = 10 }) => (
+  <div style={{ position: "absolute", inset: 0, zIndex: z }}>
+    <div onClick={onClose} style={{ position: "absolute", inset: 0, background: "rgba(15,23,42,.45)" }} />
+    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, background: "var(--surface)",
+                  borderRadius: "22px 22px 0 0", padding: "12px 16px calc(26px + env(safe-area-inset-bottom))",
+                  boxShadow: "0 -16px 44px -14px rgba(15,23,42,.4)", maxHeight: "88%", overflowY: "auto" }}
+         className="sc">
+      <div style={{ width: 38, height: 4, borderRadius: 99, background: "#E1E6EE", margin: "0 auto 14px" }} />
+      <div style={{ fontSize: 14, fontWeight: 700, padding: "0 4px 10px" }}>{title}</div>
+      {children}
+    </div>
+  </div>
+);
+
+// Same marks as the desktop combo chart, redrawn for a 330×170 box: no axis labels,
+// no hover tooltip (there is no pointer), thinner bars.
+const MobileCombo = ({ points }) => {
+  const W = 330, H = 170, PAD = 18;
+  const vals = points.flatMap(p => [p.realized, p.unrealized, 0]);
+  const mn = Math.min(...vals), mx = Math.max(...vals), span = (mx - mn) || 1;
+  const yOf = (v) => H - PAD - ((v - mn) / span) * (H - PAD * 2);
+  const cx = (i) => PAD + (i + 0.5) * ((W - PAD * 2) / points.length);
+  const zero = yOf(0), bw = Math.max(7, (W - PAD * 2) / points.length * 0.44);
+  const line = points.map((p, i) => (i ? "L" : "M") + cx(i).toFixed(1) + " " + yOf(p.unrealized).toFixed(1)).join(" ");
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ display: "block" }}>
+      {[0.25, 0.5, 0.75].map(f => <line key={f} x1={0} x2={W} y1={H * f} y2={H * f} stroke="#EEF1F6" strokeWidth={1} />)}
+      <line x1={0} x2={W} y1={zero} y2={zero} stroke="#CBD5E1" strokeWidth={1} />
+      {points.map((p, i) => {
+        const y = yOf(p.realized);
+        return <rect key={i} x={cx(i) - bw / 2} y={Math.min(y, zero)} width={bw}
+                     height={Math.max(2, Math.abs(zero - y))} rx={3}
+                     fill={p.realized >= 0 ? "var(--accent)" : "#F87171"} />;
+      })}
+      <path d={line} fill="none" stroke="#D97706" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      {points.map((p, i) => <circle key={i} cx={cx(i)} cy={yOf(p.unrealized)} r={3.2} fill="#D97706" stroke="#fff" strokeWidth={1.6} />)}
+      {points.map((p, i) => (
+        <text key={i} x={cx(i)} y={H - 3} textAnchor="middle" fontSize={9} fill="#94A3B8">{p.label}</text>
+      ))}
+    </svg>
+  );
+};
+
 const StockAutocomplete = ({ value, onChange, style }) => {
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -522,6 +631,18 @@ export default function App() {
 
   const [view, setView] = useState("dashboard");
   const [filterClient, setFilterClient] = useState("All");
+
+  // ── Mobile-only UI state ─────────────────────────────────────────────────────
+  const isMobile = useIsMobile();
+  const [showScopeSheet, setShowScopeSheet] = useState(false);
+  const [mTradeTab, setMTradeTab] = useState("Positions");
+  const [mTypeFilter, setMTypeFilter] = useState("All");
+
+  // The hero runs to the top of the viewport on mobile, so the browser chrome is tinted to match.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", isMobile ? (MOBILE_ART[view] || MOBILE_ART.dashboard).status : "#f6f7f9");
+  }, [isMobile, view]);
 
   // ── Session ──────────────────────────────────────────────────────────────────
   const [session, setSession] = useState(null);
@@ -866,6 +987,667 @@ export default function App() {
                ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],["benchmark","Benchmark","\u25c8"]]
               .filter(([v]) => isAdmin || v !== "clients");
   const tradeCountFor = (name) => name === "All" ? trades.length : trades.filter(t => t.client_name === name).length;
+
+  // ══ MOBILE (<768px) ═════════════════════════════════════════════════════════
+  // Same state, same maths — the sidebar's three jobs move to the tab bar, a header
+  // pill + sheet, and a hero icon button; every table becomes stacked cards.
+  if (isMobile) {
+    const art = MOBILE_ART[view] || MOBILE_ART.dashboard;
+    const MNAV = [["dashboard", "Home", "◇"], ["clients", "Clients", "◉"],
+                  ["portfolio", "Holdings", "▤"], ["trades", "Trades", "⇄"],
+                  ["benchmark", "Bench", "◈"]].filter(([v]) => isAdmin || v !== "clients");
+    const scopeLabel = filterClient === "All" ? "All clients" : filterClient;
+    const holdingsValue = holdings.reduce((s, h) => s + h.currentVal, 0);
+    const holdingsInvested = holdings.reduce((s, h) => s + h.investedHolding, 0);
+    const combinedValue = portfolioAll.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
+    const bmk = benchmarkState === "ok" ? benchmark : null;
+    const sel = bmk?.indices?.[benchIndex] || null;
+    const RET = bmk ? bmk.portfolio_return_pct : stats.totalReturn;
+    const ahead = sel ? RET - sel.return_pct : 0;
+    const nifty = bmk?.indices?.nifty50 || null;
+    const SHORT_INDEX = { nifty50: "Nifty 50", sensex: "Sensex", midcap150: "Midcap 150", smallcap250: "Smallcap 250" };
+    const tone = (v) => v >= 0 ? "var(--good)" : "var(--bad)";
+    const pickClient = (name) => { setFilterClient(name); setExpandedRows({}); setShowScopeSheet(false); };
+    const lastRefreshedLabel = lastRefreshed
+      ? lastRefreshed.toLocaleString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+      : "—";
+    const empty = (icon, label, hint) => (
+      <div style={{ ...MCARD, padding: 30, textAlign: "center" }}>
+        <div style={{ fontSize: 28, marginBottom: 8 }}>{icon}</div>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{label}</div>
+        {hint && <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>{hint}</div>}
+      </div>
+    );
+    const dashedButton = (label, onClick) => (
+      <button onClick={onClick} style={{ marginTop: 2, width: "100%", padding: 14, borderRadius: 14,
+              border: "1px dashed #C7D0DC", background: "var(--surface)", color: "var(--ink-2)",
+              fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{label}</button>
+    );
+    const segTab = (label, on, onClick) => (
+      <button key={label} onClick={onClick} style={{ flex: 1, padding: "9px 0", borderRadius: 9, border: "none",
+              fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+              background: on ? "var(--surface)" : "transparent", color: on ? "var(--ink)" : "#64748B",
+              boxShadow: on ? "0 1px 3px rgba(15,23,42,.12)" : "none" }}>{label}</button>
+    );
+    const logoOf = (symbol) => <LogoChip symbol={symbol} w={64} h={30} />;
+
+    const dashCards = [
+      { title: "TOTAL P&L", value: compactINR(stats.totalPL), sub: `${pct(stats.totalReturn)} on cost`,
+        accent: tone(stats.totalPL), tone: tone(stats.totalPL) },
+      { title: "CURRENT VALUE", value: compactINR(stats.currentVal), sub: "live NSE prices", accent: "var(--accent)" },
+      { title: "REALIZED", value: compactINR(stats.totalRealizedPL), sub: `${realizedLots} matched lot${realizedLots === 1 ? "" : "s"}`,
+        accent: tone(stats.totalRealizedPL), tone: tone(stats.totalRealizedPL) },
+      { title: "UNREALIZED", value: compactINR(stats.totalUnrealizedPL), sub: `${holdings.length} open position${holdings.length === 1 ? "" : "s"}`,
+        accent: tone(stats.totalUnrealizedPL), tone: tone(stats.totalUnrealizedPL) },
+      { title: "YOUR RETURN", value: pct(RET), sub: bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on cost basis",
+        accent: tone(RET), tone: tone(RET) },
+      { title: "NIFTY 50", value: nifty ? pct(nifty.return_pct) : "—",
+        sub: nifty ? `same timing · XIRR ${nifty.xirr_pct}%`
+                   : benchmarkState === "all" ? "select a client" : benchmarkState === "loading" ? "loading…" : "no deposits recorded",
+        accent: "var(--ink-3)" },
+      { title: "ALPHA", value: nifty ? `${pct(RET - nifty.return_pct)} pp` : "—",
+        sub: nifty ? `XIRR ${bmk.alpha_xirr_pp >= 0 ? "+" : ""}${bmk.alpha_xirr_pp} pp` : "needs deposit dates",
+        accent: nifty ? tone(RET - nifty.return_pct) : "var(--ink-3)", tone: nifty ? tone(RET - nifty.return_pct) : undefined },
+      { title: "WIN RATE", value: stats.winRate.toFixed(0) + "%", sub: `${winCount} of ${realizedLots} exits`, accent: "var(--accent)" },
+    ];
+
+    const logTrades = [...filteredTrades]
+      .filter(t => mTypeFilter === "All" || t.type === mTypeFilter)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+
+    return (
+      <div style={{ position: "fixed", inset: 0, display: "flex", flexDirection: "column",
+                    background: "var(--canvas)", color: "var(--ink)", overflow: "hidden" }}>
+
+        {/* ── HERO ──────────────────────────────────────────────────────────── */}
+        <div style={{ flex: "none", position: "relative", zIndex: 2, overflow: "hidden", color: "#fff",
+                      background: HERO_GRADIENT[view],
+                      padding: "calc(12px + env(safe-area-inset-top)) 20px 20px" }}>
+          <div aria-hidden="true" style={{ position: "absolute", inset: 0,
+            backgroundImage: "linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px)",
+            backgroundSize: "44px 44px", maskImage: "linear-gradient(120deg,#000,transparent 78%)",
+            WebkitMaskImage: "linear-gradient(120deg,#000,transparent 78%)" }} />
+          <div aria-hidden="true" style={{ position: "absolute", width: 330, height: 330, right: -120, top: -190,
+            borderRadius: "50%", background: art.glow }} />
+
+          <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 10 }}>
+            <button onClick={() => setShowScopeSheet(true)} style={{ display: "flex", alignItems: "center", gap: 7,
+                    background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.22)", color: "#fff",
+                    padding: "6px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                    maxWidth: 240, minHeight: 32 }}>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel}</span>
+              <span style={{ fontSize: 8, opacity: .85 }}>▼</span>
+            </button>
+            <button onClick={refreshPrices} disabled={priceLoading} aria-label="Refresh prices"
+                    style={{ marginLeft: "auto", width: 32, height: 32, borderRadius: 10, color: "#fff",
+                             background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.2)",
+                             display: "grid", placeItems: "center", fontSize: 13, cursor: "pointer",
+                             opacity: priceLoading ? .6 : 1 }}>
+              <span style={{ display: "inline-block", animation: priceLoading ? "spin 1s linear infinite" : "none" }}>↻</span>
+            </button>
+          </div>
+
+          <div style={{ position: "relative", marginTop: 14 }}>
+            {view === "dashboard" && (<>
+              <div style={MEYEBROW}>TOTAL P&L</div>
+              <div className="fig" style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-.03em", marginTop: 6 }}>
+                {inrRound(stats.totalPL)}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 10, flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 99,
+                               background: "rgba(16,185,129,.2)", border: "1px solid rgba(16,185,129,.42)",
+                               color: "#6EE7B7", fontSize: 11.5, fontWeight: 700 }}>
+                  {stats.totalReturn >= 0 ? "▲" : "▼"} <span className="fig">{pct(stats.totalReturn)}</span> on cost
+                </span>
+                <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)" }}>
+                  Invested <span className="fig" style={{ color: "#fff" }}>{compactINR(bmk ? bmk.net_invested : stats.totalInvested)}</span>
+                </span>
+              </div>
+            </>)}
+
+            {view === "clients" && (<>
+              <div style={MEYEBROW}>CLIENTS</div>
+              <h2 style={MHEADLINE}>{clients.length} under management</h2>
+              <div style={MSUB}>
+                <span className="fig">{trades.length}</span> trades · <span className="fig">{compactINR(combinedValue)}</span> combined value
+              </div>
+            </>)}
+
+            {view === "portfolio" && (<>
+              <div style={MEYEBROW}>PORTFOLIO</div>
+              <h2 style={MHEADLINE}>{holdings.length} active holding{holdings.length === 1 ? "" : "s"}</h2>
+              <div style={{ ...MSUB, display: "flex", gap: 18 }}>
+                <span>Invested <span className="fig" style={{ color: "#fff" }}>{compactINR(holdingsInvested)}</span></span>
+                <span>Current <span className="fig" style={{ color: "#fff" }}>{compactINR(holdingsValue)}</span></span>
+              </div>
+            </>)}
+
+            {view === "trades" && (<>
+              <div style={MEYEBROW}>TRADES · FIFO MATCHED</div>
+              <h2 style={MHEADLINE}>{filteredTrades.length} trade{filteredTrades.length === 1 ? "" : "s"} booked</h2>
+              <div style={MSUB}>
+                Realized <span className="fig" style={{ color: "#fff" }}>{compactINR(pnlTotals.realized)}</span>
+                {" · "}Win rate <span className="fig" style={{ color: "#fff" }}>{stats.winRate.toFixed(0)}%</span>
+              </div>
+            </>)}
+
+            {view === "benchmark" && (<>
+              <div style={MEYEBROW}>BENCHMARK · MONEY-WEIGHTED</div>
+              <h2 style={{ ...MHEADLINE, fontSize: 21, letterSpacing: "-.025em", lineHeight: 1.25 }}>
+                {sel ? `${ahead >= 0 ? "Ahead of" : "Behind"} ${sel.label} by ${Math.abs(ahead).toFixed(2)} pp`
+                     : benchmarkState === "all" ? "Select a client to see their benchmark"
+                     : benchmarkState === "loading" ? "Loading benchmark…" : "Benchmark unavailable"}
+              </h2>
+              <div style={{ display: "flex", gap: 5, marginTop: 12 }}>
+                {indexChoices.map(k => {
+                  const on = benchIndex === k;
+                  return (
+                    <button key={k} onClick={() => setBenchIndex(k)} style={{ flex: 1, padding: "7px 4px", borderRadius: 99,
+                            fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", overflow: "hidden",
+                            textOverflow: "ellipsis", minHeight: 32,
+                            background: on ? "#fff" : "rgba(255,255,255,.14)",
+                            color: on ? "var(--ink)" : "rgba(255,255,255,.85)",
+                            border: `1px solid ${on ? "#fff" : "rgba(255,255,255,.2)"}` }}>
+                      {SHORT_INDEX[k] || INDEX_LABELS[k]}
+                    </button>
+                  );
+                })}
+              </div>
+            </>)}
+          </div>
+        </div>
+
+        {/* ── SCROLL BODY ───────────────────────────────────────────────────── */}
+        <div className="sc" style={{ flex: 1, overflowY: "auto", overflowX: "hidden",
+                                     padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+
+          {priceError && (
+            <div style={{ ...MCARD, borderColor: "#FECACA", background: "#FEF2F2", color: "var(--bad)",
+                          fontSize: 12, fontWeight: 600 }}>{priceError}</div>
+          )}
+
+          {/* DASHBOARD */}
+          {view === "dashboard" && (trades.length === 0
+            ? empty("📊", "No trades yet", "Add clients first, then log trades in the Trades tab.")
+            : (<>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                {dashCards.map(c => <MKpi key={c.title} {...c} />)}
+              </div>
+              <div style={{ ...MCARD, borderRadius: 16, padding: "14px 15px" }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>Realized vs Unrealized</div>
+                <div style={{ display: "flex", gap: 12, marginTop: 7, fontSize: 10.5, color: "var(--ink-2)", fontWeight: 600 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 2, background: "var(--accent)" }} />Realized
+                  </span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ width: 14, height: 3, borderRadius: 2, background: "var(--amber)" }} />Unrealized
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 3, background: "#F1F4F8", padding: 3, borderRadius: 9, marginTop: 11 }}>
+                  {["All", 1, 2, 3, 4].map(q => segTab(q === "All" ? "All" : `Q${q}`, pnlQuarter === q, () => {
+                    setPnlQuarter(q);
+                    if (q !== "All" && pnlMonth !== "All") { const st = (q - 1) * 3; if (pnlMonth < st || pnlMonth > st + 2) setPnlMonth("All"); }
+                  }))}
+                </div>
+                <div style={{ height: 170, marginTop: 12 }}>
+                  {pnlChartData.length > 0 ? <MobileCombo points={pnlChartData} />
+                    : <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 12.5 }}>No data for this period.</div>}
+                </div>
+              </div>
+            </>))}
+
+          {/* CLIENTS */}
+          {view === "clients" && (<>
+            {issuedLogin && (
+              <div style={{ ...MCARD, border: "1px solid #BBF7D0", background: "#F0FDF4" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                  {issuedLogin.reset ? "Password reset" : "Login created"} for {issuedLogin.client}
+                </div>
+                <div style={{ fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.6 }}>
+                  Username <strong className="num">{issuedLogin.username}</strong><br />
+                  Temporary password <strong className="num">{issuedLogin.temporary_password}</strong>
+                </div>
+                <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>
+                  Share this once — they must change it at first sign-in.
+                </div>
+                <button onClick={() => setIssuedLogin(null)} style={{ ...btnS, marginTop: 12, padding: "9px 16px", fontSize: 12 }}>Done</button>
+              </div>
+            )}
+            {clients.length === 0 ? empty("👥", "No clients yet") : clients.map(c => {
+              const n = trades.filter(t => t.client_id === c.id).length;
+              const [bg, fg] = tintFor(c.name);
+              const initials = c.name.split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
+              return (
+                <div key={c.id} style={{ ...MCARD, padding: "14px 15px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                    <span style={{ flex: "none", width: 42, height: 42, borderRadius: 13, background: bg, color: fg,
+                                   display: "grid", placeItems: "center", fontWeight: 700, fontSize: 14 }}>{initials}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
+                      <div style={{ fontSize: 11, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "—"}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flex: "none" }}>
+                      <div className="num" style={{ fontSize: 14, fontWeight: 600 }}>{n}</div>
+                      <div style={{ fontSize: 10, color: "var(--ink-3)" }}>trades</div>
+                    </div>
+                  </div>
+                  <div style={{ ...MFOOTER, alignItems: "center", gap: 14 }}>
+                    <MStat label="PHONE" value={c.phone || "—"} />
+                    <MStat label="JOINED" value={c.joining_date ? fmtDate(c.joining_date) : "—"} />
+                    <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                      <button onClick={() => handleClientLogin(c)} style={{ minWidth: 44, padding: "10px 12px", borderRadius: 9,
+                              border: "none", background: "#F4F6F9", color: "var(--ink-2)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Login</button>
+                      <button onClick={() => openEditClient(c)} style={{ minWidth: 44, padding: "10px 12px", borderRadius: 9,
+                              border: "none", background: "#EFF6FF", color: "#1D4ED8", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Edit</button>
+                      <button onClick={() => handleDeleteClient(c.id)} aria-label={`Delete ${c.name}`}
+                              style={{ minWidth: 44, padding: "10px 12px", borderRadius: 9, border: "none",
+                                       background: "#FEF2F2", color: "var(--bad)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Delete</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {dashedButton("+ Add client", openAddClient)}
+          </>)}
+
+          {/* PORTFOLIO */}
+          {view === "portfolio" && (holdings.length === 0 ? empty("📭", "No active holdings") : holdings.map((h, i) => {
+            const weight = holdingsValue > 0 ? (h.currentVal / holdingsValue * 100) : 0;
+            const fg = tintFor(h.stock)[1];
+            return (
+              <div key={i} style={MCARD}>
+                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  {logoOf(h.stock)}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{h.stock}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {h.client} · {h.netQty} qty
+                    </div>
+                  </div>
+                  <div style={{ textAlign: "right", flex: "none" }}>
+                    <div className="fig" style={{ fontSize: 14.5, fontWeight: 600 }}>{compactINR(h.currentVal)}</div>
+                    <div className="fig" style={{ fontSize: 11, fontWeight: 700, color: tone(h.unrealizedPL) }}>{compactINR(h.unrealizedPL)}</div>
+                  </div>
+                </div>
+                <div style={MFOOTER}>
+                  <MStat label="AVG BUY" value={fmt(h.avgBuyPrice)} />
+                  <MStat label="CMP" value={fmt(h.cmp)} tone="var(--ink)" weight={600} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ ...MMICRO, display: "flex", justifyContent: "space-between" }}>
+                      <span>WEIGHT</span>
+                      <span className="num" style={{ color: "var(--ink)", fontSize: 11.5 }}>{weight.toFixed(1)}%</span>
+                    </div>
+                    <div style={{ height: 5, borderRadius: 99, background: "#EEF1F6", overflow: "hidden", marginTop: 5 }}>
+                      <div style={{ height: "100%", borderRadius: 99, background: fg, width: `${Math.min(weight * 2.2, 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          }))}
+
+          {/* TRADES */}
+          {view === "trades" && (<>
+            <div style={{ display: "flex", gap: 3, background: "#E7EBF1", padding: 3, borderRadius: 11 }}>
+              {segTab("Positions", mTradeTab === "Positions", () => setMTradeTab("Positions"))}
+              {segTab("Trade log", mTradeTab === "Trade log", () => setMTradeTab("Trade log"))}
+            </div>
+
+            {mTradeTab === "Positions" && (positions.length === 0 ? empty("📄", "No open positions") : positions.map(p => {
+              const k = `${p.client}||${p.stock}`;
+              const open = expandedRows[k];
+              return (
+                <div key={k} style={{ ...MCARD, padding: 0, overflow: "hidden" }}>
+                  <div onClick={() => toggleRow(k)} style={{ padding: "13px 14px", cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                      {logoOf(p.stock)}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{p.stock}</div>
+                        <div style={{ fontSize: 10.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.client}</div>
+                      </div>
+                      <div style={{ textAlign: "right", flex: "none" }}>
+                        <div className="fig" style={{ fontSize: 14.5, fontWeight: 700, color: tone(p.totalPL) }}>{compactINR(p.totalPL)}</div>
+                        <div style={{ fontSize: 10, color: "var(--ink-3)" }}>total P&L</div>
+                      </div>
+                      <div style={{ flex: "none", width: 12, textAlign: "right", color: "#CBD5E1", fontSize: 10 }}>{open ? "▲" : "▼"}</div>
+                    </div>
+                    <div style={{ ...MFOOTER, alignItems: "flex-start", marginTop: 11, paddingTop: 10 }}>
+                      <MStat label="REALIZED" value={p.totalSells > 0 ? compactINR(p.realizedPL) : "—"}
+                             tone={p.totalSells > 0 ? tone(p.realizedPL) : "var(--ink-3)"} weight={600} />
+                      <MStat label="UNREALIZED" value={p.netQty > 0 ? compactINR(p.unrealizedPL) : "—"}
+                             tone={p.netQty > 0 ? tone(p.unrealizedPL) : "var(--ink-3)"} weight={600} />
+                      <div style={{ marginLeft: "auto" }}>
+                        <MStat label="NET QTY" value={p.netQty > 0 ? p.netQty : "—"} align="right" />
+                      </div>
+                    </div>
+                  </div>
+                  {open && (
+                    <div style={{ background: "#FAFBFD", borderTop: "1px solid #F1F4F8", padding: "13px 14px",
+                                  display: "flex", flexDirection: "column", gap: 14 }}>
+                      {p.matchDetails.length > 0 && (
+                        <div>
+                          <div style={{ ...MMICRO, letterSpacing: ".07em", marginBottom: 8 }}>FIFO MATCHED (REALIZED)</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {p.matchDetails.map((m, mi) => (
+                              <div key={mi} style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 11, padding: "10px 11px" }}>
+                                <div className="num" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--ink-2)" }}>
+                                  <span>{fmtDate(m.buyDate)}</span><span style={{ color: "#CBD5E1" }}>→</span><span>{fmtDate(m.sellDate)}</span>
+                                  <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 12.5, color: tone(m.pl) }}>{compactINR(m.pl)}</span>
+                                </div>
+                                <div className="num" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 5 }}>
+                                  {m.qty} qty · buy {fmt(m.buyPrice)} · sell {fmt(m.sellPrice)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {p.holdingLots.length > 0 && (
+                        <div>
+                          <div style={{ ...MMICRO, letterSpacing: ".07em", marginBottom: 8 }}>OPEN LOTS (UNREALIZED)</div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            {p.holdingLots.map((b, bi) => {
+                              const u = (p.cmp - b.price) * b.remainQty;
+                              return (
+                                <div key={bi} className="num" style={{ background: "var(--surface)", border: "1px solid var(--line)",
+                                     borderRadius: 11, padding: "10px 11px", display: "flex", alignItems: "center", gap: 8,
+                                     fontSize: 11.5, color: "var(--ink-2)" }}>
+                                  <span>{fmtDate(b.date)}</span>
+                                  <span style={{ color: "var(--ink-3)" }}>{b.remainQty} × {fmt(b.price)}</span>
+                                  <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 12.5, color: tone(u) }}>{compactINR(u)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            }))}
+
+            {mTradeTab === "Trade log" && (<>
+              <div style={{ display: "flex", gap: 7 }}>
+                {["All", "BUY", "SELL"].map(f => {
+                  const on = mTypeFilter === f;
+                  return (
+                    <button key={f} onClick={() => setMTypeFilter(f)} style={{ padding: "10px 15px", borderRadius: 99,
+                            fontSize: 12, fontWeight: 700, cursor: "pointer", minHeight: 44,
+                            background: on ? "var(--ink)" : "#F4F6F9", color: on ? "#fff" : "var(--ink-2)",
+                            border: `1px solid ${on ? "var(--ink)" : "var(--line)"}` }}>{f}</button>
+                  );
+                })}
+              </div>
+              {logTrades.length === 0 ? empty("📄", "No trades to show") : logTrades.map(t => (
+                <div key={t.id} style={{ ...MCARD, borderRadius: 14, padding: "12px 13px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "4px 8px", borderRadius: 6,
+                                   background: t.type === "BUY" ? "#EFF6FF" : "#FFF7ED",
+                                   color: t.type === "BUY" ? "#1D4ED8" : "#C2410C" }}>{t.type}</span>
+                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{t.stock_symbol}</div>
+                    <div className="fig" style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600 }}>{t.quantity} × {fmt(t.price)}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11, color: "var(--ink-3)" }}>
+                    <span className="num">{fmtDate(t.date)}</span><span>·</span>
+                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.client_name}{t.notes ? ` · ${t.notes}` : ""}
+                    </span>
+                    {isAdmin && (
+                      <span style={{ marginLeft: "auto", display: "flex", gap: 4, flex: "none" }}>
+                        <button onClick={() => startEdit(t)} aria-label="Edit trade" style={{ width: 44, height: 36, borderRadius: 9,
+                                border: "none", background: "#F4F6F9", color: "var(--accent)", fontSize: 14, cursor: "pointer" }}>✎</button>
+                        <button onClick={() => handleDeleteTrade(t.id)} aria-label="Delete trade" style={{ width: 44, height: 36, borderRadius: 9,
+                                border: "none", background: "#FEF2F2", color: "var(--bad)", fontSize: 16, cursor: "pointer" }}>×</button>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </>)}
+
+            {isAdmin && dashedButton("+ Add trade", clients.length === 0 ? () => alert("Add at least one client before logging trades.") : openAddTrade)}
+          </>)}
+
+          {/* BENCHMARK */}
+          {view === "benchmark" && (<>
+            <div style={{ ...MCARD, borderRadius: 16, padding: "14px 15px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ width: 3, height: 11, borderRadius: 2, background: "var(--accent)" }} />
+                <span style={{ ...MMICRO, letterSpacing: ".05em" }}>AMOUNT INVESTED</span>
+              </div>
+              <div className="fig" style={{ fontSize: 27, fontWeight: 600, letterSpacing: "-.02em", marginTop: 8 }}>
+                {compactINR(bmk ? bmk.net_invested : stats.totalInvested)}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 5 }}>
+                Net of withdrawals — the cost basis both pairs below are measured against.
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <MKpi size={19} title="CURRENT VALUE" accent="var(--accent)"
+                    value={compactINR(bmk ? bmk.portfolio_value : stats.currentVal)}
+                    sub={`${holdings.length} open positions`} />
+              <MKpi size={19} title="TOTAL P&L" value={compactINR(stats.totalPL)}
+                    sub={`${pct(stats.totalReturn)} on cost`} accent={tone(stats.totalPL)} tone={tone(stats.totalPL)} />
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {sel ? (<>
+                <MKpi hypothetical size={19} accent="var(--ink-3)"
+                      title={`IF IN ${(SHORT_INDEX[benchIndex] || sel.label).toUpperCase()}`}
+                      value={compactINR(sel.value)} sub="each deposit at index close" />
+                <MKpi hypothetical size={19} accent="var(--ink-3)" title="P&L IF IN INDEX"
+                      value={compactINR(sel.gain)} sub={`${pct(sel.return_pct)} · XIRR ${sel.xirr_pct}%`}
+                      tone={tone(sel.gain)} />
+              </>) : (<>
+                <MKpi hypothetical size={19} title="IF IN INDEX" value="—" sub="needs deposit dates" />
+                <MKpi hypothetical size={19} title="P&L IF IN INDEX" value="—" sub="needs deposit dates" />
+              </>)}
+            </div>
+
+            {bmk && sel && (<>
+              <div style={{ position: "relative", overflow: "hidden", borderRadius: 16, padding: "16px 16px 16px 20px",
+                            background: "#ECFDF3", border: "1px solid #CDEEDA" }}>
+                <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: "var(--good)" }} />
+                <div style={{ ...MMICRO, letterSpacing: ".07em", textTransform: "uppercase" }}>Alpha vs {sel.label}</div>
+                <div className="fig" style={{ fontSize: 27, fontWeight: 700, marginTop: 7, color: tone(ahead) }}>
+                  {ahead >= 0 ? "+" : ""}{ahead.toFixed(2)} pp
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-2)", marginTop: 6 }}>
+                  Portfolio {pct(RET)} vs index {pct(sel.return_pct)} ·{" "}
+                  <strong className="fig" style={{ color: "var(--ink)" }}>{compactINR(bmk.portfolio_value - sel.value)}</strong> ahead in rupee terms
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14, paddingTop: 13,
+                              borderTop: "1px solid #CDEEDA", fontSize: 11.5, color: "var(--ink-2)" }}>
+                  <div>Your XIRR<br /><strong className="fig" style={{ color: "var(--ink)", fontSize: 14 }}>{bmk.portfolio_xirr_pct}%</strong></div>
+                  <div>Win rate<br /><strong className="fig" style={{ color: "var(--ink)", fontSize: 14 }}>{stats.winRate.toFixed(0)}%</strong></div>
+                </div>
+              </div>
+
+              <div style={{ ...MCARD, borderRadius: 16, padding: "14px 15px" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 11 }}>All indices, same cash flows</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+                  {indexChoices.map(k => bmk.indices?.[k] && (
+                    <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, paddingBottom: 9, borderBottom: "1px solid #F1F4F8" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {bmk.indices[k].label}
+                        </div>
+                        <div style={{ fontSize: 10, color: "var(--ink-3)" }}>
+                          XIRR {bmk.indices[k].xirr_pct}% · {pct(bmk.indices[k].return_pct)}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, fontWeight: 700, padding: "5px 9px", borderRadius: 99, whiteSpace: "nowrap",
+                                    color: tone(bmk.indices[k].alpha_xirr_pp),
+                                    background: bmk.indices[k].alpha_xirr_pp >= 0 ? "#ECFDF3" : "#FEF2F2" }}>
+                        you {bmk.indices[k].alpha_xirr_pp >= 0 ? "+" : ""}{bmk.indices[k].alpha_xirr_pp} pp
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>)}
+
+            {!bmk && empty("📈", "No benchmark yet",
+              benchmarkState === "all" ? "Pick a single client from the header pill."
+                : benchmarkState === "loading" ? "Loading…" : "No deposits recorded for this client.")}
+          </>)}
+        </div>
+
+        {/* ── TAB BAR ───────────────────────────────────────────────────────── */}
+        <nav style={{ flex: "none", background: "var(--surface)", borderTop: "1px solid var(--line)", zIndex: 3,
+                      display: "grid", gridTemplateColumns: `repeat(${MNAV.length},1fr)`,
+                      padding: "8px 4px calc(22px + env(safe-area-inset-bottom))" }}>
+          {MNAV.map(([v, label, icon]) => {
+            const on = view === v;
+            return (
+              <button key={v} onClick={() => { setView(v); setShowScopeSheet(false); }} style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "6px 0",
+                border: "none", background: "none", cursor: "pointer", minHeight: 44,
+                color: on ? "var(--ink)" : "var(--ink-3)",
+              }}>
+                <span style={{ fontSize: 16, lineHeight: 1 }}>{icon}</span>
+                <span style={{ fontSize: 9.5, fontWeight: on ? 700 : 500 }}>{label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* ── SCOPE / ACCOUNT SHEET ─────────────────────────────────────────── */}
+        {showScopeSheet && (
+          <MSheet title={isAdmin ? "Filter by client" : "Account"} onClose={() => setShowScopeSheet(false)}>
+            {isAdmin && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                {clientNames.map(c => {
+                  const on = filterClient === c;
+                  return (
+                    <button key={c} onClick={() => pickClient(c)} style={{ display: "flex", alignItems: "center", gap: 11,
+                            padding: "13px 11px", borderRadius: 12, cursor: "pointer", width: "100%", textAlign: "left",
+                            background: on ? "#EFF6FF" : "var(--surface)",
+                            border: `1px solid ${on ? "#BFDBFE" : "transparent"}` }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none",
+                                     background: c === "All" ? "var(--ink-3)" : tintFor(c)[1] }} />
+                      <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "#334155", minWidth: 0,
+                                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {c === "All" ? "All clients" : c}
+                      </span>
+                      <span className="num" style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{tradeCountFor(c)} trades</span>
+                      <span style={{ width: 14, textAlign: "right", color: "var(--accent)", fontSize: 12 }}>{on ? "✓" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #F1F4F8",
+                          display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>Prices last refreshed</div>
+                <div className="num" style={{ fontSize: 12, fontWeight: 600, marginTop: 2 }}>{lastRefreshedLabel}</div>
+              </div>
+              <button onClick={refreshPrices} disabled={priceLoading} style={{ padding: "13px 16px", borderRadius: 11,
+                      border: "none", background: "var(--accent)", color: "#fff", fontSize: 12.5, fontWeight: 700,
+                      cursor: "pointer", opacity: priceLoading ? .7 : 1 }}>
+                {priceLoading ? "Fetching…" : "Refresh"}
+              </button>
+            </div>
+
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #F1F4F8",
+                          display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 32, height: 32, borderRadius: 10, flex: "none", display: "grid", placeItems: "center",
+                             background: "linear-gradient(135deg,#2563EB,#0EA5E9)", color: "#fff", fontSize: 12, fontWeight: 700 }}>
+                {(session.name || session.username).slice(0, 2).toUpperCase()}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {session.name || session.username}
+                </div>
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>{isAdmin ? "Administrator" : "Client access"}</div>
+              </div>
+              <button onClick={() => { setShowScopeSheet(false); setShowChangePw(true); }}
+                      style={{ padding: "12px 13px", borderRadius: 10, border: "1px solid var(--line)",
+                               background: "var(--surface)", color: "var(--ink-2)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                Password
+              </button>
+              <button onClick={signOut} style={{ padding: "12px 13px", borderRadius: 10, border: "1px solid var(--line)",
+                      background: "var(--surface)", color: "var(--bad)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                Sign out
+              </button>
+            </div>
+          </MSheet>
+        )}
+
+        {/* ── CLIENT FORM SHEET ─────────────────────────────────────────────── */}
+        {showClientForm && (
+          <MSheet z={11} title={editingClientId ? "Edit client" : "New client"} onClose={cancelClientForm}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <input style={MINPUT} placeholder="Full name" value={clientForm.name}
+                     onChange={e => setClientForm(p => ({ ...p, name: e.target.value }))} />
+              <input style={MINPUT} placeholder="name@mail.com" inputMode="email" value={clientForm.email}
+                     onChange={e => setClientForm(p => ({ ...p, email: e.target.value }))} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <input style={MINPUT} placeholder="+91" inputMode="tel" value={clientForm.phone}
+                       onChange={e => setClientForm(p => ({ ...p, phone: e.target.value }))} />
+                <input style={MINPUT} type="date" value={clientForm.joining_date}
+                       onChange={e => setClientForm(p => ({ ...p, joining_date: e.target.value }))} />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button onClick={handleSaveClient} disabled={clientSaving} style={{ flex: 1, padding: 13, borderRadius: 11,
+                      border: "none", background: "var(--ink)", color: "#fff", fontSize: 13, fontWeight: 700,
+                      cursor: "pointer", opacity: clientSaving ? .7 : 1 }}>
+                {clientSaving ? "Saving…" : "Save client"}
+              </button>
+              <button onClick={cancelClientForm} style={{ padding: "13px 18px", borderRadius: 11, border: "1px solid #E1E6EE",
+                      background: "var(--surface)", color: "var(--ink-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </MSheet>
+        )}
+
+        {/* ── TRADE FORM SHEET ──────────────────────────────────────────────── */}
+        {showForm && (
+          <MSheet z={11} title={editingId ? "Edit trade" : "New trade"} onClose={cancelForm}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <select style={MINPUT} value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}>
+                <option value="">Select client…</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <div style={{ display: "flex", gap: 3, background: "#E7EBF1", padding: 3, borderRadius: 11 }}>
+                {["BUY", "SELL"].map(t => segTab(t, form.type === t, () => setForm(p => ({ ...p, type: t }))))}
+              </div>
+              <StockAutocomplete value={form.stock_symbol} onChange={v => setForm(p => ({ ...p, stock_symbol: v }))} style={MINPUT} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <input style={MINPUT} type="number" inputMode="numeric" placeholder="Quantity" value={form.quantity}
+                       onChange={e => setForm(p => ({ ...p, quantity: e.target.value }))} />
+                <input style={MINPUT} type="number" inputMode="decimal" step="0.01" placeholder="Price" value={form.price}
+                       onChange={e => setForm(p => ({ ...p, price: e.target.value }))} />
+              </div>
+              <input style={MINPUT} type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
+              <input style={MINPUT} placeholder="Optional notes…" value={form.notes}
+                     onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
+              <button onClick={handleSaveTrade} disabled={tradeSaving} style={{ flex: 1, padding: 13, borderRadius: 11,
+                      border: "none", background: editingId ? "var(--amber)" : "var(--accent)", color: "#fff",
+                      fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: tradeSaving ? .7 : 1 }}>
+                {tradeSaving ? "Saving…" : editingId ? "Save changes" : "Add trade"}
+              </button>
+              <button onClick={cancelForm} style={{ padding: "13px 18px", borderRadius: 11, border: "1px solid #E1E6EE",
+                      background: "var(--surface)", color: "var(--ink-2)", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>SELL validates against FIFO holdings.</div>
+          </MSheet>
+        )}
+
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "246px 1fr", minHeight: "100vh", color: "var(--ink)" }}>
