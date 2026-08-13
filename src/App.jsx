@@ -1,24 +1,14 @@
 import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "react";
 import { SYMBOL_LOGOS } from "./symbolLogos";
-
-const API = `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api`;
+import { LoginScreen, ChangePasswordScreen } from "./Auth";
+import {
+  apiFetch, getToken, fetchMe, logout as clearSession,
+  onUnauthorized, createOrResetClientLogin,
+} from "./api";
 
 const fmt = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 const fmtDate = (d) => { if (!d) return "—"; const dt = new Date(d); const dd = String(dt.getUTCDate()).padStart(2,"0"); const mm = String(dt.getUTCMonth()+1).padStart(2,"0"); return `${dd}/${mm}/${dt.getUTCFullYear()}`; };
-
-const apiFetch = async (path, opts = {}) => {
-  const res = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...opts,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || "Request failed");
-  }
-  if (res.status === 204) return null;
-  return res.json();
-};
 
 const Badge = ({ children, color }) => {
   const colors = { green: ["#dcfce7","#166534"], blue: ["#dbeafe","#1e40af"], amber: ["#fef3c7","#92400e"], red: ["#fee2e2","#991b1b"], gray: ["#f3f4f6","#374151"] };
@@ -531,6 +521,50 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [filterClient, setFilterClient] = useState("All");
 
+  // ── Session ──────────────────────────────────────────────────────────────────
+  const [session, setSession] = useState(null);
+  const [authChecking, setAuthChecking] = useState(Boolean(getToken()));
+  const [sessionNotice, setSessionNotice] = useState("");
+  const [showChangePw, setShowChangePw] = useState(false);
+  const isAdmin = session?.role === "admin";
+
+  // Any 401 anywhere in the app lands here and drops us back to the login screen.
+  useEffect(() => {
+    onUnauthorized((message) => {
+      setSession(null);
+      setSessionNotice(message);
+      setClients([]);
+      setTrades([]);
+    });
+  }, []);
+
+  // A stored token survives a refresh; confirm it is still good before showing the app.
+  useEffect(() => {
+    if (!getToken()) { setAuthChecking(false); return; }
+    fetchMe()
+      .then(setSession)
+      .catch(() => {})
+      .finally(() => setAuthChecking(false));
+  }, []);
+
+  const signOut = () => {
+    clearSession();
+    setSession(null);
+    setSessionNotice("");
+    setClients([]);
+    setTrades([]);
+    setView("dashboard");
+    setFilterClient("All");
+  };
+
+  // A client has no client picker and no Clients tab, so pin the filter to the one row
+  // the backend returned for them.
+  useEffect(() => {
+    if (!session || isAdmin) return;
+    if (clients.length === 1) setFilterClient(clients[0].name);
+    if (view === "clients") setView("dashboard");
+  }, [session, isAdmin, clients, view]);
+
   // Client form
   const [showClientForm, setShowClientForm] = useState(false);
   const [clientForm, setClientForm] = useState(EMPTY_CLIENT_FORM);
@@ -573,13 +607,14 @@ export default function App() {
         apiFetch(`/prices/history?symbols=${stocks.join(",")}`).then(hp => setDailyPrices(hp)).catch(() => {});
       }
     } catch (e) {
-      setAppError("Cannot connect to backend. Is the server running on port 8000?");
+      // A 401 is handled by the session watcher, which shows the login screen instead.
+      if (getToken()) setAppError("Cannot connect to backend. Is the server running on port 8000?");
     } finally {
       setAppLoading(false);
     }
   }, []);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { if (session) { setAppLoading(true); loadData(); } }, [loadData, session]);
 
   const clientNames = useMemo(() => ["All", ...clients.map(c => c.name)], [clients]);
   const filteredTrades = useMemo(() => filterClient === "All" ? trades : trades.filter(t => t.client_name === filterClient), [trades, filterClient]);
@@ -694,6 +729,21 @@ export default function App() {
     finally { setClientSaving(false); }
   };
 
+  // Creating a login needs a username; resetting an existing one does not. The plaintext
+  // password comes back once and is never retrievable again, so it goes straight on screen.
+  const [issuedLogin, setIssuedLogin] = useState(null);
+  const handleClientLogin = async (c) => {
+    const username = window.prompt(
+      `Username for ${c.name} (leave as-is to reset an existing login):`,
+      c.name.toLowerCase().replace(/\s+/g, "."),
+    );
+    if (username === null) return;
+    try {
+      const res = await createOrResetClientLogin(c.id, username.trim());
+      setIssuedLogin({ client: c.name, ...res });
+    } catch (e) { alert(e.message); }
+  };
+
   const handleDeleteClient = async (id) => {
     if (!window.confirm("Delete this client? All their trades will also be deleted.")) return;
     try {
@@ -779,6 +829,23 @@ export default function App() {
     </div>
   );
 
+  if (authChecking) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "#6b7280" }}>Restoring your session…</div>;
+
+  if (!session) return (
+    <LoginScreen notice={sessionNotice}
+      onSignedIn={(user) => { setSessionNotice(""); setSession(user); }} />
+  );
+
+  if (session.must_change_password) return (
+    <ChangePasswordScreen user={session} forced
+      onDone={() => setSession(s => ({ ...s, must_change_password: false }))} />
+  );
+
+  if (showChangePw) return (
+    <ChangePasswordScreen user={session}
+      onDone={() => setShowChangePw(false)} onCancel={() => setShowChangePw(false)} />
+  );
+
   if (appLoading) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "#6b7280" }}>Loading portfolio data…</div>;
   if (appError) return <div style={{ textAlign: "center", padding: 80 }}><div style={{ fontSize: 15, color: "#dc2626", fontWeight: 700 }}>{appError}</div></div>;
 
@@ -788,8 +855,10 @@ export default function App() {
   const realizedLots = portfolio.reduce((n, p) => n + p.matchDetails.length, 0);
   const winCount = portfolio.reduce((n, p) => n + p.matchDetails.filter(m => m.pl > 0).length, 0);
 
+  // The Clients tab is the book of business \u2014 admin only.
   const NAV = [["dashboard","Dashboard","\u25c7"],["clients","Clients","\u25c9"],
-               ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],["benchmark","Benchmark","\u25c8"]];
+               ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],["benchmark","Benchmark","\u25c8"]]
+              .filter(([v]) => isAdmin || v !== "clients");
   const tradeCountFor = (name) => name === "All" ? trades.length : trades.filter(t => t.client_name === name).length;
 
   return (
@@ -819,6 +888,7 @@ export default function App() {
           ))}
         </nav>
 
+        {isAdmin && (
         <div>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".09em", color: "var(--ink-3)",
                         textTransform: "uppercase", padding: "0 6px 8px" }}>Client filter</div>
@@ -844,6 +914,7 @@ export default function App() {
             })}
           </div>
         </div>
+        )}
 
         <div style={{ marginTop: "auto", ...PANEL, borderRadius: 12, padding: 12 }}>
           <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>Prices last refreshed</div>
@@ -856,6 +927,32 @@ export default function App() {
           </button>
           {priceError && <div style={{ fontSize: 10.5, color: "var(--bad)", fontWeight: 600, marginTop: 6 }}>{priceError}</div>}
         </div>
+
+        <div style={{ ...PANEL, borderRadius: 12, padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <span style={{ width: 28, height: 28, borderRadius: 8, flex: "none", display: "grid", placeItems: "center",
+                           background: "linear-gradient(135deg,#2563EB,#0EA5E9)", color: "#fff",
+                           fontSize: 11, fontWeight: 700 }}>
+              {(session.name || session.username).slice(0, 2).toUpperCase()}
+            </span>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {session.name || session.username}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>
+                {isAdmin ? "Administrator" : "Client access"}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+            <button onClick={() => setShowChangePw(true)} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5 }}>
+              Password
+            </button>
+            <button onClick={signOut} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5, color: "var(--bad)" }}>
+              Sign out
+            </button>
+          </div>
+        </div>
       </aside>
 
       {/* ── MAIN ────────────────────────────────────────────────────────────── */}
@@ -865,7 +962,7 @@ export default function App() {
       {/* ── CLIENTS TAB ─────────────────────────────────────────────────────── */}
       {view === "clients" && (() => {
         const combined = portfolioAll.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
-        const FCOLS = "1.7fr 1.6fr 1.1fr 1fr .7fr .5fr";
+        const FCOLS = "1.6fr 1.5fr 1fr .9fr .6fr 1fr";
         const field = (label, key, type) => (
           <div>
             <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</label>
@@ -888,6 +985,24 @@ export default function App() {
               {" · "}<strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(combined)}</strong> combined value
             </div>
           </Hero>
+
+          {issuedLogin && (
+            <div style={{ ...PANEL, border: "1px solid #BBF7D0", background: "#F0FDF4", padding: 18 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>
+                {issuedLogin.reset ? "Password reset" : "Login created"} for {issuedLogin.client}
+              </div>
+              <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
+                Username <strong className="num">{issuedLogin.username}</strong><br />
+                Temporary password <strong className="num">{issuedLogin.temporary_password}</strong>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
+                Share this once — it is not stored anywhere and they must change it at first sign-in.
+              </div>
+              <button onClick={() => setIssuedLogin(null)} style={{ ...btnS, marginTop: 12, padding: "7px 14px", fontSize: 12 }}>
+                Done
+              </button>
+            </div>
+          )}
 
           {showClientForm && (
             <div style={{ ...PANEL, border: "1px solid #DDD6FE", padding: 20 }}>
@@ -939,6 +1054,7 @@ export default function App() {
                     <div className="num" style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{c.joining_date ? fmtDate(c.joining_date) : "—"}</div>
                     <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: "right" }}>{n}</div>
                     <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                      <button onClick={() => handleClientLogin(c)} style={{ border: "none", background: "none", color: "var(--ink-2)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Login</button>
                       <button onClick={() => openEditClient(c)} style={{ border: "none", background: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Edit</button>
                       <button onClick={() => handleDeleteClient(c.id)} style={{ border: "none", background: "none", color: "var(--bad)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Delete</button>
                     </div>
@@ -1121,7 +1237,7 @@ export default function App() {
       {/* ── TRADES TAB ──────────────────────────────────────────────────────── */}
       {view === "trades" && (<>
         <Hero view="trades" eyebrow={`Trades · ${filterClient === "All" ? "All clients" : filterClient}`}
-          right={!showForm && (
+          right={isAdmin && !showForm && (
             <button onClick={openAddTrade} disabled={clients.length === 0}
                     style={{ padding: "11px 20px", borderRadius: 11, border: "none", background: "#fff",
                              color: "#7C3E06", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
@@ -1288,7 +1404,7 @@ export default function App() {
 
           <div style={{ marginTop: 16 }}>
                       <button onClick={() => setShowRawLog(v => !v)} style={{ ...btnS, fontSize: 12 }}>
-            {showRawLog ? "▾ Hide raw trade log" : "▸ Show raw trade log (edit / delete)"}
+            {showRawLog ? "▾ Hide raw trade log" : `▸ Show raw trade log${isAdmin ? " (edit / delete)" : ""}`}
           </button>
           {showRawLog && (
             <div style={{ overflowX: "auto", marginTop: 10 }}>
@@ -1307,8 +1423,8 @@ export default function App() {
                     <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
                     <td className="num" style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
                     <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>
-                      <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>
-                      <button onClick={() => handleDeleteTrade(t.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>
+                      {isAdmin && <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>}
+                      {isAdmin && <button onClick={() => handleDeleteTrade(t.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>}
                     </td>
                   </tr>);
                 })}</tbody>
