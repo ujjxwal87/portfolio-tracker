@@ -795,7 +795,7 @@ export default function App() {
           <div style={{ width: 32, height: 32, borderRadius: 10, display: "grid", placeItems: "center",
                         background: "linear-gradient(135deg,#2563EB,#0EA5E9)", color: "#fff", fontWeight: 700, fontSize: 15 }}>P</div>
           <div>
-            <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Portfolio Tracker</div>
+            <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Eros Financial Service</div>
             <div style={{ fontSize: 10.5, fontWeight: 600, color: "var(--ink-3)" }}>FIFO · NSE live</div>
           </div>
         </div>
