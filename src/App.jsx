@@ -16,7 +16,9 @@ const Badge = ({ children, color }) => {
   return <span style={{ background: bg, color: fg, padding: "2px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{children}</span>;
 };
 
-const INDEX_LABELS = { nifty50: "Nifty 50", midcap150: "Nifty Midcap 150", smallcap250: "Nifty Smallcap 250" };
+const INDEX_LABELS = { nifty50: "Nifty 50", sensex: "BSE Sensex", midcap150: "Nifty Midcap 150", smallcap250: "Nifty Smallcap 250" };
+// Clients compare against the broad market only; cap-tier indices are an advisor tool.
+const CLIENT_INDEXES = ["nifty50", "sensex"];
 
 // Symbol chip tints — background / foreground, picked deterministically per symbol.
 const SYMBOL_TINTS = [
@@ -676,6 +678,10 @@ export default function App() {
   const [benchIndex, setBenchIndex] = useState("nifty50");
   const [benchmark, setBenchmark] = useState(null);
   const [benchmarkState, setBenchmarkState] = useState("idle");
+  const indexChoices = isAdmin ? Object.keys(INDEX_LABELS) : CLIENT_INDEXES;
+  useEffect(() => {
+    if (!indexChoices.includes(benchIndex)) setBenchIndex(indexChoices[0]);
+  }, [indexChoices, benchIndex]);
   useEffect(() => {
     const client = clients.find(c => c.name === filterClient);
     if (!client) { setBenchmark(null); setBenchmarkState(filterClient === "All" ? "all" : "idle"); return; }
@@ -1446,7 +1452,7 @@ export default function App() {
             right={
               <div style={{ display: "flex", gap: 3, background: "rgba(255,255,255,.14)", padding: 4,
                             borderRadius: 99, border: "1px solid rgba(255,255,255,.18)" }}>
-                {Object.keys(INDEX_LABELS).map(k => (
+                {indexChoices.map(k => (
                   <button key={k} onClick={() => setBenchIndex(k)} style={{
                     padding: "8px 15px", borderRadius: 99, border: "none", cursor: "pointer", fontSize: 12.5,
                     fontWeight: benchIndex === k ? 700 : 500, whiteSpace: "nowrap",

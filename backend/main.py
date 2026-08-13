@@ -528,9 +528,14 @@ def delete_cash_flow(flow_id: str, _: auth.CurrentUser = Depends(auth.require_ad
 
 INDEXES = {
     "nifty50": ("^NSEI", "Nifty 50"),
+    "sensex": ("^BSESN", "BSE Sensex"),
     "midcap150": ("NIFTYMIDCAP150.NS", "Nifty Midcap 150"),
     "smallcap250": ("NIFTYSMLCAP250.NS", "Nifty Smallcap 250"),
 }
+
+# Broad-market indices every client sees. The cap-tier ones are an advisor's attribution tool —
+# they answer "is this alpha or just small-cap beta", which is not a client-facing question.
+CLIENT_INDEXES = ("nifty50", "sensex")
 
 
 def _index_daily(symbol: str = "^NSEI", start: str = "2026-01-01"):
@@ -604,8 +609,12 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
     net_invested = sum(float(f["amount"]) for f in flows)
     xirr_flows = [(f["date"], -float(f["amount"])) for f in flows]
 
+    # Hidden on the server, not just in the UI — a client cannot reach the cap-tier indices
+    # by calling the API directly.
+    wanted = INDEXES if user.is_admin else {k: INDEXES[k] for k in CLIENT_INDEXES}
+
     indices, legs, latest_day = {}, [], None
-    for key, (symbol, label) in INDEXES.items():
+    for key, (symbol, label) in wanted.items():
         try:
             series = _index_daily(symbol, start)
         except Exception:
