@@ -12,7 +12,7 @@ from typing import Optional
 
 import bcrypt
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
@@ -20,7 +20,12 @@ from db import get_db
 
 log = logging.getLogger("auth")
 
-TOKEN_TTL_HOURS = int(os.getenv("JWT_TTL_HOURS", "12"))
+# Two clocks: a sliding idle window, and a hard cap since the original login that no amount
+# of activity extends. A token older than REFRESH_AFTER is swapped for a fresh one mid-request.
+IDLE_TTL_MINUTES = int(os.getenv("JWT_IDLE_MINUTES", "120"))
+ABSOLUTE_TTL_DAYS = int(os.getenv("JWT_ABSOLUTE_DAYS", "7"))
+REFRESH_AFTER_MINUTES = int(os.getenv("JWT_REFRESH_AFTER_MINUTES", "15"))
+REFRESH_HEADER = "X-Refresh-Token"
 ALGORITHM = "HS256"
 MIN_PASSWORD_LENGTH = 8
 
@@ -74,7 +79,16 @@ def validate_password(plain: str) -> None:
 
 # ── tokens ─────────────────────────────────────────────────────────────────────
 
-def create_token(user_id: str, role: str, client_id, username: str, name) -> str:
+def password_version(account: dict) -> int:
+    """Credential fingerprint. app_users.updated_at moves on every password write, so a
+    token minted before a reset can be told apart from one minted after."""
+    updated = account.get("updated_at")
+    return int(updated.timestamp()) if updated else 0
+
+
+def create_token(
+    user_id: str, role: str, client_id, username: str, name, pv: int = 0, oat: Optional[int] = None
+) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user_id),
@@ -82,10 +96,24 @@ def create_token(user_id: str, role: str, client_id, username: str, name) -> str
         "cid": str(client_id) if client_id else None,
         "usr": username,
         "nm": name,
+        "pv": pv,
+        "oat": oat or int(now.timestamp()),  # original login; the absolute cap counts from here
         "iat": now,
-        "exp": now + timedelta(hours=TOKEN_TTL_HOURS),
+        "exp": now + timedelta(minutes=IDLE_TTL_MINUTES),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
+
+
+def token_for_account(account: dict, oat: Optional[int] = None) -> str:
+    return create_token(
+        account["id"],
+        account["role"],
+        account["client_id"],
+        account["username"],
+        account["name"],
+        pv=password_version(account),
+        oat=oat,
+    )
 
 
 def _unauthorized(detail: str) -> HTTPException:
@@ -95,6 +123,7 @@ def _unauthorized(detail: str) -> HTTPException:
 # ── dependencies ───────────────────────────────────────────────────────────────
 
 def current_user(
+    response: Response,
     creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> CurrentUser:
     if creds is None:
@@ -105,13 +134,31 @@ def current_user(
         raise _unauthorized("Session expired")
     except jwt.InvalidTokenError:
         raise _unauthorized("Invalid token")
-    return CurrentUser(
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    oat = int(payload.get("oat") or payload.get("iat") or now)
+    if now - oat > ABSOLUTE_TTL_DAYS * 86400:
+        raise _unauthorized("Session expired")
+
+    user = CurrentUser(
         id=payload["sub"],
         username=payload.get("usr", ""),
         role=payload.get("role", "client"),
         client_id=payload.get("cid"),
         name=payload.get("nm"),
     )
+
+    # Slide the idle window forward. Re-minting is throttled so most requests stay DB-free;
+    # the same lookup is what catches a password reset and ends the old session.
+    if now - int(payload.get("iat") or now) >= REFRESH_AFTER_MINUTES * 60:
+        account = fetch_account_by_id(user.id)
+        if not account:
+            raise _unauthorized("Account no longer exists")
+        if password_version(account) != int(payload.get("pv") or 0):
+            raise _unauthorized("Password changed — please sign in again")
+        response.headers[REFRESH_HEADER] = token_for_account(account, oat=oat)
+
+    return user
 
 
 def require_admin(user: CurrentUser = Depends(current_user)) -> CurrentUser:
@@ -139,7 +186,7 @@ def fetch_account(username: str) -> Optional[dict]:
     with get_db() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT u.id, u.username, u.password_hash, u.role, u.client_id,
-                      u.must_change_password, c.name
+                      u.must_change_password, c.name, u.updated_at
                  FROM portfolio_tracker.app_users u
                  LEFT JOIN portfolio_tracker.clients c ON c.id = u.client_id
                 WHERE LOWER(u.username) = LOWER(%s)""",
@@ -148,7 +195,8 @@ def fetch_account(username: str) -> Optional[dict]:
         row = cur.fetchone()
     if not row:
         return None
-    keys = ["id", "username", "password_hash", "role", "client_id", "must_change_password", "name"]
+    keys = ["id", "username", "password_hash", "role", "client_id",
+            "must_change_password", "name", "updated_at"]
     account = dict(zip(keys, row))
     account["id"] = str(account["id"])
     account["client_id"] = str(account["client_id"]) if account["client_id"] else None

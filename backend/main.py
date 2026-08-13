@@ -31,6 +31,7 @@ app.add_middleware(
     allow_origins=_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=[auth.REFRESH_HEADER],
 )
 
 
@@ -71,10 +72,7 @@ def login(body: LoginBody):
     if not account or not auth.verify_password(body.password, account["password_hash"]):
         raise HTTPException(401, "Incorrect username or password")
     auth.touch_last_login(account["id"])
-    token = auth.create_token(
-        account["id"], account["role"], account["client_id"], account["username"], account["name"]
-    )
-    return _session_payload(account, token)
+    return _session_payload(account, auth.token_for_account(account))
 
 
 @app.get("/api/auth/me")
@@ -96,7 +94,10 @@ def change_password(
     if auth.verify_password(body.new_password, account["password_hash"]):
         raise HTTPException(400, "New password must be different from the current one")
     auth.set_password(user.id, body.new_password)
-    return {"ok": True}
+    # Changing the password bumps the credential fingerprint, which retires every token issued
+    # before it — including this request's. Hand back a fresh one so the caller stays signed in.
+    updated = auth.fetch_account_by_id(user.id)
+    return {"ok": True, "token": auth.token_for_account(updated)}
 
 
 @app.post("/api/clients/{client_id}/credentials", status_code=201)
