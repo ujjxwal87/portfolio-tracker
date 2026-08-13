@@ -9,10 +9,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+import auth
 from db import get_db
 
 load_dotenv()
@@ -31,6 +32,121 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Auth ───────────────────────────────────────────────────────────────────────
+
+class LoginBody(BaseModel):
+    username: str
+    password: str
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class CredentialsBody(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+
+
+def _session_payload(account: dict, token: str) -> dict:
+    return {
+        "token": token,
+        "user": {
+            "username": account["username"],
+            "role": account["role"],
+            "client_id": account["client_id"],
+            "name": account["name"],
+            "must_change_password": account["must_change_password"],
+        },
+    }
+
+
+@app.post("/api/auth/login")
+def login(body: LoginBody):
+    account = auth.fetch_account(body.username)
+    # Same message either way so the response can't be used to enumerate usernames.
+    if not account or not auth.verify_password(body.password, account["password_hash"]):
+        raise HTTPException(401, "Incorrect username or password")
+    auth.touch_last_login(account["id"])
+    token = auth.create_token(
+        account["id"], account["role"], account["client_id"], account["username"], account["name"]
+    )
+    return _session_payload(account, token)
+
+
+@app.get("/api/auth/me")
+def me(user: auth.CurrentUser = Depends(auth.current_user)):
+    account = auth.fetch_account_by_id(user.id)
+    if not account:
+        raise HTTPException(401, "Account no longer exists")
+    return _session_payload(account, "")["user"]
+
+
+@app.post("/api/auth/change-password")
+def change_password(
+    body: ChangePasswordBody, user: auth.CurrentUser = Depends(auth.current_user)
+):
+    account = auth.fetch_account_by_id(user.id)
+    if not account or not auth.verify_password(body.current_password, account["password_hash"]):
+        raise HTTPException(400, "Current password is incorrect")
+    auth.validate_password(body.new_password)
+    if auth.verify_password(body.new_password, account["password_hash"]):
+        raise HTTPException(400, "New password must be different from the current one")
+    auth.set_password(user.id, body.new_password)
+    return {"ok": True}
+
+
+@app.post("/api/clients/{client_id}/credentials", status_code=201)
+def upsert_client_credentials(
+    client_id: str, body: CredentialsBody, _: auth.CurrentUser = Depends(auth.require_admin)
+):
+    """Create a client's login, or reset the password on an existing one.
+
+    Returns the temporary password in plaintext — the only time it is ever visible.
+    """
+    plain = body.password or auth.temp_password()
+    auth.validate_password(plain)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT name FROM portfolio_tracker.clients WHERE id = %s", (client_id,)
+            )
+            client = cur.fetchone()
+            if not client:
+                raise HTTPException(404, "Client not found")
+            cur.execute(
+                "SELECT id, username FROM portfolio_tracker.app_users WHERE client_id = %s",
+                (client_id,),
+            )
+            existing = cur.fetchone()
+            if existing:
+                cur.execute(
+                    """UPDATE portfolio_tracker.app_users
+                          SET password_hash = %s, must_change_password = TRUE, updated_at = NOW()
+                        WHERE id = %s""",
+                    (auth.hash_password(plain), existing[0]),
+                )
+                username = existing[1]
+            else:
+                if not body.username:
+                    raise HTTPException(400, "Username is required for a new login")
+                cur.execute(
+                    "SELECT 1 FROM portfolio_tracker.app_users WHERE LOWER(username) = LOWER(%s)",
+                    (body.username,),
+                )
+                if cur.fetchone():
+                    raise HTTPException(409, "That username is already taken")
+                cur.execute(
+                    """INSERT INTO portfolio_tracker.app_users
+                           (username, password_hash, role, client_id)
+                       VALUES (%s, %s, 'client', %s)""",
+                    (body.username, auth.hash_password(plain), client_id),
+                )
+                username = body.username
+    return {"username": username, "temporary_password": plain, "reset": bool(existing)}
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────

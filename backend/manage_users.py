@@ -9,23 +9,11 @@
 Omit the password and a readable temporary one is generated and printed. Accounts always
 start with must_change_password = TRUE, so the holder is forced to set their own at login.
 """
-import secrets
 import sys
 from pathlib import Path
 
-import bcrypt
-
+from auth import hash_password, temp_password
 from db import get_db
-
-WORDS = ["tiger", "mango", "river", "amber", "delta", "olive", "cobra", "pearl", "zebra", "linen"]
-
-
-def hash_password(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
-
-
-def temp_password() -> str:
-    return f"{secrets.choice(WORDS)}-{secrets.choice(WORDS)}-{secrets.randbelow(9000) + 1000}"
 
 
 def migrate():
