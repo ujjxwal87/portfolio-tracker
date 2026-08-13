@@ -27,6 +27,31 @@ const Badge = ({ children, color }) => {
 
 const INDEX_LABELS = { nifty50: "Nifty 50", midcap150: "Nifty Midcap 150", smallcap250: "Nifty Smallcap 250" };
 
+// Each view gets its own tinted backdrop so tabs are distinguishable at a glance.
+// Kept low-saturation and pushed to the edges so panels and text stay clean.
+const VIEW_BG = {
+  dashboard: ["#dbe7ff", "#e6e0ff", "#eef4ff"],
+  clients:   ["#e7dcff", "#ffe1f0", "#f5eeff"],
+  portfolio: ["#d5f2e6", "#dcefff", "#ecfbf4"],
+  trades:    ["#ffe9cf", "#ffe2e2", "#fff5e9"],
+  benchmark: ["#d9ebff", "#d7f0f5", "#eaf5ff"],
+};
+
+const ViewBackdrop = ({ view }) => {
+  const [a, b, c] = VIEW_BG[view] || VIEW_BG.dashboard;
+  return (
+    <div aria-hidden="true" style={{
+      position: "fixed", inset: 0, zIndex: -1, pointerEvents: "none",
+      transition: "background-image .45s ease, background-color .45s ease",
+      backgroundColor: c,
+      backgroundImage:
+        `radial-gradient(1100px 520px at 8% -10%, ${a} 0%, ${a}00 60%),` +
+        `radial-gradient(900px 460px at 96% -14%, ${b} 0%, ${b}00 58%),` +
+        `radial-gradient(1000px 620px at 50% 118%, ${a}cc 0%, ${a}00 62%)`,
+    }} />
+  );
+};
+
 const PANEL = {
   background: "var(--surface)",
   borderRadius: "var(--r-lg)",
@@ -639,6 +664,7 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 1120, margin: "0 auto", padding: "26px 20px 56px", color: "var(--ink)" }}>
+      <ViewBackdrop view={view} />
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 14, marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <div style={{ width: 38, height: 38, borderRadius: 11, display: "grid", placeItems: "center",
