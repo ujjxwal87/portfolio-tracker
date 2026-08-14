@@ -4,10 +4,12 @@
     python manage_users.py list
     python manage_users.py create-admin <username> [password]
     python manage_users.py create-client <client-name-or-uuid> <username> [password]
+    python manage_users.py create-guest <username> [password]
     python manage_users.py reset <username> [password]
 
-Omit the password and a readable temporary one is generated and printed. Accounts always
-start with must_change_password = TRUE, so the holder is forced to set their own at login.
+Omit the password and a readable temporary one is generated and printed. Accounts start with
+must_change_password = TRUE so the holder is forced to set their own at login — except guests,
+whose password is shared with many prospects and so must not be changeable by any one of them.
 """
 import sys
 from pathlib import Path
@@ -17,10 +19,14 @@ from db import get_db
 
 
 def migrate():
-    sql = (Path(__file__).parent / "migrations" / "003_auth.sql").read_text()
+    """Apply every auth migration in order. All of them are written to be re-runnable."""
+    files = sorted((Path(__file__).parent / "migrations").glob("0*.sql"))
     with get_db() as conn, conn.cursor() as cur:
-        cur.execute(sql)
-    print("003_auth.sql applied")
+        for f in files:
+            if not f.name.startswith(("003", "004")):
+                continue  # 001/002 predate this CLI and are applied already
+            cur.execute(f.read_text())
+            print(f"{f.name} applied")
 
 
 def list_users():
@@ -41,12 +47,13 @@ def list_users():
         print(f"{username:<20} {role:<7} {name or '—':<20} last login: {seen}{flags}")
 
 
-def _insert(username: str, plain: str, role: str, client_id):
+def _insert(username: str, plain: str, role: str, client_id, must_change: bool = True):
     with get_db() as conn, conn.cursor() as cur:
         cur.execute(
-            """INSERT INTO portfolio_tracker.app_users (username, password_hash, role, client_id)
-               VALUES (%s, %s, %s, %s)""",
-            (username, hash_password(plain), role, client_id),
+            """INSERT INTO portfolio_tracker.app_users
+                   (username, password_hash, role, client_id, must_change_password)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (username, hash_password(plain), role, client_id, must_change),
         )
 
 
@@ -67,6 +74,12 @@ def resolve_client(ref: str):
 def create_admin(username: str, plain: str):
     _insert(username, plain, "admin", None)
     print(f"admin {username} created — temporary password: {plain}")
+
+
+def create_guest(username: str, plain: str):
+    _insert(username, plain, "guest", None, must_change=False)
+    print(f"guest {username} created — shared password: {plain}")
+    print("Share this with prospects; it is not forced to change.")
 
 
 def create_client(ref: str, username: str, plain: str):
@@ -98,6 +111,8 @@ def main(argv):
         list_users()
     elif cmd == "create-admin" and len(rest) in (1, 2):
         create_admin(rest[0], rest[1] if len(rest) > 1 else temp_password())
+    elif cmd == "create-guest" and len(rest) in (1, 2):
+        create_guest(rest[0], rest[1] if len(rest) > 1 else temp_password())
     elif cmd == "create-client" and len(rest) in (2, 3):
         create_client(rest[0], rest[1], rest[2] if len(rest) > 2 else temp_password())
     elif cmd == "reset" and len(rest) in (1, 2):

@@ -150,6 +150,28 @@ def upsert_client_credentials(
     return {"username": username, "temporary_password": plain, "reset": bool(existing)}
 
 
+# ── Guest demo slice ───────────────────────────────────────────────────────────
+
+# Three real books shown to prospects under invented names. Real identities never leave the
+# server: names are swapped and contact columns are blanked before anything is returned.
+GUEST_CLIENTS = {
+    "Om Gunjal": "Guest A",
+    "Sohil Monpara": "Guest B",
+    "Deepmala Chhajer": "Guest C",
+}
+
+
+def guest_client_map() -> dict:
+    """{client_id: display label} for the demo clients that actually exist."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name FROM portfolio_tracker.clients WHERE name = ANY(%s)",
+                (list(GUEST_CLIENTS),),
+            )
+            return {str(cid): GUEST_CLIENTS[name] for cid, name in cur.fetchall()}
+
+
 # ── Pydantic models ────────────────────────────────────────────────────────────
 
 class ClientCreate(BaseModel):
@@ -175,6 +197,18 @@ class TradeCreate(BaseModel):
 def list_clients(user: auth.CurrentUser = Depends(auth.current_user)):
     cols = ("SELECT id, name, phone, email, joining_date, cash_balance, created_at, updated_at "
             "FROM portfolio_tracker.clients ")
+    if user.is_guest:
+        labels = guest_client_map()
+        with get_db() as conn:
+            with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+                cur.execute(cols + "WHERE id = ANY(%s::uuid[])", (list(labels),))
+                rows = cur.fetchall()
+        # Swap in the alias and drop every contact field — a prospect sees performance, not people.
+        for r in rows:
+            r["name"] = labels[str(r["id"])]
+            r["phone"] = r["email"] = r["joining_date"] = None
+        return sorted(rows, key=lambda r: r["name"])
+
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             if user.is_admin:
@@ -227,8 +261,13 @@ def delete_client(client_id: str, _: auth.CurrentUser = Depends(auth.require_adm
 
 @app.get("/api/trades")
 def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
-    where = "" if user.is_admin else "WHERE t.client_id = %s "
-    params = () if user.is_admin else (user.client_id,)
+    labels = guest_client_map() if user.is_guest else {}
+    if user.is_admin:
+        where, params = "", ()
+    elif user.is_guest:
+        where, params = "WHERE t.client_id = ANY(%s::uuid[]) ", (list(labels),)
+    else:
+        where, params = "WHERE t.client_id = %s ", (user.client_id,)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -241,7 +280,12 @@ def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
                 """ + where + "ORDER BY t.date ASC, t.created_at ASC",
                 params,
             )
-            return cur.fetchall()
+            rows = cur.fetchall()
+    if labels:
+        for r in rows:
+            r["client_name"] = labels[str(r["client_id"])]
+            r["notes"] = None  # notes are advisor shorthand, sometimes naming the person
+    return rows
 
 
 @app.post("/api/trades", status_code=201)
@@ -491,13 +535,19 @@ class CashFlowCreate(BaseModel):
 
 @app.get("/api/cash-flows")
 def list_cash_flows(client_id: Optional[str] = None, user: auth.CurrentUser = Depends(auth.current_user)):
-    client_id = auth.scope_client_id(user, client_id)
+    guest_ids = list(guest_client_map()) if user.is_guest else None
+    client_id = auth.scope_client_id(user, client_id, guest_ids)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             if client_id:
                 cur.execute(
                     "SELECT * FROM portfolio_tracker.cash_flows WHERE client_id=%s ORDER BY date",
                     (client_id,),
+                )
+            elif guest_ids is not None:
+                cur.execute(
+                    "SELECT * FROM portfolio_tracker.cash_flows WHERE client_id = ANY(%s::uuid[]) ORDER BY date",
+                    (guest_ids,),
                 )
             else:
                 cur.execute("SELECT * FROM portfolio_tracker.cash_flows ORDER BY date")
@@ -593,7 +643,7 @@ def _xirr(flows):
 
 @app.get("/api/benchmark")
 def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user: auth.CurrentUser = Depends(auth.current_user)):
-    client_id = auth.scope_client_id(user, client_id)
+    client_id = auth.scope_client_id(user, client_id, list(guest_client_map()) if user.is_guest else None)
     """What the client's own deposits would be worth had each gone into Nifty 50 that day."""
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
@@ -688,7 +738,7 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
 
 @app.get("/api/benchmark/series")
 def get_benchmark_series(client_id: str, user: auth.CurrentUser = Depends(auth.current_user)):
-    client_id = auth.scope_client_id(user, client_id)
+    client_id = auth.scope_client_id(user, client_id, list(guest_client_map()) if user.is_guest else None)
     """Daily curve of the Nifty-equivalent value, for plotting against the real portfolio."""
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:

@@ -41,19 +41,42 @@ const Field = ({ children, ...props }) => (
   </div>
 );
 
+/** The shared demo account. Its password is handed out by the advisor, never shown here. */
+const GUEST_USERNAME = "guest";
+
+const MODES = [
+  { key: "client", label: "Client", caption: "Sign in to your portfolio",
+    hint: "Forgot your password? Ask your advisor to reset it." },
+  { key: "admin", label: "Admin", caption: "Advisor sign-in",
+    hint: "Full access to every client's book." },
+  { key: "guest", label: "Guest", caption: "Sample portfolios, real performance",
+    hint: "Anonymised client data. Enter the demo password you were given." },
+];
+
 export function LoginScreen({ onSignedIn, notice }) {
+  const [mode, setMode] = useState("client");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const isGuestMode = mode === "guest";
+  const active = MODES.find(m => m.key === mode);
+
+  const switchMode = (key) => {
+    setMode(key);
+    setError("");
+    setPassword("");
+  };
+
   const submit = async (e) => {
     e.preventDefault();
-    if (!username.trim() || !password) return;
+    const user = isGuestMode ? GUEST_USERNAME : username.trim();
+    if (!user || !password) return;
     setBusy(true);
     setError("");
     try {
-      onSignedIn(await login(username.trim(), password));
+      onSignedIn(await login(user, password));
     } catch (err) {
       setError(err.message);
       setPassword("");
@@ -65,20 +88,39 @@ export function LoginScreen({ onSignedIn, notice }) {
   return (
     <div style={shell}>
       <form onSubmit={submit} style={card}>
-        <Brand caption="Sign in to your portfolio" />
+        <Brand caption={active.caption} />
+
+        <div style={{ display: "flex", gap: 3, background: "#f1f4f8", padding: 3, borderRadius: 10, marginBottom: 20 }}>
+          {MODES.map(m => (
+            <button key={m.key} type="button" onClick={() => switchMode(m.key)} style={{
+              flex: 1, padding: "8px 6px", borderRadius: 8, border: "none", cursor: "pointer",
+              fontSize: 12.5, fontWeight: mode === m.key ? 700 : 500,
+              background: mode === m.key ? "var(--surface)" : "transparent",
+              color: mode === m.key ? "var(--ink)" : "var(--ink-3)",
+              boxShadow: mode === m.key ? "var(--shadow-sm)" : "none",
+            }}>{m.label}</button>
+          ))}
+        </div>
+
         {notice && !error && (
           <div style={{ ...note, marginTop: 0, marginBottom: 16, color: "var(--amber)" }}>{notice}</div>
         )}
-        <Field autoFocus autoCapitalize="none" autoCorrect="off" value={username}
-               onChange={e => setUsername(e.target.value)}>Username</Field>
-        <Field type="password" value={password}
-               onChange={e => setPassword(e.target.value)}>Password</Field>
+
+        {!isGuestMode && (
+          <Field key="username" autoFocus autoCapitalize="none" autoCorrect="off" value={username}
+                 onChange={e => setUsername(e.target.value)}>Username</Field>
+        )}
+        <Field key={`pw-${mode}`} type="password" autoFocus={isGuestMode} value={password}
+               onChange={e => setPassword(e.target.value)}>
+          {isGuestMode ? "Demo password" : "Password"}
+        </Field>
+
         <button type="submit" disabled={busy} style={{ ...primary, opacity: busy ? .7 : 1, marginTop: 4 }}>
-          {busy ? "Signing in…" : "Sign in"}
+          {busy ? "Signing in…" : isGuestMode ? "View sample portfolios" : "Sign in"}
         </button>
         {error && <div style={{ ...note, color: "var(--bad)" }}>{error}</div>}
         <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 18, textAlign: "center", lineHeight: 1.5 }}>
-          Forgot your password? Ask your advisor to reset it.
+          {active.hint}
         </div>
       </form>
     </div>

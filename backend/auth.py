@@ -50,6 +50,10 @@ class CurrentUser(BaseModel):
     def is_admin(self) -> bool:
         return self.role == "admin"
 
+    @property
+    def is_guest(self) -> bool:
+        return self.role == "guest"
+
 
 # ── passwords ──────────────────────────────────────────────────────────────────
 
@@ -167,13 +171,23 @@ def require_admin(user: CurrentUser = Depends(current_user)) -> CurrentUser:
     return user
 
 
-def scope_client_id(user: CurrentUser, requested: Optional[str]) -> Optional[str]:
+def scope_client_id(
+    user: CurrentUser, requested: Optional[str], guest_ids: Optional[list] = None
+) -> Optional[str]:
     """Resolve which client_id a request may read.
 
-    Admin gets whatever it asked for (None = all clients). A client is pinned to its own
-    id, and asking for someone else's is a 403 rather than a silent rewrite.
+    Admin gets whatever it asked for (None = all clients). A client is pinned to its own id.
+    A guest may ask for any of the three demo clients but nothing else. Asking for someone
+    else's id is a 403 rather than a silent rewrite.
     """
     if user.is_admin:
+        return requested
+    if user.is_guest:
+        allowed = guest_ids or []
+        if requested is None:
+            return None  # caller restricts to the demo set itself
+        if requested not in allowed:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not available on the demo login")
         return requested
     if requested and requested != user.client_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your data")

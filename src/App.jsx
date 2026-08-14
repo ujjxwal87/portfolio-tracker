@@ -650,6 +650,7 @@ export default function App() {
   const [sessionNotice, setSessionNotice] = useState("");
   const [showChangePw, setShowChangePw] = useState(false);
   const isAdmin = session?.role === "admin";
+  const isGuest = session?.role === "guest";
 
   // Any 401 anywhere in the app lands here and drops us back to the login screen.
   useEffect(() => {
@@ -687,6 +688,15 @@ export default function App() {
     if (clients.length === 1) setFilterClient(clients[0].name);
     if (view === "clients") setView("dashboard");
   }, [session, isAdmin, clients, view]);
+
+  // Guests open on the first sample book so Benchmark has something to show. Once only —
+  // re-running would make "All clients" impossible to select.
+  const guestBookPicked = useRef(false);
+  useEffect(() => {
+    if (!isGuest || guestBookPicked.current || clients.length === 0) return;
+    guestBookPicked.current = true;
+    setFilterClient(clients[0].name);
+  }, [isGuest, clients]);
 
   // Client form
   const [showClientForm, setShowClientForm] = useState(false);
@@ -944,6 +954,24 @@ export default function App() {
     </div>
   );
 
+  const LockedPanel = ({ what }) => (
+    <div style={{ ...PANEL, padding: 34, textAlign: "center", maxWidth: 540, margin: "28px auto" }}>
+      <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 16px", display: "grid",
+                    placeItems: "center", background: "#F1F5F9", fontSize: 21 }}>🔒</div>
+      <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-.02em" }}>
+        {what} is not available on the demo
+      </div>
+      <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.55 }}>
+        Guests are not allowed to see clients' portfolio and trades. Dashboard and Benchmark show
+        the performance those holdings produced.
+      </div>
+      <div style={{ display: "flex", gap: 9, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
+        <button onClick={() => setView("dashboard")} style={{ ...btnP, padding: "9px 18px" }}>View dashboard</button>
+        <button onClick={() => setView("benchmark")} style={btnS}>View benchmark</button>
+      </div>
+    </div>
+  );
+
   const RefreshButton = () => (
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
       <button onClick={refreshPrices} disabled={priceLoading} style={{ ...btnP, padding: "6px 14px", fontSize: 12, display: "flex", alignItems: "center", gap: 6, opacity: priceLoading ? 0.7 : 1 }}>
@@ -1113,7 +1141,13 @@ export default function App() {
               </div>
             </>)}
 
-            {view === "portfolio" && (<>
+            {(view === "portfolio" || view === "trades") && isGuest && (<>
+              <div style={MEYEBROW}>{view === "portfolio" ? "PORTFOLIO" : "TRADES"}</div>
+              <h2 style={MHEADLINE}>Not available on the demo</h2>
+              <div style={MSUB}>Guests see Dashboard and Benchmark only.</div>
+            </>)}
+
+            {view === "portfolio" && !isGuest && (<>
               <div style={MEYEBROW}>PORTFOLIO</div>
               <h2 style={MHEADLINE}>{holdings.length} active holding{holdings.length === 1 ? "" : "s"}</h2>
               <div style={{ ...MSUB, display: "flex", gap: 18 }}>
@@ -1122,7 +1156,7 @@ export default function App() {
               </div>
             </>)}
 
-            {view === "trades" && (<>
+            {view === "trades" && !isGuest && (<>
               <div style={MEYEBROW}>TRADES · FIFO MATCHED</div>
               <h2 style={MHEADLINE}>{filteredTrades.length} trade{filteredTrades.length === 1 ? "" : "s"} booked</h2>
               <div style={MSUB}>
@@ -1251,7 +1285,8 @@ export default function App() {
           </>)}
 
           {/* PORTFOLIO */}
-          {view === "portfolio" && (holdings.length === 0 ? empty("📭", "No active holdings") : holdings.map((h, i) => {
+          {view === "portfolio" && isGuest && <LockedPanel what="Portfolio" />}
+          {view === "portfolio" && !isGuest && (holdings.length === 0 ? empty("📭", "No active holdings") : holdings.map((h, i) => {
             const weight = holdingsValue > 0 ? (h.currentVal / holdingsValue * 100) : 0;
             const fg = tintFor(h.stock)[1];
             return (
@@ -1287,7 +1322,8 @@ export default function App() {
           }))}
 
           {/* TRADES */}
-          {view === "trades" && (<>
+          {view === "trades" && isGuest && <LockedPanel what="Trades" />}
+          {view === "trades" && !isGuest && (<>
             <div style={{ display: "flex", gap: 3, background: "#E7EBF1", padding: 3, borderRadius: 11 }}>
               {segTab("Positions", mTradeTab === "Positions", () => setMTradeTab("Positions"))}
               {segTab("Trade log", mTradeTab === "Trade log", () => setMTradeTab("Trade log"))}
@@ -1516,8 +1552,9 @@ export default function App() {
 
         {/* ── SCOPE / ACCOUNT SHEET ─────────────────────────────────────────── */}
         {showScopeSheet && (
-          <MSheet title={isAdmin ? "Filter by client" : "Account"} onClose={() => setShowScopeSheet(false)}>
-            {isAdmin && (
+          <MSheet title={isGuest ? "Sample books" : isAdmin ? "Filter by client" : "Account"}
+                  onClose={() => setShowScopeSheet(false)}>
+            {(isAdmin || isGuest) && (
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 {clientNames.map(c => {
                   const on = filterClient === c;
@@ -1561,15 +1598,19 @@ export default function App() {
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {session.name || session.username}
+                  {isGuest ? "Guest preview" : (session.name || session.username)}
                 </div>
-                <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>{isAdmin ? "Administrator" : "Client access"}</div>
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>
+                  {isAdmin ? "Administrator" : isGuest ? "Demo access" : "Client access"}
+                </div>
               </div>
-              <button onClick={() => { setShowScopeSheet(false); setShowChangePw(true); }}
-                      style={{ padding: "12px 13px", borderRadius: 10, border: "1px solid var(--line)",
-                               background: "var(--surface)", color: "var(--ink-2)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                Password
-              </button>
+              {!isGuest && (
+                <button onClick={() => { setShowScopeSheet(false); setShowChangePw(true); }}
+                        style={{ padding: "12px 13px", borderRadius: 10, border: "1px solid var(--line)",
+                                 background: "var(--surface)", color: "var(--ink-2)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  Password
+                </button>
+              )}
               <button onClick={signOut} style={{ padding: "12px 13px", borderRadius: 10, border: "1px solid var(--line)",
                       background: "var(--surface)", color: "var(--bad)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                 Sign out
@@ -1676,10 +1717,10 @@ export default function App() {
           ))}
         </nav>
 
-        {isAdmin && (
+        {(isAdmin || isGuest) && (
         <div>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".09em", color: "var(--ink-3)",
-                        textTransform: "uppercase", padding: "0 6px 8px" }}>Client filter</div>
+                        textTransform: "uppercase", padding: "0 6px 8px" }}>{isGuest ? "Sample books" : "Client filter"}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
             {clientNames.map((c, i) => {
               const on = filterClient === c;
@@ -1725,17 +1766,19 @@ export default function App() {
             </span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {session.name || session.username}
+                {isGuest ? "Guest preview" : (session.name || session.username)}
               </div>
               <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>
-                {isAdmin ? "Administrator" : "Client access"}
+                {isAdmin ? "Administrator" : isGuest ? "Demo access" : "Client access"}
               </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button onClick={() => setShowChangePw(true)} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5 }}>
-              Password
-            </button>
+            {!isGuest && (
+              <button onClick={() => setShowChangePw(true)} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5 }}>
+                Password
+              </button>
+            )}
             <button onClick={signOut} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5, color: "var(--bad)" }}>
               Sign out
             </button>
@@ -1942,7 +1985,8 @@ export default function App() {
       </>)}
 
       {/* ── PORTFOLIO TAB ────────────────────────────────────────────────────── */}
-      {view === "portfolio" && (() => {
+      {view === "portfolio" && isGuest && <LockedPanel what="Portfolio" />}
+      {view === "portfolio" && !isGuest && (() => {
         const totalVal = holdings.reduce((s, h) => s + h.currentVal, 0);
         const totalInvested = holdings.reduce((s, h) => s + h.investedHolding, 0);
         const unreal = totalVal - totalInvested;
@@ -2023,7 +2067,8 @@ export default function App() {
       })()}
 
       {/* ── TRADES TAB ──────────────────────────────────────────────────────── */}
-      {view === "trades" && (<>
+      {view === "trades" && isGuest && <LockedPanel what="Trades" />}
+      {view === "trades" && !isGuest && (<>
         <Hero view="trades" eyebrow={`Trades · ${filterClient === "All" ? "All clients" : filterClient}`}
           right={isAdmin && !showForm && (
             <button onClick={openAddTrade} disabled={clients.length === 0}
