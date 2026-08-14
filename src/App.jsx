@@ -802,7 +802,10 @@ export default function App() {
     let maxDD = 0, peak = 0, running = 0;
     realizedTrades.sort((a, b) => a.sellDate.localeCompare(b.sellDate)).forEach(m => { running += m.pl; if (running > peak) peak = running; const dd = peak > 0 ? ((peak - running) / peak) * 100 : 0; if (dd > maxDD) maxDD = dd; });
     const currentVal = holdings.reduce((s, h) => s + h.currentVal, 0);
-    return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, totalReturn, winRate, maxDD, currentVal };
+    // Cost of what is still held. Comparable with currentVal; totalInvested is not, because it
+    // also carries the cost of lots already sold.
+    const openInvested = holdings.reduce((s, h) => s + h.investedHolding, 0);
+    return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, openInvested, totalReturn, winRate, maxDD, currentVal };
   }, [portfolio, holdings]);
 
   // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
@@ -825,6 +828,12 @@ export default function App() {
       .catch(() => { if (!cancelled) { setBenchmark(null); setBenchmarkState("nodata"); } });
     return () => { cancelled = true; };
   }, [clients, filterClient, stats.currentVal]);
+
+  // Idle broker cash. Without showing it, deposits minus holdings value silently misses it.
+  const selectedCash = useMemo(() => {
+    const c = clients.find(x => x.name === filterClient);
+    return c ? Number(c.cash_balance || 0) : 0;
+  }, [clients, filterClient]);
 
   const refreshPrices = useCallback(async () => {
     if (allStocks.length === 0) return;
@@ -1060,14 +1069,14 @@ export default function App() {
     const logoOf = (symbol) => <LogoChip symbol={symbol} w={64} h={30} />;
 
     const dashCards = [
-      { title: "TOTAL P&L", value: compactINR(stats.totalPL), sub: `${pct(stats.totalReturn)} on cost`,
+      { title: "TOTAL P&L", value: compactINR(stats.totalPL), sub: `${pct(stats.totalReturn)} on capital deployed`,
         accent: tone(stats.totalPL), tone: tone(stats.totalPL) },
       { title: "CURRENT VALUE", value: compactINR(stats.currentVal), sub: "live NSE prices", accent: "var(--accent)" },
       { title: "REALIZED", value: compactINR(stats.totalRealizedPL), sub: `${realizedLots} matched lot${realizedLots === 1 ? "" : "s"}`,
         accent: tone(stats.totalRealizedPL), tone: tone(stats.totalRealizedPL) },
       { title: "UNREALIZED", value: compactINR(stats.totalUnrealizedPL), sub: `${holdings.length} open position${holdings.length === 1 ? "" : "s"}`,
         accent: tone(stats.totalUnrealizedPL), tone: tone(stats.totalUnrealizedPL) },
-      { title: "YOUR RETURN", value: pct(RET), sub: bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on cost basis",
+      { title: "YOUR RETURN", value: pct(RET), sub: bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on capital deployed",
         accent: tone(RET), tone: tone(RET) },
       { title: "NIFTY 50", value: nifty ? pct(nifty.return_pct) : "—",
         sub: nifty ? `same timing · XIRR ${nifty.xirr_pct}%`
@@ -1125,10 +1134,10 @@ export default function App() {
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 99,
                                background: "rgba(16,185,129,.2)", border: "1px solid rgba(16,185,129,.42)",
                                color: "#6EE7B7", fontSize: 11.5, fontWeight: 700 }}>
-                  {stats.totalReturn >= 0 ? "▲" : "▼"} <span className="fig">{pct(stats.totalReturn)}</span> on cost
+                  {stats.totalReturn >= 0 ? "▲" : "▼"} <span className="fig">{pct(stats.totalReturn)}</span> deployed
                 </span>
                 <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)" }}>
-                  Invested <span className="fig" style={{ color: "#fff" }}>{compactINR(bmk ? bmk.net_invested : stats.totalInvested)}</span>
+                  {bmk ? "Invested" : "Invested (open)"} <span className="fig" style={{ color: "#fff" }}>{compactINR(bmk ? bmk.net_invested : stats.openInvested)}</span>
                 </span>
               </div>
             </>)}
@@ -1465,7 +1474,7 @@ export default function App() {
                     value={compactINR(bmk ? bmk.portfolio_value : stats.currentVal)}
                     sub={`${holdings.length} open positions`} />
               <MKpi size={19} title="TOTAL P&L" value={compactINR(stats.totalPL)}
-                    sub={`${pct(stats.totalReturn)} on cost`} accent={tone(stats.totalPL)} tone={tone(stats.totalPL)} />
+                    sub={`${pct(stats.totalReturn)} on capital deployed`} accent={tone(stats.totalPL)} tone={tone(stats.totalPL)} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -1910,12 +1919,13 @@ export default function App() {
                            background: "rgba(16,185,129,.18)", border: "1px solid rgba(16,185,129,.35)", whiteSpace: "nowrap" }}>
               <span style={{ fontSize: 11 }}>{stats.totalReturn >= 0 ? "\u25b2" : "\u25bc"}</span>
               <span className="fig" style={{ fontSize: 13, fontWeight: 600 }}>{pct(stats.totalReturn)}</span>
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,.72)" }}>on cost</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,.72)" }}>on capital deployed</span>
             </span>
           </div>
           <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginTop: 14, fontSize: 13.5, color: "rgba(255,255,255,.72)" }}>
-            <span style={{ whiteSpace: "nowrap" }}>Invested <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(bmk0 ? bmk0.net_invested : stats.totalInvested)}</strong></span>
+            <span style={{ whiteSpace: "nowrap" }}>{bmk0 ? "Invested" : "Invested (open)"} <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(bmk0 ? bmk0.net_invested : stats.openInvested)}</strong></span>
             <span style={{ whiteSpace: "nowrap" }}>Current <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(stats.currentVal)}</strong></span>
+            {selectedCash > 0 && <span style={{ whiteSpace: "nowrap" }}>Idle cash <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(selectedCash)}</strong></span>}
             {bmk0 && <span style={{ whiteSpace: "nowrap" }}>Nifty 50 · same timing <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{pct(bmk0.benchmark_return_pct)}</strong></span>}
             {bmk0 && <span style={{ whiteSpace: "nowrap" }}>Alpha <strong className="fig" style={{ color: "#6EE7B7", fontWeight: 600 }}>{pct(bmk0.alpha_pct_pp)} pp</strong></span>}
           </div>
@@ -1929,7 +1939,7 @@ export default function App() {
           </div>
         ) : (<>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-            <Card title="Total P&L" value={fmt(stats.totalPL)} sub={`${pct(stats.totalReturn)} on cost`}
+            <Card title="Total P&L" value={fmt(stats.totalPL)} sub={`${pct(stats.totalReturn)} on capital deployed`}
                   tone={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} />
             <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)} sub={`${realizedLots} matched lot${realizedLots === 1 ? "" : "s"}`}
                   tone={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
@@ -1951,7 +1961,7 @@ export default function App() {
                     tone={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"}
                     accent={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"} />
             </>) : (<>
-              <Card title="Your Return" value={pct(stats.totalReturn)} sub="on cost basis"
+              <Card title="Your Return" value={pct(stats.totalReturn)} sub="on all capital deployed"
                     tone={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"}
                     accent={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"} />
               <Card title="Nifty 50 — same timing" value="—"
