@@ -8,6 +8,8 @@ import {
 
 const fmt = (n) => "₹" + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
+const fmtDateLong = (d) => { if (!d) return null; const dt = new Date(d);
+  return `${String(dt.getUTCDate()).padStart(2,"0")} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][dt.getUTCMonth()]} ${dt.getUTCFullYear()}`; };
 const fmtDate = (d) => { if (!d) return "—"; const dt = new Date(d); const dd = String(dt.getUTCDate()).padStart(2,"0"); const mm = String(dt.getUTCMonth()+1).padStart(2,"0"); return `${dd}/${mm}/${dt.getUTCFullYear()}`; };
 
 const Badge = ({ children, color }) => {
@@ -830,10 +832,10 @@ export default function App() {
   }, [clients, filterClient, stats.currentVal]);
 
   // Idle broker cash. Without showing it, deposits minus holdings value silently misses it.
-  const selectedCash = useMemo(() => {
-    const c = clients.find(x => x.name === filterClient);
-    return c ? Number(c.cash_balance || 0) : 0;
-  }, [clients, filterClient]);
+  const selectedClient = useMemo(
+    () => clients.find(x => x.name === filterClient) || null, [clients, filterClient]);
+  const selectedCash = Number(selectedClient?.cash_balance || 0);
+  const joinedOn = fmtDateLong(selectedClient?.joining_date);
 
   const refreshPrices = useCallback(async () => {
     if (allStocks.length === 0) return;
@@ -1150,6 +1152,11 @@ export default function App() {
                 <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)" }}>
                   {bmk ? "Invested" : "Invested (open)"} <span className="fig" style={{ color: "#fff" }}>{compactINR(bmk ? bmk.net_invested : stats.openInvested)}</span>
                 </span>
+                {joinedOn && (
+                  <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)" }}>
+                    Since <strong style={{ color: "#fff", fontWeight: 700 }}>{joinedOn}</strong>
+                  </span>
+                )}
               </div>
             </>)}
 
@@ -1921,7 +1928,16 @@ export default function App() {
       {view === "dashboard" && (<>
         <Hero view="dashboard"
           eyebrow={`Total P&L · ${filterClient === "All" ? "All clients" : filterClient}`}
-          right={<Sparkline points={pnlChartData} />}>
+          right={
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+              {joinedOn && (
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,.62)", whiteSpace: "nowrap" }}>
+                  Client since <strong style={{ color: "#fff", fontWeight: 700 }}>{joinedOn}</strong>
+                </div>
+              )}
+              <Sparkline points={pnlChartData} />
+            </div>
+          }>
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
             <div className="fig" style={{ fontSize: 46, fontWeight: 600, letterSpacing: "-.03em", lineHeight: 1.05 }}>
               {fmt(stats.totalPL)}

@@ -206,7 +206,9 @@ def list_clients(user: auth.CurrentUser = Depends(auth.current_user)):
         # Swap in the alias and drop every contact field — a prospect sees performance, not people.
         for r in rows:
             r["name"] = labels[str(r["id"])]
-            r["phone"] = r["email"] = r["joining_date"] = None
+            # Contact details stay hidden; the joining date is kept — it is the track-record
+            # length a prospect is being shown, and it identifies nobody on its own.
+            r["phone"] = r["email"] = None
         return sorted(rows, key=lambda r: r["name"])
 
     with get_db() as conn:
