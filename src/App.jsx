@@ -1016,6 +1016,17 @@ export default function App() {
   const views = ["dashboard", "clients", "portfolio", "trades", "benchmark"];
 
   const bmk0 = benchmarkState === "ok" ? benchmark : null;
+
+  // Return on the money actually deposited — the only figure comparable with the index beside
+  // it. Falls back to cumulative buy value for clients whose deposits aren't recorded, where
+  // repeated redeployment of the same rupee inflates the denominator.
+  const returnPct = bmk0 ? bmk0.portfolio_return_pct : stats.totalReturn;
+  const returnBasis = bmk0 ? `on ${compactINR(bmk0.net_invested)} invested` : "on capital deployed";
+  // While the money-weighted figure is still loading, show nothing rather than flash the
+  // cumulative-cost fallback and then correct it upward.
+  const returnReady = benchmarkState !== "loading";
+  const returnText = returnReady ? pct(returnPct) : "—";
+  const returnSub = returnReady ? returnBasis : "calculating return…";
   const realizedLots = portfolio.reduce((n, p) => n + p.matchDetails.length, 0);
   const winCount = portfolio.reduce((n, p) => n + p.matchDetails.filter(m => m.pl > 0).length, 0);
 
@@ -1069,7 +1080,7 @@ export default function App() {
     const logoOf = (symbol) => <LogoChip symbol={symbol} w={64} h={30} />;
 
     const dashCards = [
-      { title: "TOTAL P&L", value: compactINR(stats.totalPL), sub: `${pct(stats.totalReturn)} on capital deployed`,
+      { title: "TOTAL P&L", value: compactINR(stats.totalPL), sub: `${returnText} ${returnSub}`,
         accent: tone(stats.totalPL), tone: tone(stats.totalPL) },
       { title: "CURRENT VALUE", value: compactINR(stats.currentVal), sub: "live NSE prices", accent: "var(--accent)" },
       { title: "REALIZED", value: compactINR(stats.totalRealizedPL), sub: `${realizedLots} matched lot${realizedLots === 1 ? "" : "s"}`,
@@ -1134,7 +1145,7 @@ export default function App() {
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "4px 10px", borderRadius: 99,
                                background: "rgba(16,185,129,.2)", border: "1px solid rgba(16,185,129,.42)",
                                color: "#6EE7B7", fontSize: 11.5, fontWeight: 700 }}>
-                  {stats.totalReturn >= 0 ? "▲" : "▼"} <span className="fig">{pct(stats.totalReturn)}</span> deployed
+                  {returnReady && (returnPct >= 0 ? "▲" : "▼")} <span className="fig">{returnText}</span> {returnReady ? (bmk0 ? "return" : "deployed") : ""}
                 </span>
                 <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)" }}>
                   {bmk ? "Invested" : "Invested (open)"} <span className="fig" style={{ color: "#fff" }}>{compactINR(bmk ? bmk.net_invested : stats.openInvested)}</span>
@@ -1474,7 +1485,7 @@ export default function App() {
                     value={compactINR(bmk ? bmk.portfolio_value : stats.currentVal)}
                     sub={`${holdings.length} open positions`} />
               <MKpi size={19} title="TOTAL P&L" value={compactINR(stats.totalPL)}
-                    sub={`${pct(stats.totalReturn)} on capital deployed`} accent={tone(stats.totalPL)} tone={tone(stats.totalPL)} />
+                    sub={`${returnText} ${returnSub}`} accent={tone(stats.totalPL)} tone={tone(stats.totalPL)} />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
@@ -1917,9 +1928,9 @@ export default function App() {
             </div>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 99,
                            background: "rgba(16,185,129,.18)", border: "1px solid rgba(16,185,129,.35)", whiteSpace: "nowrap" }}>
-              <span style={{ fontSize: 11 }}>{stats.totalReturn >= 0 ? "\u25b2" : "\u25bc"}</span>
-              <span className="fig" style={{ fontSize: 13, fontWeight: 600 }}>{pct(stats.totalReturn)}</span>
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,.72)" }}>on capital deployed</span>
+              {returnReady && <span style={{ fontSize: 11 }}>{returnPct >= 0 ? "\u25b2" : "\u25bc"}</span>}
+              <span className="fig" style={{ fontSize: 13, fontWeight: 600 }}>{returnText}</span>
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,.72)" }}>{returnSub}</span>
             </span>
           </div>
           <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginTop: 14, fontSize: 13.5, color: "rgba(255,255,255,.72)" }}>
@@ -1939,7 +1950,7 @@ export default function App() {
           </div>
         ) : (<>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-            <Card title="Total P&L" value={fmt(stats.totalPL)} sub={`${pct(stats.totalReturn)} on capital deployed`}
+            <Card title="Total P&L" value={fmt(stats.totalPL)} sub={`${returnText} ${returnSub}`}
                   tone={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} />
             <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)} sub={`${realizedLots} matched lot${realizedLots === 1 ? "" : "s"}`}
                   tone={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
@@ -1961,7 +1972,7 @@ export default function App() {
                     tone={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"}
                     accent={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"} />
             </>) : (<>
-              <Card title="Your Return" value={pct(stats.totalReturn)} sub="on all capital deployed"
+              <Card title="Your Return" value={returnText} sub={returnSub}
                     tone={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"}
                     accent={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"} />
               <Card title="Nifty 50 — same timing" value="—"
