@@ -605,6 +605,54 @@ function PnlComboChart({ points }) {
   );
 }
 
+// One "top 5" panel on the Trades tab. `kind` picks the columns: open lots carry no exit,
+// closed lots carry a sell price and a booked P&L.
+function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride }) {
+  const cols = showClient
+    ? (kind === "open" ? "1.1fr 1.4fr .6fr .8fr .9fr .9fr" : "1.1fr 1.4fr .6fr .8fr .8fr .9fr .9fr")
+    : (kind === "open" ? "1.6fr .6fr .8fr .9fr .9fr" : "1.6fr .6fr .8fr .8fr .9fr .9fr");
+  const heads = [
+    ...(showClient ? ["Client"] : []),
+    "Stock", "Qty", "Buy",
+    ...(kind === "closed" ? ["Sell"] : []),
+    kind === "open" ? "Bought" : "Exited",
+    kind === "open" ? "Unrealized" : "Realized",
+  ];
+  const firstNum = showClient ? 2 : 1;
+  return (
+    <div style={{ ...PANEL, overflow: "hidden" }}>
+      <PanelTitle right={note ? <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{note}</span> : null}>{title}</PanelTitle>
+      {rows.length === 0 ? (
+        <div style={{ padding: "22px 22px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
+      ) : (<>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 22px",
+                      background: "var(--table-head)", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
+          {heads.map((h, i) => (
+            <div key={h} style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
+                                  color: "var(--ink-3)", textAlign: i >= firstNum ? "right" : "left", whiteSpace: "nowrap" }}>{h}</div>
+          ))}
+        </div>
+        {rows.map((r, i) => (
+          <div key={i} className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
+               padding: "11px 22px", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+            {showClient && <div style={{ fontSize: 12.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client}</div>}
+            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+              <LogoChip symbol={r.stock} w={54} h={26} />
+              <span style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.stock}</span>
+            </div>
+            <div className="num" style={{ fontSize: 12.5, textAlign: "right" }}>{r.qty}</div>
+            <div className="num" style={{ fontSize: 12.5, textAlign: "right", color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div>
+            {kind === "closed" && <div className="num" style={{ fontSize: 12.5, textAlign: "right", color: "var(--ink-2)" }}>{fmt(r.sellPrice)}</div>}
+            <div className="num" style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
+            <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600,
+                 color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
+          </div>
+        ))}
+      </>)}
+    </div>
+  );
+}
+
 const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "" };
 const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "" };
 
@@ -620,6 +668,7 @@ export default function App() {
   const [appError, setAppError] = useState("");
 
   const [view, setView] = useState("dashboard");
+  const [holdingSearch, setHoldingSearch] = useState("");
   const [filterClient, setFilterClient] = useState("All");
 
   // ── Mobile-only UI state ─────────────────────────────────────────────────────
@@ -766,6 +815,31 @@ export default function App() {
       return sortDir === "asc" ? c : -c;
     });
   }, [portfolio, sortCol, sortDir]);
+  // Trades tab shows highlights, not the whole book — the full open-position table lived here
+  // before and simply repeated the Portfolio tab.
+  const highlights = useMemo(() => {
+    // One entry per still-open FIFO lot, so "recent" means recently bought, not recently touched.
+    const openLots = portfolio.filter(p => p.netQty > 0).flatMap(p =>
+      p.holdingLots.map(l => ({
+        client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
+        cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
+      })));
+    const closed = portfolio.flatMap(p => p.matchDetails.map(m => ({ client: p.client, stock: p.stock, ...m })));
+    return {
+      recentOpen: [...openLots].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5),
+      recentClosed: [...closed].sort((a, b) => b.sellDate.localeCompare(a.sellDate)).slice(0, 5),
+      best: [...closed].filter(m => m.pl > 0).sort((a, b) => b.pl - a.pl).slice(0, 5),
+      worst: [...closed].filter(m => m.pl < 0).sort((a, b) => a.pl - b.pl).slice(0, 5),
+    };
+  }, [portfolio]);
+  // Admin-only holdings search: spans EVERY client regardless of the client filter, because the
+  // question it answers is "who holds this?".
+  const holdingHits = useMemo(() => {
+    const q = holdingSearch.trim().toUpperCase();
+    if (!q) return null;
+    return portfolioAll.filter(p => p.netQty > 0 && p.stock.toUpperCase().includes(q))
+                       .sort((a, b) => b.currentVal - a.currentVal);
+  }, [holdingSearch, portfolioAll]);
   const pnlTotals = useMemo(() => ({
     realized: portfolio.reduce((s, p) => s + p.realizedPL, 0),
     unrealized: portfolio.reduce((s, p) => s + (p.netQty > 0 ? p.unrealizedPL : 0), 0),
@@ -2013,13 +2087,18 @@ export default function App() {
       {/* ── PORTFOLIO TAB ────────────────────────────────────────────────────── */}
       {view === "portfolio" && isGuest && <LockedPanel what="Portfolio" />}
       {view === "portfolio" && !isGuest && (() => {
-        const totalVal = holdings.reduce((s, h) => s + h.currentVal, 0);
-        const totalInvested = holdings.reduce((s, h) => s + h.investedHolding, 0);
+        // A search deliberately ignores the client filter and spans every book, so the Client
+        // column is forced on — the point of searching is to see who else holds the name.
+        const searching = isAdmin && holdingHits !== null;
+        const rows = searching ? holdingHits : holdings;
+        const showClient = searching || filterClient === "All";
+        const totalVal = rows.reduce((s, h) => s + h.currentVal, 0);
+        const totalInvested = rows.reduce((s, h) => s + h.investedHolding, 0);
         const unreal = totalVal - totalInvested;
-        const cols = filterClient === "All"
+        const cols = showClient
           ? "1.2fr 1.1fr .7fr .8fr .8fr 1fr 1fr 1.1fr"
           : "1.1fr .7fr .8fr .8fr 1fr 1fr 1.1fr";
-        const heads = [...(filterClient === "All" ? ["Client"] : []),
+        const heads = [...(showClient ? ["Client"] : []),
                        "Stock","Net Qty","Avg Buy","CMP","Invested","Current Value","Weight"];
         return (<>
           <Hero view="portfolio" eyebrow={`Portfolio · ${filterClient === "All" ? "All clients" : filterClient}`}
@@ -2030,18 +2109,45 @@ export default function App() {
                 <div className="fig" style={{ fontSize: 24, fontWeight: 600, marginTop: 4 }}>{fmt(unreal)}</div>
               </div>}>
             <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
-              {holdings.length} active holding{holdings.length === 1 ? "" : "s"}
+              {rows.length} active holding{rows.length === 1 ? "" : "s"}
             </h2>
             <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
               Invested <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(totalInvested)}</strong>
               {" · "}Current <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(totalVal)}</strong>
+              {searching && <> · <strong style={{ color: "#fff", fontWeight: 600 }}>
+                {new Set(rows.map(r => r.client)).size} client{new Set(rows.map(r => r.client)).size === 1 ? "" : "s"} hold this
+              </strong></>}
             </div>
+            {isAdmin && (
+              <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ position: "relative", flex: "0 1 340px" }}>
+                  <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+                                 fontSize: 13, color: "rgba(255,255,255,.55)", pointerEvents: "none" }}>⌕</span>
+                  <input value={holdingSearch} onChange={e => setHoldingSearch(e.target.value)}
+                         placeholder="Search a company — see every client holding it"
+                         style={{ width: "100%", boxSizing: "border-box", padding: "10px 34px 10px 30px",
+                                  borderRadius: 11, border: "1px solid rgba(255,255,255,.28)",
+                                  background: "rgba(255,255,255,.14)", color: "#fff", fontSize: 13, outline: "none" }} />
+                  {holdingSearch && (
+                    <button onClick={() => setHoldingSearch("")} title="Clear"
+                            style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                                     border: "none", background: "none", color: "rgba(255,255,255,.75)",
+                                     fontSize: 17, cursor: "pointer", lineHeight: 1 }}>×</button>
+                  )}
+                </div>
+                {searching && (
+                  <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", whiteSpace: "nowrap" }}>across all clients</span>
+                )}
+              </div>
+            )}
           </Hero>
 
-          {holdings.length === 0 ? (
+          {rows.length === 0 ? (
             <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>No active holdings</div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>{searching ? "\ud83d\udd0d" : "\ud83d\udced"}</div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>
+                {searching ? `No client holds a stock matching "${holdingSearch.trim()}"` : "No active holdings"}
+              </div>
             </div>
           ) : (
             <div style={{ ...PANEL, overflow: "hidden" }}>
@@ -2052,13 +2158,13 @@ export default function App() {
                                         color: "var(--ink-3)", textAlign: i >= (filterClient === "All" ? 2 : 1) ? "right" : "left" }}>{h}</div>
                 ))}
               </div>
-              {holdings.map((h, i) => {
+              {rows.map((h, i) => {
                 const weight = totalVal > 0 ? (h.currentVal / totalVal * 100) : 0;
                 const fg = tintFor(h.stock)[1];
                 return (
                   <div key={i} className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12,
-                       alignItems: "center", padding: "13px 22px", borderBottom: i === holdings.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
-                    {filterClient === "All" && <div style={{ fontSize: 13, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.client}</div>}
+                       alignItems: "center", padding: "13px 22px", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+                    {showClient && <div style={{ fontSize: 13, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.client}</div>}
                     <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                       <LogoChip symbol={h.stock} />
                       <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</span>
@@ -2082,7 +2188,7 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
                             padding: "13px 22px", borderTop: "1px solid var(--line)", background: "var(--table-head)", fontWeight: 700 }}>
                 <div style={{ fontSize: 13 }}>Total</div>
-                {filterClient === "All" && <div />}
+                {showClient && <div />}
                 <div /><div /><div />
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalInvested)}</div>
                 <div className="num" style={{ fontSize: 13, textAlign: "right",
@@ -2158,110 +2264,19 @@ export default function App() {
           <Card title="Total P&L" value={fmt(pnlTotals.realized + pnlTotals.unrealized)} accent={(pnlTotals.realized + pnlTotals.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
         </div>
 
-        {positions.length === 0 ? (
-          <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No open positions</div>
-          </div>
-        ) : (<>
-          <div style={{ ...PANEL, overflow: "hidden" }}>
-            <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Click a row to see FIFO lot matching</span>}>Open Positions</PanelTitle>
-            {(() => {
-              const COLS = "1.1fr .7fr .8fr .8fr 1fr 1fr 1fr .5fr";
-              const HEAD = [
-                { label: "Stock", key: "company", align: "left" },
-                { label: "Net Qty", key: "qty", align: "right" },
-                { label: "Avg Buy", align: "right" },
-                { label: "CMP", align: "right" },
-                { label: "Realized P&L", key: "realized", align: "right" },
-                { label: "Unrealized P&L", key: "unrealized", align: "right" },
-                { label: "Total P&L", key: "total", align: "right" },
-                { label: "", align: "right" },
-              ];
-              const sub = { fontSize: 10, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-3)" };
-              const cell = { fontSize: 12 };
-              return (<div style={{ marginTop: 14 }}>
-                <div style={{ display: "grid", gridTemplateColumns: COLS, gap: 12, padding: "12px 22px",
-                              background: "var(--table-head)", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
-                  {HEAD.map((c, i) => (
-                    <div key={i} onClick={c.key ? () => setSort(c.key) : undefined}
-                         style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
-                                  color: "var(--ink-3)", textAlign: c.align, cursor: c.key ? "pointer" : "default", userSelect: "none", whiteSpace: "nowrap" }}>
-                      {c.label}
-                      {c.key && sortCol === c.key && <span style={{ marginLeft: 4, color: "var(--accent)" }}>{sortDir === "asc" ? "▲" : "▼"}</span>}
-                    </div>
-                  ))}
-                </div>
-                {positions.map((p, pi) => {
-                  const k = `${p.client}||${p.stock}`;
-                  const open = expandedRows[k];
-                  const money = (v, show) => show
-                    ? <span style={{ color: v >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(v)}</span>
-                    : <span style={{ color: "var(--ink-3)" }}>—</span>;
-                  return (
-                    <div key={k}>
-                      <div className="grid-row" onClick={() => setExpandedRows(r => ({ ...r, [k]: !r[k] }))}
-                           style={{ display: "grid", gridTemplateColumns: COLS, gap: 12, alignItems: "center", cursor: "pointer",
-                                    padding: "13px 22px", borderBottom: "1px solid var(--row-rule)" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                          <LogoChip symbol={p.stock} />
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.stock}</div>
-                            <div style={{ fontSize: 11, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.client}</div>
-                          </div>
-                        </div>
-                        <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{p.netQty > 0 ? p.netQty : <span style={{ color: "var(--ink-3)" }}>—</span>}</div>
-                        <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{p.netQty > 0 ? fmt(p.avgBuyPrice) : <span style={{ color: "var(--ink-3)" }}>—</span>}</div>
-                        <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600 }}>{fmt(p.cmp)}</div>
-                        <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{money(p.realizedPL, p.totalSells > 0)}</div>
-                        <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{money(p.unrealizedPL, p.netQty > 0)}</div>
-                        <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 700 }}>{money(p.totalPL, true)}</div>
-                        <div style={{ textAlign: "right", color: "var(--ink-3)", fontSize: 11 }}>{open ? "▲" : "▼"}</div>
-                      </div>
-                      {open && (
-                        <div style={{ background: "#FAFBFD", padding: "16px 22px 18px 62px", borderBottom: "1px solid var(--row-rule)" }}>
-                          {p.matchDetails.length > 0 && (<>
-                            <div style={sub}>FIFO matched (realized)</div>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, marginTop: 8, marginBottom: 4 }}>
-                              {["Buy Date","Buy Avg","Sell Date","Sell Avg","Qty","P&L"].map(h => <div key={h} style={{ ...sub, fontSize: 9.5 }}>{h}</div>)}
-                            </div>
-                            {p.matchDetails.map((m, mi) => (
-                              <div key={mi} style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10, padding: "5px 0" }}>
-                                <div className="num" style={cell}>{fmtDate(m.buyDate)}</div>
-                                <div className="num" style={cell}>{fmt(m.buyPrice)}</div>
-                                <div className="num" style={cell}>{fmtDate(m.sellDate)}</div>
-                                <div className="num" style={cell}>{fmt(m.sellPrice)}</div>
-                                <div className="num" style={cell}>{m.qty}</div>
-                                <div className="num" style={{ ...cell, fontWeight: 600, color: m.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(m.pl)}</div>
-                              </div>
-                            ))}
-                          </>)}
-                          {p.holdingLots.length > 0 && (<>
-                            <div style={{ ...sub, marginTop: p.matchDetails.length > 0 ? 14 : 0 }}>Open lots (unrealized)</div>
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, marginTop: 8, marginBottom: 4 }}>
-                              {["Buy Date","Buy Avg","Qty","CMP","Unrealized P&L"].map(h => <div key={h} style={{ ...sub, fontSize: 9.5 }}>{h}</div>)}
-                            </div>
-                            {p.holdingLots.map((b, bi) => {
-                              const u = (p.cmp - b.price) * b.remainQty;
-                              return (
-                                <div key={bi} style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10, padding: "5px 0" }}>
-                                  <div className="num" style={cell}>{fmtDate(b.date)}</div>
-                                  <div className="num" style={cell}>{fmt(b.price)}</div>
-                                  <div className="num" style={cell}>{b.remainQty}</div>
-                                  <div className="num" style={cell}>{fmt(p.cmp)}</div>
-                                  <div className="num" style={{ ...cell, fontWeight: 600, color: u >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(u)}</div>
-                                </div>
-                              );
-                            })}
-                          </>)}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>);
-            })()}
-          </div>
+        <div style={{ display: "grid", gap: 14 }}>
+          <HighlightPanel title="Recent open trades" note="Newest lots still held"
+                          rows={highlights.recentOpen} kind="open" showClient={filterClient === "All"} />
+          <HighlightPanel title="Recent closed trades" note="Newest exits"
+                          rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All"} />
+          <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
+                          rows={highlights.best} kind="closed" showClient={filterClient === "All"} />
+          {isAdmin && (
+            <HighlightPanel title="Top 5 losing trades" note="Admin only · hidden from client logins"
+                            rows={highlights.worst} kind="closed" showClient={filterClient === "All"} />
+          )}
+        </div>
+
 
           <div style={{ marginTop: 16 }}>
                       <button onClick={() => setShowRawLog(v => !v)} style={{ ...btnS, fontSize: 12 }}>
@@ -2293,7 +2308,6 @@ export default function App() {
             </div>
           )}
         </div>
-          </>)}
       </>)}
 
       {/* ── BENCHMARK TAB ───────────────────────────────────────────────────── */}
