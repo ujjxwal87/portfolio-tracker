@@ -95,8 +95,7 @@ const HERO_GRADIENT = {
 // Cumulative total P&L over the plotted periods, drawn white-on-gradient inside the hero.
 const Sparkline = ({ points, w = 280, h = 100 }) => {
   if (!points || points.length < 2) return null;
-  let run = 0;
-  const vals = points.map(p => (run += p.realized + 0) || 0).map((v, i) => v + points[i].unrealized);
+  const vals = points.map(p => p.realized + p.unrealized);   // realized is already cumulative
   const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
   const x = (i) => (i / (vals.length - 1)) * (w - 6) + 3;
   const y = (v) => h - 8 - ((v - min) / span) * (h - 20);
@@ -496,11 +495,11 @@ function unrealizedAsOf(trades, dateIso, priceAsOf) {
   return u;
 }
 
-function realizedInRange(portfolio, startIso, endIso) {
+// Cumulative since inception, so it is a level comparable with unrealizedAsOf — not a per-period flow.
+function realizedThrough(portfolio, endIso) {
   let r = 0;
   portfolio.forEach(p => p.matchDetails.forEach(m => {
-    const sd = String(m.sellDate).slice(0, 10);
-    if (sd >= startIso && sd <= endIso) r += m.pl;
+    if (String(m.sellDate).slice(0, 10) <= endIso) r += m.pl;
   }));
   return r;
 }
@@ -515,7 +514,7 @@ function computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, year, qua
     if (start > tIso) return;   // a month that hasn't started has no data to plot
     points.push({
       label: MONTHS[m], sub: String(year), startIso: start, endIso: end,
-      realized: realizedInRange(portfolio, start, end),
+      realized: realizedThrough(portfolio, clamp(end)),
       unrealized: unrealizedAsOf(filteredTrades, clamp(end), priceAsOf),
     });
   };
@@ -525,7 +524,7 @@ function computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, year, qua
       const start = isoOf(year, m, a), end = isoOf(year, m, b);
       points.push({
         label: `${a}–${b}`, sub: `${MONTHS[m]} ${year}`, startIso: start, endIso: end,
-        realized: realizedInRange(portfolio, start, end),
+        realized: realizedThrough(portfolio, clamp(end)),
         unrealized: unrealizedAsOf(filteredTrades, clamp(end), priceAsOf),
       });
     });
