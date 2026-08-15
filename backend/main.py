@@ -391,8 +391,19 @@ def _fetch_one_price(sym: str):
 # ── Live prices (Yahoo Finance v8 chart API — free, no key needed) ─────────────
 
 @app.get("/api/prices")
-def get_prices(symbols: str, _: auth.CurrentUser = Depends(auth.current_user)):
-    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+def get_prices(symbols: Optional[str] = None, _: auth.CurrentUser = Depends(auth.current_user)):
+    """Omit `symbols` to price every stock currently in the trades table.
+
+    The frontend uses that on first load so the price fetch can run in parallel with
+    /clients and /trades instead of waiting for the symbol list to come back.
+    """
+    if symbols is None:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT stock_symbol FROM portfolio_tracker.trades")
+                symbol_list = [r[0].strip().upper() for r in cur.fetchall()]
+    else:
+        symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
     prices = {}
     with ThreadPoolExecutor(max_workers=8) as ex:
         futures = {ex.submit(_fetch_one_price, s): s for s in symbol_list}

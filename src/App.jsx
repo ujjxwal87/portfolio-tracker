@@ -605,6 +605,35 @@ function PnlComboChart({ points }) {
   );
 }
 
+// Mobile twin of HighlightPanel: same four lists, redrawn as stacked cards instead of a grid.
+const MHighlight = ({ title, note, rows, kind }) => (
+  <div style={{ ...MCARD, borderRadius: 16, padding: "13px 14px", boxSizing: "border-box", maxWidth: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>{title}</div>
+      {note && <div style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: "auto", textAlign: "right",
+                             minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note}</div>}
+    </div>
+    {rows.length === 0 ? (
+      <div style={{ fontSize: 12, color: "var(--ink-3)", padding: "12px 0 4px" }}>Nothing to show yet.</div>
+    ) : rows.map((r, i) => (
+      <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, paddingTop: 11, marginTop: i ? 0 : 4,
+                            borderTop: i ? "1px solid var(--row-rule)" : "none", paddingBottom: 1, minWidth: 0 }}>
+        <LogoChip symbol={r.stock} w={46} h={24} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.stock}</div>
+          <div style={{ fontSize: 10, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {r.client} · {r.qty} × {fmt(r.buyPrice)}{kind === "closed" ? ` → ${fmt(r.sellPrice)}` : ""}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", flex: "none" }}>
+          <div className="fig" style={{ fontSize: 12.5, fontWeight: 700, color: r.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{compactINR(r.pl)}</div>
+          <div className="num" style={{ fontSize: 9.5, color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
 // One "top 5" panel on the Trades tab. `kind` picks the columns: open lots carry no exit,
 // closed lots carry a sell price and a booked P&L.
 function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride }) {
@@ -674,7 +703,7 @@ export default function App() {
   // ── Mobile-only UI state ─────────────────────────────────────────────────────
   const isMobile = useIsMobile();
   const [showScopeSheet, setShowScopeSheet] = useState(false);
-  const [mTradeTab, setMTradeTab] = useState("Positions");
+  const [mTradeTab, setMTradeTab] = useState("Highlights");
   const [mTypeFilter, setMTypeFilter] = useState("All");
 
   // The hero runs to the top of the viewport on mobile, so the browser chrome is tinted to match.
@@ -763,18 +792,29 @@ export default function App() {
     else { setSortCol(col); setSortDir("desc"); }
   };
 
+  // Set once live prices have been fetched, so the post-mount priming effect stays inert.
+  const pricesPrimed = useRef(false);
+
   const loadData = useCallback(async () => {
     try {
-      const [c, t] = await Promise.all([
+      // All three run in parallel and are awaited BEFORE the loading screen clears. Prices used
+      // to be fetched after mount, so the user waited twice — once for data, then again for
+      // valuations to stop showing last-trade prices. /prices with no symbols arg prices every
+      // traded stock, which is what lets it start without waiting on /trades.
+      const [c, t, live] = await Promise.all([
         apiFetch("/clients"),
         apiFetch("/trades"),
+        apiFetch("/prices").catch(() => ({})),
       ]);
       setClients(c);
       setTrades(t);
       const initCmp = {};
       t.forEach(tr => { if (!initCmp[tr.stock_symbol]) initCmp[tr.stock_symbol] = Number(tr.price); });
-      setCmp(prev => ({ ...initCmp, ...prev }));
       const stocks = [...new Set(t.map(tr => tr.stock_symbol))];
+      const gotLive = Object.keys(live).length > 0;
+      if (gotLive) { pricesPrimed.current = true; setLastRefreshed(new Date()); }
+      setCmp(prev => ({ ...initCmp, ...prev, ...live }));
+      // Only the P&L chart needs history, so let it stream in behind the UI.
       if (stocks.length > 0) {
         apiFetch(`/prices/history?symbols=${stocks.join(",")}`).then(hp => setDailyPrices(hp)).catch(() => {});
       }
@@ -911,8 +951,7 @@ export default function App() {
     finally { setPriceLoading(false); }
   }, [allStocks]);
 
-  // Without this, holdings stay valued at last TRADE price while the index side is live.
-  const pricesPrimed = useRef(false);
+  // Fallback only: fires if the initial load could not reach the price endpoint.
   useEffect(() => {
     if (!pricesPrimed.current && allStocks.length > 0) { pricesPrimed.current = true; refreshPrices(); }
   }, [allStocks, refreshPrices]);
@@ -1074,7 +1113,7 @@ export default function App() {
       onDone={() => setShowChangePw(false)} onCancel={() => setShowChangePw(false)} />
   );
 
-  if (appLoading) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "#6b7280" }}>Loading portfolio data…</div>;
+  if (appLoading) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "#6b7280" }}>Loading portfolio and live prices…</div>;
   if (appError) return <div style={{ textAlign: "center", padding: 80 }}><div style={{ fontSize: 15, color: "#dc2626", fontWeight: 700 }}>{appError}</div></div>;
 
   const views = ["dashboard", "clients", "portfolio", "trades", "benchmark"];
@@ -1110,6 +1149,9 @@ export default function App() {
                   ["benchmark", "Bench", "◈"]].filter(([v]) => isAdmin || v !== "clients");
     const scopeLabel = filterClient === "All" ? "All clients" : filterClient;
     const holdingsValue = holdings.reduce((s, h) => s + h.currentVal, 0);
+    // Same admin-only cross-client search as desktop; null when the box is empty.
+    const mSearching = isAdmin && holdingHits !== null;
+    const mHoldings = mSearching ? holdingHits : holdings;
     const holdingsInvested = holdings.reduce((s, h) => s + h.investedHolding, 0);
     const combinedValue = portfolioAll.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
     const bmk = benchmarkState === "ok" ? benchmark : null;
@@ -1238,11 +1280,18 @@ export default function App() {
 
             {view === "portfolio" && !isGuest && (<>
               <div style={MEYEBROW}>PORTFOLIO</div>
-              <h2 style={MHEADLINE}>{holdings.length} active holding{holdings.length === 1 ? "" : "s"}</h2>
+              <h2 style={MHEADLINE}>{mHoldings.length} active holding{mHoldings.length === 1 ? "" : "s"}</h2>
               <div style={{ ...MSUB, display: "flex", gap: 18 }}>
-                <span>Invested <span className="fig" style={{ color: "#fff" }}>{compactINR(holdingsInvested)}</span></span>
-                <span>Current <span className="fig" style={{ color: "#fff" }}>{compactINR(holdingsValue)}</span></span>
+                <span>Invested <span className="fig" style={{ color: "#fff" }}>
+                  {compactINR(mSearching ? mHoldings.reduce((a, h) => a + h.investedHolding, 0) : holdingsInvested)}</span></span>
+                <span>Current <span className="fig" style={{ color: "#fff" }}>
+                  {compactINR(mSearching ? mHoldings.reduce((a, h) => a + h.currentVal, 0) : holdingsValue)}</span></span>
               </div>
+              {mSearching && (
+                <div style={{ ...MSUB, marginTop: 4 }}>
+                  {new Set(mHoldings.map(h => h.client)).size} client{new Set(mHoldings.map(h => h.client)).size === 1 ? "" : "s"} hold this
+                </div>
+              )}
             </>)}
 
             {view === "trades" && !isGuest && (<>
@@ -1375,8 +1424,26 @@ export default function App() {
 
           {/* PORTFOLIO */}
           {view === "portfolio" && isGuest && <LockedPanel what="Portfolio" />}
-          {view === "portfolio" && !isGuest && (holdings.length === 0 ? empty("📭", "No active holdings") : holdings.map((h, i) => {
-            const weight = holdingsValue > 0 ? (h.currentVal / holdingsValue * 100) : 0;
+          {view === "portfolio" && !isGuest && isAdmin && (
+            <div style={{ position: "relative" }}>
+              <input value={holdingSearch} onChange={e => setHoldingSearch(e.target.value)}
+                     placeholder="Search a company across all clients"
+                     style={{ width: "100%", boxSizing: "border-box", padding: "12px 34px 12px 13px", minHeight: 44,
+                              borderRadius: 12, border: "1px solid var(--line)", background: "var(--surface)",
+                              color: "var(--ink)", fontSize: 13, outline: "none" }} />
+              {holdingSearch && (
+                <button onClick={() => setHoldingSearch("")} aria-label="Clear search"
+                        style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+                                 width: 32, height: 32, border: "none", background: "none",
+                                 color: "var(--ink-3)", fontSize: 18, cursor: "pointer" }}>×</button>
+              )}
+            </div>
+          )}
+          {view === "portfolio" && !isGuest && (mHoldings.length === 0
+            ? empty(mSearching ? "🔍" : "📭", mSearching ? `No client holds "${holdingSearch.trim()}"` : "No active holdings")
+            : mHoldings.map((h, i) => {
+            const mTotal = mHoldings.reduce((s2, x) => s2 + x.currentVal, 0);
+            const weight = mTotal > 0 ? (h.currentVal / mTotal * 100) : 0;
             const fg = tintFor(h.stock)[1];
             return (
               <div key={i} style={MCARD}>
@@ -1415,83 +1482,22 @@ export default function App() {
           {view === "trades" && isGuest && <LockedPanel what="Trades" />}
           {view === "trades" && !isGuest && (<>
             <div style={{ display: "flex", gap: 3, background: "#E7EBF1", padding: 3, borderRadius: 11 }}>
-              {segTab("Positions", mTradeTab === "Positions", () => setMTradeTab("Positions"))}
+              {segTab("Highlights", mTradeTab === "Highlights", () => setMTradeTab("Highlights"))}
               {segTab("Trade log", mTradeTab === "Trade log", () => setMTradeTab("Trade log"))}
             </div>
 
-            {mTradeTab === "Positions" && (positions.length === 0 ? empty("📄", "No open positions") : positions.map(p => {
-              const k = `${p.client}||${p.stock}`;
-              const open = expandedRows[k];
-              return (
-                <div key={k} style={{ ...MCARD, padding: 0, overflow: "hidden" }}>
-                  <div onClick={() => toggleRow(k)} style={{ padding: "13px 14px", cursor: "pointer" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                      {logoOf(p.stock)}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700 }}>{p.stock}</div>
-                        <div style={{ fontSize: 10.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.client}</div>
-                      </div>
-                      <div style={{ textAlign: "right", flex: "none" }}>
-                        <div className="fig" style={{ fontSize: 14.5, fontWeight: 700, color: tone(p.totalPL) }}>{compactINR(p.totalPL)}</div>
-                        <div style={{ fontSize: 10, color: "var(--ink-3)" }}>total P&L</div>
-                      </div>
-                      <div style={{ flex: "none", width: 12, textAlign: "right", color: "#CBD5E1", fontSize: 10 }}>{open ? "▲" : "▼"}</div>
-                    </div>
-                    <div style={{ ...MFOOTER, alignItems: "flex-start", marginTop: 11, paddingTop: 10 }}>
-                      <MStat label="REALIZED" value={p.totalSells > 0 ? compactINR(p.realizedPL) : "—"}
-                             tone={p.totalSells > 0 ? tone(p.realizedPL) : "var(--ink-3)"} weight={600} />
-                      <MStat label="UNREALIZED" value={p.netQty > 0 ? compactINR(p.unrealizedPL) : "—"}
-                             tone={p.netQty > 0 ? tone(p.unrealizedPL) : "var(--ink-3)"} weight={600} />
-                      <div style={{ marginLeft: "auto" }}>
-                        <MStat label="NET QTY" value={p.netQty > 0 ? p.netQty : "—"} align="right" />
-                      </div>
-                    </div>
-                  </div>
-                  {open && (
-                    <div style={{ background: "#FAFBFD", borderTop: "1px solid #F1F4F8", padding: "13px 14px",
-                                  display: "flex", flexDirection: "column", gap: 14 }}>
-                      {p.matchDetails.length > 0 && (
-                        <div>
-                          <div style={{ ...MMICRO, letterSpacing: ".07em", marginBottom: 8 }}>FIFO MATCHED (REALIZED)</div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {p.matchDetails.map((m, mi) => (
-                              <div key={mi} style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 11, padding: "10px 11px" }}>
-                                <div className="num" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11.5, color: "var(--ink-2)" }}>
-                                  <span>{fmtDate(m.buyDate)}</span><span style={{ color: "#CBD5E1" }}>→</span><span>{fmtDate(m.sellDate)}</span>
-                                  <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 12.5, color: tone(m.pl) }}>{compactINR(m.pl)}</span>
-                                </div>
-                                <div className="num" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 5 }}>
-                                  {m.qty} qty · buy {fmt(m.buyPrice)} · sell {fmt(m.sellPrice)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {p.holdingLots.length > 0 && (
-                        <div>
-                          <div style={{ ...MMICRO, letterSpacing: ".07em", marginBottom: 8 }}>OPEN LOTS (UNREALIZED)</div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                            {p.holdingLots.map((b, bi) => {
-                              const u = (p.cmp - b.price) * b.remainQty;
-                              return (
-                                <div key={bi} className="num" style={{ background: "var(--surface)", border: "1px solid var(--line)",
-                                     borderRadius: 11, padding: "10px 11px", display: "flex", alignItems: "center", gap: 8,
-                                     fontSize: 11.5, color: "var(--ink-2)" }}>
-                                  <span>{fmtDate(b.date)}</span>
-                                  <span style={{ color: "var(--ink-3)" }}>{b.remainQty} × {fmt(b.price)}</span>
-                                  <span style={{ marginLeft: "auto", fontWeight: 700, fontSize: 12.5, color: tone(u) }}>{compactINR(u)}</span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            }))}
+            {mTradeTab === "Highlights" && (<>
+              <MHighlight title="Recent open trades" note="newest lots held"
+                          rows={highlights.recentOpen} kind="open" />
+              <MHighlight title="Recent closed trades" note="newest exits"
+                          rows={highlights.recentClosed} kind="closed" />
+              <MHighlight title="Top 5 profitable" note="best exits"
+                          rows={highlights.best} kind="closed" />
+              {isAdmin && (
+                <MHighlight title="Top 5 losing" note="admin only"
+                            rows={highlights.worst} kind="closed" />
+              )}
+            </>)}
 
             {mTradeTab === "Trade log" && (<>
               <div style={{ display: "flex", gap: 7 }}>
