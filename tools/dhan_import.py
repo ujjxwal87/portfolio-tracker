@@ -159,7 +159,11 @@ def merge(fills, sec2sym=None):
 # OPENING/CLOSING BALANCE) is deliberately ignored: settlements are not capital movements, and
 # charges are already netted into the running balance we take as cash_balance.
 DEPOSITS = {"Funds Deposited"}
-WITHDRAWALS = {"Monthly Settlement"}   # broker sweeping idle funds back to the bank account
+WITHDRAWALS = {
+    "Funds Withdrawal",       # "Money withdrawn to your Bank Account"
+    "Monthly Settlement",     # broker sweeping idle funds back to the bank account
+    "Quarterly Settlement",   # same sweep on the quarterly cycle
+}
 
 
 def import_ledger(cur, cid, rows, apply_it):
