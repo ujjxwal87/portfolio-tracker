@@ -600,6 +600,13 @@ INDEXES = {
 # they answer "is this alpha or just small-cap beta", which is not a client-facing question.
 CLIENT_INDEXES = ("nifty50", "sensex")
 
+# A blended benchmark: each deposit is split across cap tiers instead of going wholly into one
+# index. Same money-weighted rule per sleeve, so a deposit still buys units at ITS OWN day's
+# close. Admin-only for now — it is not part of what clients are shown.
+BLEND_KEY = "blend403030"
+BLEND_LABEL = "40/30/30 Blend"
+BLEND_WEIGHTS = {"smallcap250": 0.40, "midcap150": 0.30, "nifty50": 0.30}
+
 
 def _index_daily(symbol: str = "^NSEI", start: str = "2026-01-01"):
     s = int(datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
@@ -677,6 +684,7 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
     wanted = INDEXES if user.is_admin else {k: INDEXES[k] for k in CLIENT_INDEXES}
 
     indices, legs, latest_day = {}, [], None
+    series_by_key, level_now = {}, {}
     for key, (symbol, label) in wanted.items():
         try:
             series = _index_daily(symbol, start)
@@ -685,6 +693,7 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
         if not series:
             continue
         day_i, level_i = list(series.items())[-1]
+        series_by_key[key], level_now[key] = series, level_i
         units = 0.0
         for f in flows:
             day = f["date"].strftime("%Y-%m-%d")
@@ -710,6 +719,27 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
         }
         if key == "nifty50":
             latest_day = day_i
+
+    # Blend the sleeves once every component index has been priced.
+    if user.is_admin and all(k in series_by_key for k in BLEND_WEIGHTS):
+        blend_units = {k: 0.0 for k in BLEND_WEIGHTS}
+        for f in flows:
+            day = f["date"].strftime("%Y-%m-%d")
+            amt = float(f["amount"])
+            for k, w in BLEND_WEIGHTS.items():
+                _, level = _level_on_or_after(series_by_key[k], day)
+                if level:
+                    blend_units[k] += (amt * w) / level
+        b_value = round(sum(blend_units[k] * level_now[k] for k in BLEND_WEIGHTS), 2)
+        b_day = max(indices[k]["as_of"] for k in BLEND_WEIGHTS)
+        indices[BLEND_KEY] = {
+            "label": BLEND_LABEL, "as_of": b_day, "level_now": None,
+            "weights": {k: round(w * 100) for k, w in BLEND_WEIGHTS.items()},
+            "value": b_value,
+            "gain": round(b_value - net_invested, 2),
+            "return_pct": round((b_value - net_invested) / net_invested * 100, 2) if net_invested else None,
+            "xirr_pct": _xirr(xirr_flows + [(datetime.strptime(b_day, "%Y-%m-%d").date(), b_value)]),
+        }
 
     if "nifty50" not in indices:
         raise HTTPException(502, "Index data unavailable")

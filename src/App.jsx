@@ -18,7 +18,7 @@ const Badge = ({ children, color }) => {
   return <span style={{ background: bg, color: fg, padding: "2px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{children}</span>;
 };
 
-const INDEX_LABELS = { nifty50: "Nifty 50", sensex: "BSE Sensex", midcap150: "Nifty Midcap 150", smallcap250: "Nifty Smallcap 250" };
+const INDEX_LABELS = { nifty50: "Nifty 50", sensex: "BSE Sensex", midcap150: "Nifty Midcap 150", smallcap250: "Nifty Smallcap 250", blend403030: "40/30/30 Blend" };
 // Clients compare against the broad market only; cap-tier indices are an advisor tool.
 const CLIENT_INDEXES = ["nifty50", "sensex"];
 
@@ -1167,7 +1167,7 @@ export default function App() {
     const RET = bmk ? bmk.portfolio_return_pct : stats.totalReturn;
     const ahead = sel ? RET - sel.return_pct : 0;
     const nifty = bmk?.indices?.nifty50 || null;
-    const SHORT_INDEX = { nifty50: "Nifty 50", sensex: "Sensex", midcap150: "Midcap 150", smallcap250: "Smallcap 250" };
+    const SHORT_INDEX = { nifty50: "Nifty 50", sensex: "Sensex", midcap150: "Midcap 150", smallcap250: "Smallcap 250", blend403030: "40/30/30" };
     const tone = (v) => v >= 0 ? "var(--good)" : "var(--bad)";
     const pickClient = (name) => { setFilterClient(name); setExpandedRows({}); setShowScopeSheet(false); };
     const lastRefreshedLabel = lastRefreshed
