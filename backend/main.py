@@ -705,7 +705,10 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
                 row = cur.fetchone()
         extra = set(row[0] or []) if row else set()
         blend_wanted = BLEND_KEY in extra
-        keys = ["nifty50"] + [k for k in extra if k in INDEXES]
+        # CLIENT_INDEXES is the floor every client keeps (Nifty 50 + Sensex); benchmark_keys only
+        # ever ADDS. Making Nifty the sole constant would have quietly removed Sensex from views
+        # that have always shown it.
+        keys = list(CLIENT_INDEXES) + [k for k in extra if k in INDEXES and k not in CLIENT_INDEXES]
         # The blend is computed from its sleeves, so they must be priced even when not shown.
         needed = set(keys) | (set(BLEND_WEIGHTS) if blend_wanted else set())
         wanted = {k: INDEXES[k] for k in INDEXES if k in needed}
