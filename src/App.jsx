@@ -267,27 +267,25 @@ const MSheet = ({ title, onClose, children, z = 10 }) => (
 );
 
 // Same marks as the desktop combo chart, redrawn for a 330×170 box: no axis labels,
-// no hover tooltip (there is no pointer), thinner bars.
+// no hover tooltip (there is no pointer).
 const MobileCombo = ({ points }) => {
   const W = 330, H = 170, PAD = 18;
   const vals = points.flatMap(p => [p.realized, p.unrealized, 0]);
   const mn = Math.min(...vals), mx = Math.max(...vals), span = (mx - mn) || 1;
   const yOf = (v) => H - PAD - ((v - mn) / span) * (H - PAD * 2);
   const cx = (i) => PAD + (i + 0.5) * ((W - PAD * 2) / points.length);
-  const zero = yOf(0), bw = Math.max(7, (W - PAD * 2) / points.length * 0.44);
-  const line = points.map((p, i) => (i ? "L" : "M") + cx(i).toFixed(1) + " " + yOf(p.unrealized).toFixed(1)).join(" ");
+  const zero = yOf(0);
+  const path = (k) => points.map((p, i) => (i ? "L" : "M") + cx(i).toFixed(1) + " " + yOf(p[k]).toFixed(1)).join(" ");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ display: "block" }}>
       {[0.25, 0.5, 0.75].map(f => <line key={f} x1={0} x2={W} y1={H * f} y2={H * f} stroke="#EEF1F6" strokeWidth={1} />)}
       <line x1={0} x2={W} y1={zero} y2={zero} stroke="#CBD5E1" strokeWidth={1} />
-      {points.map((p, i) => {
-        const y = yOf(p.realized);
-        return <rect key={i} x={cx(i) - bw / 2} y={Math.min(y, zero)} width={bw}
-                     height={Math.max(2, Math.abs(zero - y))} rx={3}
-                     fill={p.realized >= 0 ? "var(--accent)" : "#F87171"} />;
-      })}
-      <path d={line} fill="none" stroke="#D97706" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-      {points.map((p, i) => <circle key={i} cx={cx(i)} cy={yOf(p.unrealized)} r={3.2} fill="#D97706" stroke="#fff" strokeWidth={1.6} />)}
+      {[["realized", "#2563EB"], ["unrealized", "#D97706"]].map(([k, c]) => (
+        <g key={k}>
+          <path d={path(k)} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+          {points.map((p, i) => <circle key={i} cx={cx(i)} cy={yOf(p[k])} r={3.2} fill={c} stroke="#fff" strokeWidth={1.6} />)}
+        </g>
+      ))}
       {points.map((p, i) => (
         <text key={i} x={cx(i)} y={H - 3} textAnchor="middle" fontSize={9} fill="#94A3B8">{p.label}</text>
       ))}
@@ -555,21 +553,12 @@ function PnlComboChart({ points }) {
   vmin = Math.floor(vmin / step) * step;
   vmax = Math.ceil(vmax / step) * step;
   const yOf = (v) => MT + plotH * (vmax - v) / (vmax - vmin);
-  const zeroY = yOf(0);
   const band = plotW / points.length;
   const cx = (i) => ML + band * (i + 0.5);
-  const barW = Math.min(band * 0.5, 24);   // cap the mark; the band's leftover is air
-  // 4px rounded data-end, square at the baseline
-  const barPath = (x, w, yTop, yBase) => {
-    const up = yTop <= yBase, h = Math.abs(yBase - yTop), r = Math.min(4, w / 2, h);
-    const s = up ? 1 : -1, yEnd = yBase - s * h;
-    return `M${x},${yBase} L${x},${yEnd + s * r} Q${x},${yEnd} ${x + r},${yEnd} `
-         + `L${x + w - r},${yEnd} Q${x + w},${yEnd} ${x + w},${yEnd + s * r} L${x + w},${yBase} Z`;
-  };
   const ticks = [];
   for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
-  const linePts = points.map((p, i) => `${cx(i)},${yOf(p.unrealized)}`).join(" ");
-  const C_BAR = "#2563eb", C_LINE = "#d97706";
+  const ptsOf = (k) => points.map((p, i) => `${cx(i)},${yOf(p[k])}`).join(" ");
+  const C_REAL = "#2563eb", C_LINE = "#d97706";
   return (
     <div style={{ position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", overflow: "visible" }}>
@@ -579,13 +568,13 @@ function PnlComboChart({ points }) {
             <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#94a3b8">{fmtCompact(t)}</text>
           </g>
         ))}
-        {points.map((p, i) => (
-          <path key={i} d={barPath(cx(i) - barW / 2, barW, yOf(p.realized), zeroY)}
-                fill={C_BAR} opacity={hover === -1 || hover === i ? 1 : 0.4} />
-        ))}
-        <polyline points={linePts} fill="none" stroke={C_LINE} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
-        {points.map((p, i) => (
-          <circle key={i} cx={cx(i)} cy={yOf(p.unrealized)} r={hover === i ? 5.5 : 4.5} fill={C_LINE} stroke="var(--surface)" strokeWidth="2" />
+        {[["realized", C_REAL], ["unrealized", C_LINE]].map(([k, c]) => (
+          <g key={k}>
+            <polyline points={ptsOf(k)} fill="none" stroke={c} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+            {points.map((p, i) => (
+              <circle key={i} cx={cx(i)} cy={yOf(p[k])} r={hover === i ? 5.5 : 4.5} fill={c} stroke="var(--surface)" strokeWidth="2" />
+            ))}
+          </g>
         ))}
         {points.map((p, i) => (
           <g key={i}>
@@ -604,7 +593,7 @@ function PnlComboChart({ points }) {
         }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{points[hover].label}{points[hover].sub ? ` · ${points[hover].sub}` : ""}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ width: 9, height: 9, borderRadius: 2, background: C_BAR, display: "inline-block" }} />
+            <span style={{ width: 9, height: 2, background: C_REAL, display: "inline-block" }} />
             Realized: <b>{fmt(points[hover].realized)}</b>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
@@ -1238,7 +1227,7 @@ export default function App() {
                 <div style={{ fontSize: 13.5, fontWeight: 700 }}>Realized vs Unrealized</div>
                 <div style={{ display: "flex", gap: 12, marginTop: 7, fontSize: 10.5, color: "var(--ink-2)", fontWeight: 600 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 2, background: "var(--accent)" }} />Realized
+                    <span style={{ width: 14, height: 3, borderRadius: 2, background: "var(--accent)" }} />Realized
                   </span>
                   <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
                     <span style={{ width: 14, height: 3, borderRadius: 2, background: "var(--amber)" }} />Unrealized
@@ -1327,7 +1316,8 @@ export default function App() {
                     </div>
                   </div>
                   <div style={{ textAlign: "right", flex: "none" }}>
-                    <div className="fig" style={{ fontSize: 14.5, fontWeight: 600 }}>{compactINR(h.currentVal)}</div>
+                    <div className="fig" style={{ fontSize: 14.5, fontWeight: 600,
+                         color: h.currentVal > h.investedHolding ? "var(--good)" : "var(--bad)" }}>{compactINR(h.currentVal)}</div>
                     <div className="fig" style={{ fontSize: 11, fontWeight: 700, color: tone(h.unrealizedPL) }}>{compactINR(h.unrealizedPL)}</div>
                   </div>
                 </div>
@@ -2003,10 +1993,10 @@ export default function App() {
             <PanelTitle right={
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--ink-2)" }}>
-                  <span style={{ width: 11, height: 11, borderRadius: 3, background: "var(--accent)" }} />Realized (bars)
+                  <span style={{ width: 16, height: 3, borderRadius: 2, background: "var(--accent)" }} />Realized
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--ink-2)" }}>
-                  <span style={{ width: 16, height: 3, borderRadius: 2, background: "var(--amber)" }} />Unrealized (line)
+                  <span style={{ width: 16, height: 3, borderRadius: 2, background: "var(--amber)" }} />Unrealized
                 </span>
                 <Segmented options={["All", 1, 2, 3, 4].map(q => ({ value: q, label: q === "All" ? "All" : `Q${q}` }))}
                            value={pnlQuarter}
@@ -2078,7 +2068,8 @@ export default function App() {
                     <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(h.avgBuyPrice)}</div>
                     <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600 }}>{fmt(h.cmp)}</div>
                     <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(h.investedHolding)}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600 }}>{fmt(h.currentVal)}</div>
+                    <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
+                         color: h.currentVal > h.investedHolding ? "var(--good)" : "var(--bad)" }}>{fmt(h.currentVal)}</div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
                       <span style={{ width: 54, height: 5, borderRadius: 99, background: "#EEF1F6", overflow: "hidden", flex: "none" }}>
                         <span style={{ display: "block", height: "100%", borderRadius: 99, background: fg,
@@ -2095,7 +2086,8 @@ export default function App() {
                 {filterClient === "All" && <div />}
                 <div /><div /><div />
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalInvested)}</div>
-                <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalVal)}</div>
+                <div className="num" style={{ fontSize: 13, textAlign: "right",
+                     color: totalVal > totalInvested ? "var(--good)" : "var(--bad)" }}>{fmt(totalVal)}</div>
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>100.0%</div>
               </div>
             </div>
