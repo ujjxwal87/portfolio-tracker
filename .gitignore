@@ -10,3 +10,7 @@ scratch/
 *.zip
 *.xlsx
 *.local.md
+
+# Broker exports contain client trade data — never commit them
+tradebook-*.csv
+pnl-*.csv
