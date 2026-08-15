@@ -682,7 +682,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
   );
 }
 
-const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "" };
+const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "", benchmark_keys: [] };
 const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "" };
 
 export default function App() {
@@ -924,7 +924,12 @@ export default function App() {
   const [benchIndex, setBenchIndex] = useState("nifty50");
   const [benchmark, setBenchmark] = useState(null);
   const [benchmarkState, setBenchmarkState] = useState("idle");
-  const indexChoices = isAdmin ? Object.keys(INDEX_LABELS) : CLIENT_INDEXES;
+  const indexChoices = useMemo(() => {
+    if (isAdmin) return Object.keys(INDEX_LABELS);
+    // Whatever the server sent for this client — Nifty 50 plus their configured extras.
+    const served = Object.keys(benchmark?.indices || {});
+    return served.length ? served : CLIENT_INDEXES;
+  }, [isAdmin, benchmark]);
   useEffect(() => {
     if (!indexChoices.includes(benchIndex)) setBenchIndex(indexChoices[0]);
   }, [indexChoices, benchIndex]);
@@ -967,7 +972,7 @@ export default function App() {
   // ── Client CRUD ──────────────────────────────────────────────────────────────
 
   const openAddClient = () => { setClientForm(EMPTY_CLIENT_FORM); setEditingClientId(null); setShowClientForm(true); };
-  const openEditClient = (c) => { setClientForm({ name: c.name, phone: c.phone || "", email: c.email || "", joining_date: c.joining_date ? String(c.joining_date).slice(0, 10) : "" }); setEditingClientId(c.id); setShowClientForm(true); };
+  const openEditClient = (c) => { setClientForm({ name: c.name, phone: c.phone || "", email: c.email || "", joining_date: c.joining_date ? String(c.joining_date).slice(0, 10) : "", benchmark_keys: c.benchmark_keys || [] }); setEditingClientId(c.id); setShowClientForm(true); };
   const cancelClientForm = () => { setShowClientForm(false); setEditingClientId(null); setClientForm(EMPTY_CLIENT_FORM); };
 
   const handleSaveClient = async () => {
@@ -1143,7 +1148,7 @@ export default function App() {
 
   // The Clients tab is the book of business \u2014 admin only.
   const NAV = [["dashboard","Dashboard","\u25c7"],["clients","Clients","\u25c9"],
-               ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],["benchmark","Benchmark","\u25c8"]]
+               ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],["benchmark","Custom Benchmark","\u25c8"]]
               .filter(([v]) => isAdmin || v !== "clients");
   const tradeCountFor = (name) => name === "All" ? trades.length : trades.filter(t => t.client_name === name).length;
 
@@ -1947,6 +1952,35 @@ export default function App() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 14 }}>
                 {field("Name", "name")}{field("Email", "email")}{field("Phone", "phone")}{field("Joining date", "joining_date", "date")}
               </div>
+              <div style={{ marginTop: 16 }}>
+                <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>
+                  Benchmarks this client sees
+                </label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                  <span style={{ padding: "7px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
+                                 background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" }}>
+                    Nifty 50 · always
+                  </span>
+                  {Object.keys(INDEX_LABELS).filter(k => k !== "nifty50").map(k => {
+                    const on = (clientForm.benchmark_keys || []).includes(k);
+                    return (
+                      <button key={k} type="button" onClick={() => setClientForm(f => ({
+                        ...f,
+                        benchmark_keys: on ? f.benchmark_keys.filter(x => x !== k) : [...(f.benchmark_keys || []), k],
+                      }))} style={{ padding: "7px 13px", borderRadius: 99, fontSize: 12.5, cursor: "pointer",
+                                    fontWeight: on ? 700 : 600,
+                                    background: on ? "var(--ink)" : "var(--surface)",
+                                    color: on ? "#fff" : "var(--ink-2)",
+                                    border: `1px solid ${on ? "var(--ink)" : "var(--line)"}` }}>
+                        {INDEX_LABELS[k]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
+                  Nifty 50 is always compared. Anything selected here is added to this client's own view.
+                </div>
+              </div>
               <div style={{ marginTop: 16, display: "flex", gap: 9 }}>
                 <button onClick={handleSaveClient} disabled={clientSaving}
                         style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: "var(--ink)", color: "#fff",
@@ -2331,7 +2365,7 @@ export default function App() {
         const RET = bmk ? bmk.portfolio_return_pct : stats.totalReturn;
         const ahead = sel ? RET - sel.return_pct : 0;
         return (<>
-          <Hero view="benchmark" eyebrow="Benchmark · money-weighted"
+          <Hero view="benchmark" eyebrow="Customized benchmark · money-weighted"
             right={
               <div style={{ display: "flex", gap: 3, background: "rgba(255,255,255,.14)", padding: 4,
                             borderRadius: 99, border: "1px solid rgba(255,255,255,.18)" }}>

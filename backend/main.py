@@ -179,6 +179,8 @@ class ClientCreate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     joining_date: Optional[date] = None
+    # Extra benchmarks beyond Nifty 50, which every client always gets.
+    benchmark_keys: Optional[list[str]] = None
 
 
 class TradeCreate(BaseModel):
@@ -195,8 +197,8 @@ class TradeCreate(BaseModel):
 
 @app.get("/api/clients")
 def list_clients(user: auth.CurrentUser = Depends(auth.current_user)):
-    cols = ("SELECT id, name, phone, email, joining_date, cash_balance, created_at, updated_at "
-            "FROM portfolio_tracker.clients ")
+    cols = ("SELECT id, name, phone, email, joining_date, cash_balance, benchmark_keys, "
+            "created_at, updated_at FROM portfolio_tracker.clients ")
     if user.is_guest:
         labels = guest_client_map()
         with get_db() as conn:
@@ -238,9 +240,12 @@ def update_client(client_id: str, body: ClientCreate, _: auth.CurrentUser = Depe
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
                 "UPDATE portfolio_tracker.clients "
-                "SET name=%s, phone=%s, email=%s, joining_date=%s, updated_at=NOW() "
-                "WHERE id=%s RETURNING id, name, phone, email, joining_date, created_at, updated_at",
-                (body.name, body.phone, body.email, body.joining_date, client_id),
+                "SET name=%s, phone=%s, email=%s, joining_date=%s, "
+                "    benchmark_keys=COALESCE(%s, benchmark_keys), updated_at=NOW() "
+                "WHERE id=%s RETURNING id, name, phone, email, joining_date, benchmark_keys, "
+                "         created_at, updated_at",
+                (body.name, body.phone, body.email, body.joining_date,
+                 _valid_benchmarks(body.benchmark_keys), client_id),
             )
             row = cur.fetchone()
             if not row:
@@ -608,6 +613,14 @@ BLEND_LABEL = "40/30/30 Blend"
 BLEND_WEIGHTS = {"smallcap250": 0.40, "midcap150": 0.30, "nifty50": 0.30}
 
 
+def _valid_benchmarks(keys):
+    """Keep only keys we can actually price, and never store nifty50 — it is implicit."""
+    if keys is None:
+        return None
+    allowed = set(INDEXES) | {BLEND_KEY}
+    return [k for k in dict.fromkeys(keys) if k in allowed and k != "nifty50"]
+
+
 def _index_daily(symbol: str = "^NSEI", start: str = "2026-01-01"):
     s = int(datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
     e = int(datetime.now(tz=timezone.utc).timestamp())
@@ -679,9 +692,24 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
     net_invested = sum(float(f["amount"]) for f in flows)
     xirr_flows = [(f["date"], -float(f["amount"])) for f in flows]
 
-    # Hidden on the server, not just in the UI — a client cannot reach the cap-tier indices
-    # by calling the API directly.
-    wanted = INDEXES if user.is_admin else {k: INDEXES[k] for k in CLIENT_INDEXES}
+    # Hidden on the server, not just in the UI — a client cannot reach benchmarks they were not
+    # given by calling the API directly. Admins see everything; a client sees Nifty 50 (always)
+    # plus whatever benchmark_keys their record carries.
+    if user.is_admin:
+        wanted = INDEXES
+        blend_wanted = True
+    else:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT benchmark_keys FROM portfolio_tracker.clients WHERE id=%s", (client_id,))
+                row = cur.fetchone()
+        extra = set(row[0] or []) if row else set()
+        blend_wanted = BLEND_KEY in extra
+        keys = ["nifty50"] + [k for k in extra if k in INDEXES]
+        # The blend is computed from its sleeves, so they must be priced even when not shown.
+        needed = set(keys) | (set(BLEND_WEIGHTS) if blend_wanted else set())
+        wanted = {k: INDEXES[k] for k in INDEXES if k in needed}
+        shown = set(keys)
 
     indices, legs, latest_day = {}, [], None
     series_by_key, level_now = {}, {}
@@ -721,7 +749,7 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
             latest_day = day_i
 
     # Blend the sleeves once every component index has been priced.
-    if user.is_admin and all(k in series_by_key for k in BLEND_WEIGHTS):
+    if blend_wanted and all(k in series_by_key for k in BLEND_WEIGHTS):
         blend_units = {k: 0.0 for k in BLEND_WEIGHTS}
         for f in flows:
             day = f["date"].strftime("%Y-%m-%d")
@@ -740,6 +768,10 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
             "return_pct": round((b_value - net_invested) / net_invested * 100, 2) if net_invested else None,
             "xirr_pct": _xirr(xirr_flows + [(datetime.strptime(b_day, "%Y-%m-%d").date(), b_value)]),
         }
+
+    if not user.is_admin:
+        keep = shown | ({BLEND_KEY} if blend_wanted else set())
+        indices = {k: v for k, v in indices.items() if k in keep}
 
     if "nifty50" not in indices:
         raise HTTPException(502, "Index data unavailable")
