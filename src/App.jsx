@@ -828,11 +828,19 @@ export default function App() {
 
   useEffect(() => { if (session) { setAppLoading(true); loadData(); } }, [loadData, session]);
 
-  const clientNames = useMemo(() => ["All", ...clients.map(c => c.name)], [clients]);
   const filteredTrades = useMemo(() => filterClient === "All" ? trades : trades.filter(t => t.client_name === filterClient), [trades, filterClient]);
   const portfolio = useMemo(() => resolvePortfolio(filteredTrades, cmp), [filteredTrades, cmp]);
   // Clients view is never client-filtered, so it needs the all-clients resolve.
   const portfolioAll = useMemo(() => resolvePortfolio(trades, cmp), [trades, cmp]);
+  // Current value of each client's open holdings — drives the sidebar ordering.
+  const clientValue = useMemo(() => {
+    const m = {};
+    portfolioAll.forEach(p => { if (p.netQty > 0) m[p.client] = (m[p.client] || 0) + p.currentVal; });
+    return m;
+  }, [portfolioAll]);
+  // Biggest book first, so the clients that matter most are at the top of the filter.
+  const clientNames = useMemo(() => ["All", ...clients.map(c => c.name)
+    .sort((a, b) => (clientValue[b] || 0) - (clientValue[a] || 0))], [clients, clientValue]);
   const holdings = useMemo(() => portfolio.filter(p => p.netQty > 0)
     .sort((a, b) => b.currentVal - a.currentVal), [portfolio]);
   const allStocks = useMemo(() => [...new Set(trades.map(t => t.stock_symbol))], [trades]);
