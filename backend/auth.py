@@ -217,11 +217,31 @@ def fetch_account(username: str) -> Optional[dict]:
     return account
 
 
+# One query, not two. This runs on EVERY authenticated request, and the DB is a region away —
+# the old username-then-refetch round trip doubled auth latency on every page load.
+_ACCOUNT_COLS = ["id", "username", "password_hash", "role", "client_id",
+                 "must_change_password", "name", "updated_at"]
+
+
+def _row_to_account(row) -> dict:
+    account = dict(zip(_ACCOUNT_COLS, row))
+    account["id"] = str(account["id"])
+    account["client_id"] = str(account["client_id"]) if account["client_id"] else None
+    return account
+
+
 def fetch_account_by_id(user_id: str) -> Optional[dict]:
     with get_db() as conn, conn.cursor() as cur:
-        cur.execute("SELECT username FROM portfolio_tracker.app_users WHERE id = %s", (user_id,))
+        cur.execute(
+            """SELECT u.id, u.username, u.password_hash, u.role, u.client_id,
+                      u.must_change_password, c.name, u.updated_at
+                 FROM portfolio_tracker.app_users u
+                 LEFT JOIN portfolio_tracker.clients c ON c.id = u.client_id
+                WHERE u.id = %s""",
+            (user_id,),
+        )
         row = cur.fetchone()
-    return fetch_account(row[0]) if row else None
+    return _row_to_account(row) if row else None
 
 
 def touch_last_login(user_id: str) -> None:

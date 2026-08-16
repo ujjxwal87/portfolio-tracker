@@ -1,5 +1,7 @@
 import logging
 import os
+import threading
+import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
@@ -395,6 +397,48 @@ def _fetch_one_price(sym: str):
 
 # ── Live prices (Yahoo Finance v8 chart API — free, no key needed) ─────────────
 
+# Quotes are the slowest thing on a page load (100+ Yahoo fetches). They only move during market
+# hours and every client shares the same symbols, so a short TTL makes reloads near-instant
+# without ever showing a stale-looking price.
+_PRICE_TTL = float(os.getenv("PRICE_CACHE_TTL", 90))
+_price_cache: dict = {}
+_price_cache_at: float = 0.0
+_price_lock = threading.Lock()
+
+
+def _warm_price_cache():
+    """Populate quotes in the background at boot, so the first person to sign in doesn't wait
+    for 100+ Yahoo fetches. Failures are silent — the endpoint just fetches on demand."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT DISTINCT stock_symbol FROM portfolio_tracker.trades")
+                syms = [r[0].strip().upper() for r in cur.fetchall()]
+        if not syms:
+            return
+        got = {}
+        with ThreadPoolExecutor(max_workers=min(32, len(syms))) as ex:
+            for fut in as_completed([ex.submit(_fetch_one_price, x) for x in syms]):
+                try:
+                    sym, price = fut.result()
+                    got[sym] = price
+                except Exception:
+                    pass
+        if got:
+            global _price_cache, _price_cache_at
+            with _price_lock:
+                _price_cache.update(got)
+                _price_cache_at = time.time()
+            logger.info(f"Price cache warmed with {len(got)} symbols")
+    except Exception as e:
+        logger.warning(f"Price cache warm failed: {e}")
+
+
+@app.on_event("startup")
+def _on_startup():
+    threading.Thread(target=_warm_price_cache, daemon=True).start()
+
+
 @app.get("/api/prices")
 def get_prices(symbols: Optional[str] = None, _: auth.CurrentUser = Depends(auth.current_user)):
     """Omit `symbols` to price every stock currently in the trades table.
@@ -409,8 +453,15 @@ def get_prices(symbols: Optional[str] = None, _: auth.CurrentUser = Depends(auth
                 symbol_list = [r[0].strip().upper() for r in cur.fetchall()]
     else:
         symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    global _price_cache, _price_cache_at
+    with _price_lock:
+        fresh = (time.time() - _price_cache_at) < _PRICE_TTL
+        cached = {s: _price_cache[s] for s in symbol_list if s in _price_cache} if fresh else {}
+    if cached and len(cached) == len(symbol_list):
+        return cached
+
     prices = {}
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=min(32, max(4, len(symbol_list)))) as ex:
         futures = {ex.submit(_fetch_one_price, s): s for s in symbol_list}
         for future in as_completed(futures):
             try:
@@ -418,6 +469,10 @@ def get_prices(symbols: Optional[str] = None, _: auth.CurrentUser = Depends(auth
                 prices[sym] = price
             except Exception as e:
                 logger.warning(f"Price fetch failed for {futures[future]}: {e}")
+    if prices:
+        with _price_lock:
+            _price_cache.update(prices)
+            _price_cache_at = time.time()
     return prices
 
 
