@@ -957,7 +957,8 @@ export default function App() {
     setPriceLoading(true);
     setPriceError("");
     try {
-      const prices = await apiFetch(`/prices?symbols=${allStocks.join(",")}`);
+      // force=1 — this is a user-initiated refresh, so skip the server's page-load cache.
+      const prices = await apiFetch(`/prices?symbols=${allStocks.join(",")}&force=1`);
       if (Object.keys(prices).length > 0) { setCmp(prev => ({ ...prev, ...prices })); setLastRefreshed(new Date()); }
       else setPriceError("No prices returned. Try again.");
     } catch { setPriceError("Failed to fetch prices. Try again."); }

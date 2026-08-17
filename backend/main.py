@@ -440,7 +440,8 @@ def _on_startup():
 
 
 @app.get("/api/prices")
-def get_prices(symbols: Optional[str] = None, _: auth.CurrentUser = Depends(auth.current_user)):
+def get_prices(symbols: Optional[str] = None, force: bool = False,
+               _: auth.CurrentUser = Depends(auth.current_user)):
     """Omit `symbols` to price every stock currently in the trades table.
 
     The frontend uses that on first load so the price fetch can run in parallel with
@@ -453,9 +454,11 @@ def get_prices(symbols: Optional[str] = None, _: auth.CurrentUser = Depends(auth
                 symbol_list = [r[0].strip().upper() for r in cur.fetchall()]
     else:
         symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    # An explicit Refresh must always go to the market. The cache exists to make page LOADS fast;
+    # serving it to someone who just clicked "refresh" makes the button look broken.
     global _price_cache, _price_cache_at
     with _price_lock:
-        fresh = (time.time() - _price_cache_at) < _PRICE_TTL
+        fresh = (not force) and (time.time() - _price_cache_at) < _PRICE_TTL
         cached = {s: _price_cache[s] for s in symbol_list if s in _price_cache} if fresh else {}
     if cached and len(cached) == len(symbol_list):
         return cached
