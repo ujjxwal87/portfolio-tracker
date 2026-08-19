@@ -2262,10 +2262,10 @@ export default function App() {
         const totalInvested = rows.reduce((s, h) => s + h.investedHolding, 0);
         const unreal = totalVal - totalInvested;
         const cols = showClient
-          ? "1.2fr 1.1fr .7fr .8fr .8fr 1fr 1fr 1.1fr"
-          : "1.1fr .7fr .8fr .8fr 1fr 1fr 1.1fr";
+          ? "1.2fr 1.1fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr"
+          : "1.1fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr";
         const heads = [...(showClient ? ["Client"] : []),
-                       "Stock","Net Qty","Avg Buy","CMP","Invested","Current Value","Weight"];
+                       "Stock","Net Qty","Avg Buy","CMP","Invested","Current Value","P&L","Weight"];
         return (<>
           <Hero view="portfolio" eyebrow={`Portfolio · ${filterClient === "All" ? "All clients" : filterClient}`}
             right={
@@ -2341,6 +2341,16 @@ export default function App() {
                     <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(h.investedHolding)}</div>
                     <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
                          color: h.currentVal > h.investedHolding ? "var(--good)" : "var(--bad)" }}>{fmt(h.currentVal)}</div>
+                    {/* Unrealized only — this table is open holdings, so booked P&L belongs on Trades. */}
+                    <div style={{ textAlign: "right" }}>
+                      <div className="fig" style={{ fontSize: 13, fontWeight: 600,
+                           color: h.unrealizedPL >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(h.unrealizedPL)}</div>
+                      <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>
+                        {h.investedHolding > 0
+                          ? `${h.unrealizedPL >= 0 ? "+" : ""}${(h.unrealizedPL / h.investedHolding * 100).toFixed(1)}%`
+                          : "—"}
+                      </div>
+                    </div>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
                       <span style={{ width: 54, height: 5, borderRadius: 99, background: "#EEF1F6", overflow: "hidden", flex: "none" }}>
                         <span style={{ display: "block", height: "100%", borderRadius: 99, background: fg,
@@ -2359,6 +2369,12 @@ export default function App() {
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalInvested)}</div>
                 <div className="num" style={{ fontSize: 13, textAlign: "right",
                      color: totalVal > totalInvested ? "var(--good)" : "var(--bad)" }}>{fmt(totalVal)}</div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="fig" style={{ fontSize: 13, color: unreal >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(unreal)}</div>
+                  <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600, marginTop: 1 }}>
+                    {totalInvested > 0 ? `${unreal >= 0 ? "+" : ""}${(unreal / totalInvested * 100).toFixed(1)}%` : "—"}
+                  </div>
+                </div>
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>100.0%</div>
               </div>
             </div>
