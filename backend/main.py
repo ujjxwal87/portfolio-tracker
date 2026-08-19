@@ -652,6 +652,61 @@ def delete_cash_flow(flow_id: str, _: auth.CurrentUser = Depends(auth.require_ad
     return None
 
 
+# ── Stop-loss / target levels (per symbol) ─────────────────────────────────────
+# Typed in rather than fetched: these live as chart drawings on Dhan, which no API exposes. One
+# row per symbol — the level is a price, and the same idea runs in every client's account.
+
+class LevelBody(BaseModel):
+    stop_loss: Optional[float] = None
+    target: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@app.get("/api/levels")
+def list_levels(user: auth.CurrentUser = Depends(auth.current_user)):
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM portfolio_tracker.stock_levels ORDER BY stock_symbol")
+            return cur.fetchall()
+
+
+@app.put("/api/levels/{symbol}")
+def upsert_level(symbol: str, body: LevelBody, _: auth.CurrentUser = Depends(auth.require_admin)):
+    symbol = (symbol or "").strip().upper()
+    if not symbol:
+        raise HTTPException(400, "Symbol is required")
+    if body.stop_loss is None and body.target is None:
+        raise HTTPException(400, "Give a stop loss, a target, or both")
+    for label, value in (("Stop loss", body.stop_loss), ("Target", body.target)):
+        if value is not None and value <= 0:
+            raise HTTPException(400, f"{label} must be greater than zero")
+    # Long book only, so a target under the stop is a slip worth rejecting by name rather than
+    # letting the CHECK constraint surface as a 500.
+    if body.stop_loss is not None and body.target is not None and body.target <= body.stop_loss:
+        raise HTTPException(400, "Target must be above the stop loss")
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                "INSERT INTO portfolio_tracker.stock_levels (stock_symbol,stop_loss,target,notes) "
+                "VALUES (%s,%s,%s,%s) "
+                "ON CONFLICT (stock_symbol) DO UPDATE SET stop_loss=EXCLUDED.stop_loss, "
+                "target=EXCLUDED.target, notes=EXCLUDED.notes, updated_at=NOW() RETURNING *",
+                (symbol, body.stop_loss, body.target, body.notes),
+            )
+            return cur.fetchone()
+
+
+@app.delete("/api/levels/{symbol}", status_code=204)
+def delete_level(symbol: str, _: auth.CurrentUser = Depends(auth.require_admin)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM portfolio_tracker.stock_levels WHERE stock_symbol=%s",
+                        ((symbol or "").strip().upper(),))
+            if cur.rowcount == 0:
+                raise HTTPException(404, "No levels set for that symbol")
+    return None
+
+
 INDEXES = {
     "nifty50": ("^NSEI", "Nifty 50"),
     "sensex": ("^BSESN", "BSE Sensex"),
