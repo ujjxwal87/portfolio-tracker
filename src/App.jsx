@@ -634,6 +634,86 @@ const MHighlight = ({ title, note, rows, kind }) => (
   </div>
 );
 
+// Mobile twin of ClientTradeStatsPanel — one card per client, win/loss split stacked.
+const MClientTradeStats = ({ rows }) => (
+  <div style={{ ...MCARD, borderRadius: 16, padding: "13px 14px", boxSizing: "border-box", maxWidth: "100%", overflow: "hidden" }}>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>Booked per client</div>
+      <div style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: "auto" }}>admin only · all clients</div>
+    </div>
+    {rows.length === 0 ? (
+      <div style={{ fontSize: 12, color: "var(--ink-3)", padding: "12px 0 4px" }}>Nothing to show yet.</div>
+    ) : rows.map((r, i) => (
+      <div key={r.client} style={{ paddingTop: 11, marginTop: i ? 0 : 4, paddingBottom: 1,
+                                   borderTop: i ? "1px solid var(--row-rule)" : "none" }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client}</div>
+          <div className="fig" style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 700,
+                                        color: r.net >= 0 ? "var(--good)" : "var(--bad)" }}>{compactINR(r.net)}</div>
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 3 }}>
+          <span style={{ color: "var(--good)" }}>{r.wins} win{r.wins === 1 ? "" : "s"}</span>
+          {r.wins ? ` · avg ${compactINR(r.avgWin)}` : ""}
+          {" · "}
+          <span style={{ color: "var(--bad)" }}>{r.losses} loss{r.losses === 1 ? "" : "es"}</span>
+          {r.losses ? ` · avg ${compactINR(r.avgLoss)}` : ""}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+// Admin-only per-client scoreboard on the Trades tab: how many booked exits each client won
+// and lost, and the average size of each. Ordered best net first. Counts come from FIFO-matched
+// exits, so they line up with the Top-5 panels below rather than with raw sell rows.
+function ClientTradeStatsPanel({ rows }) {
+  const cols = "1.6fr .7fr 1fr .7fr 1fr 1fr";
+  const heads = ["Client", "Profitable", "Avg profit", "Losing", "Avg loss", "Net booked"];
+  const totals = rows.reduce((a, r) => ({
+    wins: a.wins + r.wins, winSum: a.winSum + r.winSum,
+    losses: a.losses + r.losses, lossSum: a.lossSum + r.lossSum,
+  }), { wins: 0, winSum: 0, losses: 0, lossSum: 0 });
+  const cell = { fontSize: 12.5, textAlign: "right" };
+  return (
+    <div style={{ ...PANEL, overflow: "hidden" }}>
+      <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Admin only · all clients, ignores the client filter</span>}>
+        Booked trades per client
+      </PanelTitle>
+      {rows.length === 0 ? (
+        <div style={{ padding: "22px 22px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
+      ) : (<>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 22px",
+                      background: "var(--table-head)", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
+          {heads.map((h, i) => (
+            <div key={h} style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
+                                  color: "var(--ink-3)", textAlign: i ? "right" : "left", whiteSpace: "nowrap" }}>{h}</div>
+          ))}
+        </div>
+        {rows.map((r, i) => (
+          <div key={r.client} className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
+               padding: "11px 22px", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client}</div>
+            <div className="num" style={cell}>{r.wins}</div>
+            <div className="fig" style={{ ...cell, fontWeight: 600, color: r.wins ? "var(--good)" : "var(--ink-3)" }}>{r.wins ? fmt(r.avgWin) : "—"}</div>
+            <div className="num" style={cell}>{r.losses}</div>
+            <div className="fig" style={{ ...cell, fontWeight: 600, color: r.losses ? "var(--bad)" : "var(--ink-3)" }}>{r.losses ? fmt(r.avgLoss) : "—"}</div>
+            <div className="fig" style={{ ...cell, fontWeight: 600, color: r.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(r.net)}</div>
+          </div>
+        ))}
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "11px 22px",
+                      background: "var(--table-head)", borderTop: "1px solid var(--line)" }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>All clients</div>
+          <div className="num" style={cell}>{totals.wins}</div>
+          <div className="fig" style={{ ...cell, fontWeight: 600 }}>{totals.wins ? fmt(totals.winSum / totals.wins) : "—"}</div>
+          <div className="num" style={cell}>{totals.losses}</div>
+          <div className="fig" style={{ ...cell, fontWeight: 600 }}>{totals.losses ? fmt(totals.lossSum / totals.losses) : "—"}</div>
+          <div className="fig" style={{ ...cell, fontWeight: 700, color: (totals.winSum + totals.lossSum) >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(totals.winSum + totals.lossSum)}</div>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 // One "top 5" panel on the Trades tab. `kind` picks the columns: open lots carry no exit,
 // closed lots carry a sell price and a booked P&L.
 function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride }) {
@@ -880,6 +960,33 @@ export default function App() {
       worst: [...closed].filter(m => m.pl < 0).sort((a, b) => a.pl - b.pl).slice(0, 5),
     };
   }, [portfolio]);
+  // Admin-only per-client scoreboard of BOOKED (FIFO-matched) exits. Like the holdings search
+  // it spans EVERY client regardless of the client filter — the question is "how is each one
+  // doing?". Averages are per matched exit, not per sell order, because one sell can close
+  // several buy lots at different prices. Exact-zero P&L counts as neither a win nor a loss,
+  // so wins + losses can be fewer than the client's total exits.
+  const clientTradeStats = useMemo(() => {
+    if (!isAdmin) return [];
+    const by = {};
+    const rowFor = name => {
+      if (!by[name]) by[name] = { client: name, wins: 0, winSum: 0, losses: 0, lossSum: 0 };
+      return by[name];
+    };
+    // Seed from the client list so someone with no exits yet still gets a row.
+    clients.forEach(c => rowFor(c.name));
+    portfolioAll.forEach(p => {
+      const r = rowFor(p.client);
+      p.matchDetails.forEach(m => {
+        if (m.pl > 0) { r.wins += 1; r.winSum += m.pl; }
+        else if (m.pl < 0) { r.losses += 1; r.lossSum += m.pl; }
+      });
+    });
+    return Object.values(by)
+      .map(r => ({ ...r, net: r.winSum + r.lossSum,
+                   avgWin: r.wins ? r.winSum / r.wins : 0,
+                   avgLoss: r.losses ? r.lossSum / r.losses : 0 }))
+      .sort((a, b) => b.net - a.net);
+  }, [isAdmin, clients, portfolioAll]);
   // Admin-only holdings search: spans EVERY client regardless of the client filter, because the
   // question it answers is "who holds this?".
   const holdingHits = useMemo(() => {
@@ -1501,6 +1608,7 @@ export default function App() {
             </div>
 
             {mTradeTab === "Highlights" && (<>
+              {isAdmin && <MClientTradeStats rows={clientTradeStats} />}
               <MHighlight title="Recent open trades" note="newest lots held"
                           rows={highlights.recentOpen} kind="open" />
               <MHighlight title="Recent closed trades" note="newest exits"
@@ -2314,6 +2422,7 @@ export default function App() {
         </div>
 
         <div style={{ display: "grid", gap: 14 }}>
+          {isAdmin && <ClientTradeStatsPanel rows={clientTradeStats} />}
           <HighlightPanel title="Recent open trades" note="Newest lots still held"
                           rows={highlights.recentOpen} kind="open" showClient={filterClient === "All"} />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
