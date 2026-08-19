@@ -48,10 +48,15 @@ CORP_ACTIONS = {
                    ("KRISHANA",  "2026-07-03", 5)],   # credit 460 on 115 held
         # ₹0 credits that are really allotments, priced at their true cost basis
         "inject": [("SBIFUNDS", "2026-07-20", "BUY", 26, 574.0),   # IPO price, per Om's + Deepmala's reports
-                   ("ARDEE",    "2026-08-11", "BUY", 281, 53.0)],  # IPO allotment, price per user
+                   ("ARDEE",    "2026-08-11", "BUY", 281, 53.0),   # IPO allotment, price per user
+                   ("DHOOTTRANS", "2026-08-14", "BUY", 17, 871.0)],  # IPO allotment, price per user
         # Bought 2025-09-18, before he joined — the pre-joining holding is untracked, so its
         # disposal is too. Without this the sell reimports and the position goes to -5.
         "exclude": ["XPROINDIA"],
+    },
+    "Shishir Chaurasiya": {
+        # Same DHOOTTRANS IPO as Sohil's — one allotment price for the whole issue.
+        "inject": [("DHOOTTRANS", "2026-08-14", "BUY", 17, 871.0)],
     },
 }
 
