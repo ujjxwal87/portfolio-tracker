@@ -638,8 +638,8 @@ const MHighlight = ({ title, note, rows, kind }) => (
 const MClientTradeStats = ({ rows }) => (
   <div style={{ ...MCARD, borderRadius: 16, padding: "13px 14px", boxSizing: "border-box", maxWidth: "100%", overflow: "hidden" }}>
     <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
-      <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>Booked per client</div>
-      <div style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: "auto" }}>admin only · all clients</div>
+      <div style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap" }}>{rows.length === 1 ? "Booked trades" : "Booked per client"}</div>
+      <div style={{ fontSize: 10, color: "var(--ink-3)", marginLeft: "auto" }}>admin only</div>
     </div>
     {rows.length === 0 ? (
       <div style={{ fontSize: 12, color: "var(--ink-3)", padding: "12px 0 4px" }}>Nothing to show yet.</div>
@@ -665,8 +665,10 @@ const MClientTradeStats = ({ rows }) => (
 
 // Admin-only per-client scoreboard on the Trades tab: how many booked exits each client won
 // and lost, and the average size of each. Ordered best net first. Counts come from FIFO-matched
-// exits, so they line up with the Top-5 panels below rather than with raw sell rows.
-function ClientTradeStatsPanel({ rows }) {
+// exits, so they line up with the Top-5 panels below rather than with raw sell rows. Follows the
+// client filter, so a single selected client collapses this to their one row — and then the
+// all-clients total is dropped, since it would just repeat that row.
+function ClientTradeStatsPanel({ rows, scopedTo }) {
   const cols = "1.6fr .7fr 1fr .7fr 1fr 1fr";
   const heads = ["Client", "Profitable", "Avg profit", "Losing", "Avg loss", "Net booked"];
   const totals = rows.reduce((a, r) => ({
@@ -676,8 +678,10 @@ function ClientTradeStatsPanel({ rows }) {
   const cell = { fontSize: 12.5, textAlign: "right" };
   return (
     <div style={{ ...PANEL, overflow: "hidden" }}>
-      <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Admin only · all clients, ignores the client filter</span>}>
-        Booked trades per client
+      <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+        {scopedTo ? `Admin only · ${scopedTo}` : "Admin only · every client"}
+      </span>}>
+        {scopedTo ? "Booked trades" : "Booked trades per client"}
       </PanelTitle>
       {rows.length === 0 ? (
         <div style={{ padding: "22px 22px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
@@ -700,6 +704,7 @@ function ClientTradeStatsPanel({ rows }) {
             <div className="fig" style={{ ...cell, fontWeight: 600, color: r.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(r.net)}</div>
           </div>
         ))}
+        {rows.length > 1 && (
         <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "11px 22px",
                       background: "var(--table-head)", borderTop: "1px solid var(--line)" }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>All clients</div>
@@ -709,6 +714,7 @@ function ClientTradeStatsPanel({ rows }) {
           <div className="fig" style={{ ...cell, fontWeight: 600 }}>{totals.losses ? fmt(totals.lossSum / totals.losses) : "—"}</div>
           <div className="fig" style={{ ...cell, fontWeight: 700, color: (totals.winSum + totals.lossSum) >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(totals.winSum + totals.lossSum)}</div>
         </div>
+        )}
       </>)}
     </div>
   );
@@ -960,13 +966,15 @@ export default function App() {
       worst: [...closed].filter(m => m.pl < 0).sort((a, b) => a.pl - b.pl).slice(0, 5),
     };
   }, [portfolio]);
-  // Admin-only per-client scoreboard of BOOKED (FIFO-matched) exits. Like the holdings search
-  // it spans EVERY client regardless of the client filter — the question is "how is each one
-  // doing?". Averages are per matched exit, not per sell order, because one sell can close
-  // several buy lots at different prices. Exact-zero P&L counts as neither a win nor a loss,
-  // so wins + losses can be fewer than the client's total exits.
+  // Admin-only per-client scoreboard of BOOKED (FIFO-matched) exits. Follows the client filter:
+  // "All clients" lists everyone, picking one narrows it to that single row. Averages are per
+  // matched exit, not per sell order, because one sell can close several buy lots at different
+  // prices. Exact-zero P&L counts as neither a win nor a loss, so wins + losses can be fewer
+  // than the client's total exits.
   const clientTradeStats = useMemo(() => {
     if (!isAdmin) return [];
+    // `portfolio` is already client-filtered; portfolioAll is every client.
+    const source = filterClient === "All" ? portfolioAll : portfolio;
     const by = {};
     const rowFor = name => {
       if (!by[name]) by[name] = { client: name, wins: 0, winSum: 0, losses: 0, lossSum: 0 };
@@ -974,7 +982,7 @@ export default function App() {
     };
     // Seed from the client list so someone with no exits yet still gets a row.
     clients.forEach(c => rowFor(c.name));
-    portfolioAll.forEach(p => {
+    source.forEach(p => {
       const r = rowFor(p.client);
       p.matchDetails.forEach(m => {
         if (m.pl > 0) { r.wins += 1; r.winSum += m.pl; }
@@ -982,11 +990,12 @@ export default function App() {
       });
     });
     return Object.values(by)
+      .filter(r => filterClient === "All" || r.client === filterClient)
       .map(r => ({ ...r, net: r.winSum + r.lossSum,
                    avgWin: r.wins ? r.winSum / r.wins : 0,
                    avgLoss: r.losses ? r.lossSum / r.losses : 0 }))
       .sort((a, b) => b.net - a.net);
-  }, [isAdmin, clients, portfolioAll]);
+  }, [isAdmin, clients, portfolio, portfolioAll, filterClient]);
   // Admin-only holdings search: spans EVERY client regardless of the client filter, because the
   // question it answers is "who holds this?".
   const holdingHits = useMemo(() => {
@@ -2422,7 +2431,8 @@ export default function App() {
         </div>
 
         <div style={{ display: "grid", gap: 14 }}>
-          {isAdmin && <ClientTradeStatsPanel rows={clientTradeStats} />}
+          {isAdmin && <ClientTradeStatsPanel rows={clientTradeStats}
+                                             scopedTo={filterClient === "All" ? null : filterClient} />}
           <HighlightPanel title="Recent open trades" note="Newest lots still held"
                           rows={highlights.recentOpen} kind="open" showClient={filterClient === "All"} />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
