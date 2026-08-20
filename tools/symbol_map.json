@@ -1,0 +1,524 @@
+{
+ "ACUTAAS CHEMICALS LIMITED": {
+  "isin": "INE00FF01025",
+  "symbol": "ACUTAAS",
+  "yahoo_name": "ACUTAAS CHEMICALS LIMITED",
+  "price": 3259.5
+ },
+ "ADANI GREEN ENERGY LTD": {
+  "isin": "INE364U01010",
+  "symbol": "ADANIGREEN",
+  "yahoo_name": "ADANI GREEN ENERGY LTD",
+  "price": 1395.1
+ },
+ "ADANI POWER LTD": {
+  "isin": "INE814H01029",
+  "symbol": "ADANIPOWER",
+  "yahoo_name": "ADANI POWER LTD",
+  "price": 213.66
+ },
+ "ANAND RATHI WEALTH LTD": {
+  "isin": "INE463V01026",
+  "symbol": "ANANDRATHI",
+  "yahoo_name": "ANAND RATHI WEALTH LTD",
+  "price": 2042.1
+ },
+ "ANANT RAJ LIMITED": {
+  "isin": "INE242C01024",
+  "symbol": "ANANTRAJ",
+  "yahoo_name": "ANANT RAJ LIMITED",
+  "price": 586.55
+ },
+ "ANGEL ONE LIMITED": {
+  "isin": "INE732I01021",
+  "symbol": "ANGELONE",
+  "yahoo_name": "ANGEL ONE LIMITED",
+  "price": 307.95
+ },
+ "APOLLO HOSPITALS ENTER. L": {
+  "isin": "INE437A01024",
+  "symbol": "APOLLOHOSP",
+  "yahoo_name": "APOLLO HOSPITALS ENTER. L",
+  "price": 8805.5
+ },
+ "APOLLO MICRO SYSTEMS LTD": {
+  "isin": "INE713T01028",
+  "symbol": "APOLLO",
+  "yahoo_name": "APOLLO MICRO SYSTEMS LTD",
+  "price": 394.3
+ },
+ "ASHAPURA MINECHEM LTD": {
+  "isin": "INE348A01023",
+  "symbol": "ASHAPURMIN",
+  "yahoo_name": "ASHAPURA MINECHEM LTD",
+  "price": 697.05
+ },
+ "ASTRA MICROWAVE LTD": {
+  "isin": "INE386C01029",
+  "symbol": "ASTRAMICRO",
+  "yahoo_name": "ASTRA MICROWAVE LTD",
+  "price": 1813.4
+ },
+ "ATHER ENERGY LIMITED": {
+  "isin": "INE0LEZ01016",
+  "symbol": "ATHERENERG",
+  "yahoo_name": "ATHER ENERGY LIMITED",
+  "price": 1208.7
+ },
+ "AUROBINDO PHARMA LTD": {
+  "isin": "INE406A01037",
+  "symbol": "AUROPHARMA",
+  "yahoo_name": "AUROBINDO PHARMA LTD",
+  "price": 1532.0
+ },
+ "AVALON TECHNOLOGIES LTD": {
+  "isin": "INE0LCL01028",
+  "symbol": "AVALON",
+  "yahoo_name": "AVALON TECHNOLOGIES LTD",
+  "price": 1741.5
+ },
+ "BAJAJ FINANCE LIMITED": {
+  "isin": "INE296A01032",
+  "symbol": "BAJFINANCE",
+  "yahoo_name": "BAJAJ FINANCE LIMITED",
+  "price": 1012.8
+ },
+ "BHARAT ELECTRONICS LTD": {
+  "isin": "INE263A01024",
+  "symbol": "BEL",
+  "yahoo_name": "BHARAT ELECTRONICS LTD",
+  "price": 405.0
+ },
+ "BHARAT FORGE LTD": {
+  "isin": "INE465A01025",
+  "symbol": "BHARATFORG",
+  "yahoo_name": "BHARAT FORGE LTD",
+  "price": 2151.6
+ },
+ "BHARAT PETROLEUM CORP  LT": {
+  "isin": "INE029A01011",
+  "symbol": "BPCL",
+  "yahoo_name": "BHARAT PETROLEUM CORP  LT",
+  "price": 310.15
+ },
+ "BILLIONBRAINS GARAGE VN L": {
+  "isin": "INE0HOQ01053",
+  "symbol": "GROWW",
+  "yahoo_name": "BILLIONBRAINS GARAGE VN L",
+  "price": 202.15
+ },
+ "BLUESTONE JEWEL LFSTL LTD": {
+  "isin": "INE304W01038",
+  "symbol": "BLUESTONE",
+  "yahoo_name": "BLUESTONE JEWEL LFSTL LTD",
+  "price": 772.4
+ },
+ "CG POWER AND IND SOL LTD": {
+  "isin": "INE067A01029",
+  "symbol": "CGPOWER",
+  "yahoo_name": "CG POWER AND IND SOL LTD",
+  "price": 867.7
+ },
+ "CHAMBAL FERTILIZERS LTD": {
+  "isin": "INE085A01013",
+  "symbol": "CHAMBLFERT",
+  "yahoo_name": "CHAMBAL FERTILIZERS LTD",
+  "price": 431.0
+ },
+ "COAL INDIA LTD": {
+  "isin": "INE522F01014",
+  "symbol": "COALINDIA",
+  "yahoo_name": "COAL INDIA LTD",
+  "price": 427.4
+ },
+ "CUMMINS INDIA LTD": {
+  "isin": "INE298A01020",
+  "symbol": "CUMMINSIND",
+  "yahoo_name": "CUMMINS INDIA LTD",
+  "price": 5600.5
+ },
+ "CUPID LIMITED": {
+  "isin": "INE509F01029",
+  "symbol": "CUPID",
+  "yahoo_name": "CUPID LIMITED",
+  "price": 213.43
+ },
+ "DATA PATTERNS INDIA LTD": {
+  "isin": "INE0IX101010",
+  "symbol": "DATAPATTNS",
+  "yahoo_name": "DATA PATTERNS INDIA LTD",
+  "price": 4584.5
+ },
+ "DIVI S LABORATORIES LTD": {
+  "isin": "INE361B01024",
+  "symbol": "DIVISLAB",
+  "yahoo_name": "DIVI S LABORATORIES LTD",
+  "price": 7248.5
+ },
+ "EMMVEE PHOTOVOLTAIC PWR L": {
+  "isin": "INE1C6T01020",
+  "symbol": "EMMVEE",
+  "yahoo_name": "EMMVEE PHOTOVOLTAIC PWR L",
+  "price": 331.0
+ },
+ "EXIDE INDUSTRIES LTD": {
+  "isin": "INE302A01020",
+  "symbol": "EXIDEIND",
+  "yahoo_name": "EXIDE INDUSTRIES LTD",
+  "price": 443.0
+ },
+ "FEDERAL BANK LTD": {
+  "isin": "INE171A01029",
+  "symbol": "FEDERALBNK",
+  "yahoo_name": "FEDERAL BANK LTD",
+  "price": 354.3
+ },
+ "GLAND PHARMA LIMITED": {
+  "isin": "INE068V01023",
+  "symbol": "GLAND",
+  "yahoo_name": "GLAND PHARMA LIMITED",
+  "price": 2379.8
+ },
+ "HDFC BANK LTD": {
+  "isin": "INE040A01034",
+  "symbol": "HDFCBANK",
+  "yahoo_name": "HDFC BANK LTD",
+  "price": 742.8
+ },
+ "HIMADRI SPECIALITY CHEM L": {
+  "isin": "INE019C01026",
+  "symbol": "HSCL",
+  "yahoo_name": "HIMADRI SPECIALITY CHEM L",
+  "price": 789.55
+ },
+ "HINDUSTAN ZINC LIMITED": {
+  "isin": "INE267A01025",
+  "symbol": "HINDZINC",
+  "yahoo_name": "HINDUSTAN ZINC LIMITED",
+  "price": 531.95
+ },
+ "ICICI PRUDENTIAL AMC LTD": {
+  "isin": "INE346A01027",
+  "symbol": "ICICIAMC",
+  "yahoo_name": "ICICI PRUDENTIAL AMC LTD",
+  "price": 3125.6
+ },
+ "ICICIPRAMC - PSUBANKICI": {
+  "isin": "INF109KC10S8",
+  "symbol": "PSUBNKIETF",
+  "yahoo_name": "ICICIPRAMC - PSUBANKICI",
+  "price": 84.71
+ },
+ "INDIAN RAIL TOUR CORP LTD": {
+  "isin": "INE335Y01020",
+  "symbol": "IRCTC",
+  "yahoo_name": "INDIAN RAIL TOUR CORP LTD",
+  "price": 495.05
+ },
+ "INDRAPRASTHA GAS LTD": {
+  "isin": "INE203G01027",
+  "symbol": "IGL",
+  "yahoo_name": "INDRAPRASTHA GAS LTD",
+  "price": 149.33
+ },
+ "JSW STEEL LIMITED": {
+  "isin": "INE019A01038",
+  "symbol": "JSWSTEEL",
+  "yahoo_name": "JSW STEEL LIMITED",
+  "price": 1240.8
+ },
+ "KALYAN JEWELLERS IND LTD": {
+  "isin": "INE303R01014",
+  "symbol": "KALYANKJIL",
+  "yahoo_name": "KALYAN JEWELLERS IND LTD",
+  "price": 573.55
+ },
+ "KANSAI NEROLAC PAINTS LTD": {
+  "isin": "INE531A01024",
+  "symbol": "KANSAINER",
+  "yahoo_name": "KANSAI NEROLAC PAINTS LTD",
+  "price": 193.19
+ },
+ "KNACK PACKAGING LIMITED": {
+  "isin": "INE17QZ01016",
+  "symbol": "KNACK",
+  "yahoo_name": "KNACK PACKAGING LIMITED",
+  "price": 194.88
+ },
+ "KRISHANA PHOSCHEM LIMITED": {
+  "isin": "INE506W01020",
+  "symbol": "KRISHANA",
+  "yahoo_name": "KRISHANA PHOSCHEM LIMITED",
+  "price": 162.05
+ },
+ "KRISHNA DEF AND ALD IND L": {
+  "isin": "INE0J5601015",
+  "symbol": "KRISHNADEF",
+  "yahoo_name": "KRISHNA DEF AND ALD IND L",
+  "price": 1316.8
+ },
+ "KRISHNA INST OF MED SCI L": {
+  "isin": "INE967H01025",
+  "symbol": "KIMS",
+  "yahoo_name": "KRISHNA INST OF MED SCI L",
+  "price": 797.85
+ },
+ "L&T FINANCE LIMITED": {
+  "isin": "INE498L01015",
+  "symbol": "LTF",
+  "yahoo_name": "L&T FINANCE LIMITED",
+  "price": 302.4
+ },
+ "LLOYDS METALS N ENERGY L": {
+  "isin": "INE281B01032",
+  "symbol": "LLOYDSME",
+  "yahoo_name": "LLOYDS METALS N ENERGY L",
+  "price": 1940.5
+ },
+ "LUMAX AUTO TECH LTD": {
+  "isin": "INE872H01027",
+  "symbol": "LUMAXTECH",
+  "yahoo_name": "LUMAX AUTO TECH LTD",
+  "price": 1465.8
+ },
+ "LUPIN LIMITED": {
+  "isin": "INE326A01037",
+  "symbol": "LUPIN",
+  "yahoo_name": "LUPIN LIMITED",
+  "price": 2370.5
+ },
+ "MAX HEALTHCARE INS LTD": {
+  "isin": "INE027H01010",
+  "symbol": "MAXHEALTH",
+  "yahoo_name": "MAX HEALTHCARE INS LTD",
+  "price": 1080.4
+ },
+ "MAZAGON DOCK SHIPBUIL LTD": {
+  "isin": "INE249Z01020",
+  "symbol": "MAZDOCK",
+  "yahoo_name": "MAZAGON DOCK SHIPBUIL LTD",
+  "price": 2293.8
+ },
+ "MULTI COMMODITY EXCHANGE": {
+  "isin": "INE745G01043",
+  "symbol": "MCX",
+  "yahoo_name": "MULTI COMMODITY EXCHANGE",
+  "price": 2730.0
+ },
+ "NATIONAL ALUMINIUM CO LTD": {
+  "isin": "INE139A01034",
+  "symbol": "NATIONALUM",
+  "yahoo_name": "NATIONAL ALUMINIUM CO LTD",
+  "price": 343.9
+ },
+ "NAVIN FLUORINE INT. LTD": {
+  "isin": "INE048G01026",
+  "symbol": "NAVINFLUOR",
+  "yahoo_name": "NAVIN FLUORINE INT. LTD",
+  "price": 7520.0
+ },
+ "NESCO LTD.": {
+  "isin": "INE317F01035",
+  "symbol": "NESCO",
+  "yahoo_name": "NESCO LTD.",
+  "price": 1055.9
+ },
+ "NTPC LTD": {
+  "isin": "INE733E01010",
+  "symbol": "NTPC",
+  "yahoo_name": "NTPC LTD",
+  "price": 347.2
+ },
+ "OIL AND NATURAL GAS CORP.": {
+  "isin": "INE213A01029",
+  "symbol": "ONGC",
+  "yahoo_name": "OIL AND NATURAL GAS CORP.",
+  "price": 248.76
+ },
+ "ONE 97 COMMUNICATIONS LTD": {
+  "isin": "INE982J01020",
+  "symbol": "PAYTM",
+  "yahoo_name": "ONE 97 COMMUNICATIONS LTD",
+  "price": 1283.2
+ },
+ "PAISALO DIGITAL LIMITED": {
+  "isin": "INE420C01059",
+  "symbol": "PAISALO",
+  "yahoo_name": "PAISALO DIGITAL LIMITED",
+  "price": 70.17
+ },
+ "PARAMOUNT COMM LTD": {
+  "isin": "INE074B01023",
+  "symbol": "PARACABLES",
+  "yahoo_name": "PARAMOUNT COMM LTD",
+  "price": 61.64
+ },
+ "PIRAMAL FINANCE LIMITED": {
+  "isin": "INE202B01038",
+  "symbol": "PIRAMALFIN",
+  "yahoo_name": "PIRAMAL FINANCE LIMITED",
+  "price": 2085.4
+ },
+ "RADICO KHAITAN LTD": {
+  "isin": "INE944F01028",
+  "symbol": "RADICO",
+  "yahoo_name": "RADICO KHAITAN LTD",
+  "price": 4091.3
+ },
+ "RUBICON RESEARCH LIMITED": {
+  "isin": "INE506V01022",
+  "symbol": "RUBICON",
+  "yahoo_name": "RUBICON RESEARCH LIMITED",
+  "price": 1520.2
+ },
+ "SBI FUNDS MANAGEMENT LTD": {
+  "isin": "INE640G01020",
+  "symbol": "SBIFUNDS",
+  "yahoo_name": "",
+  "price": 587.3
+ },
+ "SHAKTI PUMPS (I) LTD": {
+  "isin": "INE908D01010",
+  "symbol": "SHAKTIPUMP",
+  "yahoo_name": "SHAKTI PUMPS (I) LTD",
+  "price": 553.0
+ },
+ "SHILPA MEDICARE LTD": {
+  "isin": "INE790G01031",
+  "symbol": "SHILPAMED",
+  "yahoo_name": "SHILPA MEDICARE LTD",
+  "price": 606.2
+ },
+ "SHYAM METALICS AND ENGY L": {
+  "isin": "INE810G01011",
+  "symbol": "SHYAMMETL",
+  "yahoo_name": "SHYAM METALICS AND ENGY L",
+  "price": 1027.45
+ },
+ "SONA BLW PRECISION FRGS L": {
+  "isin": "INE073K01018",
+  "symbol": "SONACOMS",
+  "yahoo_name": "SONA BLW PRECISION FRGS L",
+  "price": 717.95
+ },
+ "STEEL AUTHORITY OF INDIA": {
+  "isin": "INE114A01011",
+  "symbol": "SAIL",
+  "yahoo_name": "STEEL AUTHORITY OF INDIA",
+  "price": 161.45
+ },
+ "TATA CONSUMER PRODUCT LTD": {
+  "isin": "INE192A01025",
+  "symbol": "TATACONSUM",
+  "yahoo_name": "TATA CONSUMER PRODUCT LTD",
+  "price": 1088.0
+ },
+ "TD POWER SYSTEMS LTD.": {
+  "isin": "INE419M01027",
+  "symbol": "TDPOWERSYS",
+  "yahoo_name": "TD POWER SYSTEMS LTD.",
+  "price": 1113.6
+ },
+ "THE PHOENIX MILLS LTD": {
+  "isin": "INE211B01039",
+  "symbol": "PHOENIXLTD",
+  "yahoo_name": "THE PHOENIX MILLS LTD",
+  "price": 2010.7
+ },
+ "WAAREE RENEWABLE TECH LTD": {
+  "isin": "INE299N01021",
+  "symbol": "WAAREERTL",
+  "yahoo_name": "WAAREE RENEWABLE TECH LTD",
+  "price": 932.0
+ },
+ "BEHARI LAL ENGINEERING L": {
+  "isin": "INE1EEM01017",
+  "symbol": "BLEL",
+  "yahoo_name": "BEHARI LAL ENGINEERING L",
+  "price": null
+ },
+ "FSN E COMMERCE VENTURES": {
+  "isin": "INE388Y01029",
+  "symbol": "NYKAA",
+  "yahoo_name": "FSN E COMMERCE VENTURES",
+  "price": null
+ },
+ "HINDUSTAN AERONAUTICS LTD": {
+  "isin": "INE066F01020",
+  "symbol": "HAL",
+  "yahoo_name": "HINDUSTAN AERONAUTICS LTD",
+  "price": null
+ },
+ "HONASA CONSUMER LIMITED": {
+  "isin": "INE0J5401028",
+  "symbol": "HONASA",
+  "yahoo_name": "HONASA CONSUMER LIMITED",
+  "price": null
+ },
+ "MARINE ELECTRICAL (I) LTD": {
+  "isin": "INE01JE01028",
+  "symbol": "MARINE",
+  "yahoo_name": "MARINE ELECTRICAL (I) LTD",
+  "price": null
+ },
+ "NEULAND LAB LTD.": {
+  "isin": "INE794A01010",
+  "symbol": "NEULANDLAB",
+  "yahoo_name": "NEULAND LAB LTD.",
+  "price": null
+ },
+ "ONEMI TECHNOLOGY SOL LTD": {
+  "isin": "INE12F801023",
+  "symbol": "KISSHT",
+  "yahoo_name": "ONEMI TECHNOLOGY SOL LTD",
+  "price": null
+ },
+ "PARAS DEF AND SPCE TECH L": {
+  "isin": "INE045601023",
+  "symbol": "PARAS",
+  "yahoo_name": "PARAS DEF AND SPCE TECH L",
+  "price": null
+ },
+ "RASHI PERIPHERALS LIMITED": {
+  "isin": "INE0J1F01024",
+  "symbol": "RPTECH",
+  "yahoo_name": "RASHI PERIPHERALS LIMITED",
+  "price": null
+ },
+ "SOLAR INDUSTRIES (I) LTD": {
+  "isin": "INE343H01029",
+  "symbol": "SOLARINDS",
+  "yahoo_name": "SOLAR INDUSTRIES (I) LTD",
+  "price": null
+ },
+ "SUDEEP PHARMA LIMITED": {
+  "isin": "INE0QPI01025",
+  "symbol": "SUDEEPPHRM",
+  "yahoo_name": "SUDEEP PHARMA LIMITED",
+  "price": null
+ },
+ "TIMEX GROUP INDIA LTD.": {
+  "isin": "INE064A01026",
+  "symbol": "TIMEX",
+  "yahoo_name": "TIMEX GROUP INDIA LTD.",
+  "price": null
+ },
+ "TRENT LTD": {
+  "isin": "INE849A01020",
+  "symbol": "TRENT",
+  "yahoo_name": "TRENT LTD",
+  "price": null
+ },
+ "UJJIVAN SMALL FINANC BANK": {
+  "isin": "INE551W01018",
+  "symbol": "UJJIVANSFB",
+  "yahoo_name": "UJJIVAN SMALL FINANC BANK",
+  "price": null
+ },
+ "YATHARTH HOSP & TRA C S L": {
+  "isin": "INE0JO301016",
+  "symbol": "YATHARTH",
+  "yahoo_name": "YATHARTH HOSP & TRA C S L",
+  "price": null
+ }
+}
