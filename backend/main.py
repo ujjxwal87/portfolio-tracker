@@ -660,13 +660,25 @@ class LevelBody(BaseModel):
     stop_loss: Optional[float] = None
     target: Optional[float] = None
     notes: Optional[str] = None
+    # None = the shared level every client holding this symbol gets. Set it to override for one
+    # client only; their row wins over the shared one.
+    client_id: Optional[str] = None
 
 
 @app.get("/api/levels")
 def list_levels(user: auth.CurrentUser = Depends(auth.current_user)):
+    """Admins see every row. A client sees the shared levels plus their OWN overrides only —
+    another client's override is none of their business, and the UI resolves the same either way."""
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM portfolio_tracker.stock_levels ORDER BY stock_symbol")
+            if user.is_admin:
+                cur.execute("SELECT * FROM portfolio_tracker.stock_levels "
+                            "ORDER BY stock_symbol, client_id NULLS FIRST")
+            else:
+                cur.execute("SELECT * FROM portfolio_tracker.stock_levels "
+                            "WHERE client_id IS NULL OR client_id=%s "
+                            "ORDER BY stock_symbol, client_id NULLS FIRST",
+                            (user.client_id,))
             return cur.fetchall()
 
 
@@ -686,22 +698,44 @@ def upsert_level(symbol: str, body: LevelBody, _: auth.CurrentUser = Depends(aut
         raise HTTPException(400, "Target must be above the stop loss")
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
-            cur.execute(
-                "INSERT INTO portfolio_tracker.stock_levels (stock_symbol,stop_loss,target,notes) "
-                "VALUES (%s,%s,%s,%s) "
-                "ON CONFLICT (stock_symbol) DO UPDATE SET stop_loss=EXCLUDED.stop_loss, "
-                "target=EXCLUDED.target, notes=EXCLUDED.notes, updated_at=NOW() RETURNING *",
-                (symbol, body.stop_loss, body.target, body.notes),
-            )
+            # Two upsert targets because the uniqueness is split across two partial indexes: the
+            # shared row (client_id IS NULL) and a client's override.
+            if body.client_id:
+                cur.execute(
+                    "INSERT INTO portfolio_tracker.stock_levels "
+                    "(stock_symbol,stop_loss,target,notes,client_id) VALUES (%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (client_id, stock_symbol) WHERE client_id IS NOT NULL "
+                    "DO UPDATE SET stop_loss=EXCLUDED.stop_loss, target=EXCLUDED.target, "
+                    "notes=EXCLUDED.notes, updated_at=NOW() RETURNING *",
+                    (symbol, body.stop_loss, body.target, body.notes, body.client_id),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO portfolio_tracker.stock_levels (stock_symbol,stop_loss,target,notes) "
+                    "VALUES (%s,%s,%s,%s) "
+                    "ON CONFLICT (stock_symbol) WHERE client_id IS NULL "
+                    "DO UPDATE SET stop_loss=EXCLUDED.stop_loss, target=EXCLUDED.target, "
+                    "notes=EXCLUDED.notes, updated_at=NOW() RETURNING *",
+                    (symbol, body.stop_loss, body.target, body.notes),
+                )
             return cur.fetchone()
 
 
 @app.delete("/api/levels/{symbol}", status_code=204)
-def delete_level(symbol: str, _: auth.CurrentUser = Depends(auth.require_admin)):
+def delete_level(symbol: str, client_id: Optional[str] = None,
+                 _: auth.CurrentUser = Depends(auth.require_admin)):
+    """No client_id clears the shared level; with one, clears just that client's override so they
+    fall back to the shared level."""
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM portfolio_tracker.stock_levels WHERE stock_symbol=%s",
-                        ((symbol or "").strip().upper(),))
+            if client_id:
+                cur.execute("DELETE FROM portfolio_tracker.stock_levels "
+                            "WHERE stock_symbol=%s AND client_id=%s",
+                            ((symbol or "").strip().upper(), client_id))
+            else:
+                cur.execute("DELETE FROM portfolio_tracker.stock_levels "
+                            "WHERE stock_symbol=%s AND client_id IS NULL",
+                            ((symbol or "").strip().upper(),))
             if cur.rowcount == 0:
                 raise HTTPException(404, "No levels set for that symbol")
     return None

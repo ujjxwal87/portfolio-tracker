@@ -720,16 +720,90 @@ function ClientTradeStatsPanel({ rows, scopedTo }) {
   );
 }
 
+// The SL cell on an open-lot row. Read-only for clients; admins click to edit.
+//
+// Saving asks WHO the stop applies to, because both answers are legitimate and guessing is worse
+// than one extra click: "All clients" writes the shared level (every client holding the symbol gets
+// it — the normal case), the client's own name writes an override for them alone. A row already on
+// an override says so, so a shared edit can't be mistaken for changing what that client sees.
+function SLCell({ row, level, isAdmin, saving, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const sl = level?.stop_loss ?? null;
+  // Distance from the live price, which is the number that actually matters day to day. Negative
+  // means price has already broken the stop.
+  const away = sl && row.cmp ? ((row.cmp - sl) / row.cmp) * 100 : null;
+  const breached = sl && row.cmp && row.cmp < sl;
+
+  if (editing) {
+    const commit = (clientName) => {
+      const raw = draft.trim();
+      const value = raw === "" ? null : Number(raw);
+      if (raw !== "" && (!Number.isFinite(value) || value <= 0)) return;
+      onSave(row.stock, value, clientName);
+      setEditing(false);
+    };
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "flex-end" }}>
+        <input autoFocus type="number" step="0.05" value={draft} placeholder="SL"
+               onChange={e => setDraft(e.target.value)}
+               onKeyDown={e => { if (e.key === "Enter") commit(null);
+                                 if (e.key === "Escape") setEditing(false); }}
+               style={{ width: 82, padding: "3px 6px", fontSize: 12, textAlign: "right",
+                        border: "1px solid var(--accent)", borderRadius: 6 }} />
+        <div style={{ display: "flex", gap: 4 }}>
+          <button onClick={() => commit(null)} title="Apply to every client holding this stock"
+                  style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+                           border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer" }}>All</button>
+          <button onClick={() => commit(row.client)} title={`Only ${row.client}`}
+                  style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+                           border: "1px solid var(--line)", background: "var(--surface)",
+                           color: "var(--ink-2)", cursor: "pointer" }}>
+            {String(row.client || "").split(" ")[0] || "This"}
+          </button>
+          <button onClick={() => setEditing(false)}
+                  style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5, border: "1px solid var(--line)",
+                           background: "var(--surface)", color: "var(--ink-3)", cursor: "pointer" }}>×</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div onClick={isAdmin ? () => { setDraft(sl == null ? "" : String(sl)); setEditing(true); } : undefined}
+         title={isAdmin ? "Click to set a stop loss" : undefined}
+         style={{ textAlign: "right", cursor: isAdmin ? "pointer" : "default" }}>
+      {saving ? (
+        <div style={{ fontSize: 11, color: "var(--ink-3)" }}>saving…</div>
+      ) : sl == null ? (
+        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{isAdmin ? "+ set" : "—"}</div>
+      ) : (<>
+        <div className="fig" style={{ fontSize: 12.5, fontWeight: 600,
+             color: breached ? "var(--bad)" : "var(--ink)" }}>{fmt(sl)}</div>
+        <div className="num" style={{ fontSize: 9.5, color: breached ? "var(--bad)" : "var(--ink-3)" }}>
+          {breached ? "BREACHED" : away != null ? `${away.toFixed(1)}% away` : ""}
+          {level?.own ? " · own" : ""}
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 // One "top 5" panel on the Trades tab. `kind` picks the columns: open lots carry no exit,
-// closed lots carry a sell price and a booked P&L.
-function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride }) {
+// closed lots carry a sell price and a booked P&L. Open lots additionally carry an SL column when
+// `levelFor` is supplied.
+function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride,
+                          levelFor, onSaveLevel, isAdmin, levelSaving }) {
+  const showSL = kind === "open" && typeof levelFor === "function";
   const cols = showClient
-    ? (kind === "open" ? "1.1fr 1.4fr .6fr .8fr .9fr .9fr" : "1.1fr 1.4fr .6fr .8fr .8fr .9fr .9fr")
-    : (kind === "open" ? "1.6fr .6fr .8fr .9fr .9fr" : "1.6fr .6fr .8fr .8fr .9fr .9fr");
+    ? (kind === "open" ? `1.1fr 1.4fr .6fr .8fr ${showSL ? "1fr " : ""}.9fr .9fr`
+                       : "1.1fr 1.4fr .6fr .8fr .8fr .9fr .9fr")
+    : (kind === "open" ? `1.6fr .6fr .8fr ${showSL ? "1fr " : ""}.9fr .9fr`
+                       : "1.6fr .6fr .8fr .8fr .9fr .9fr");
   const heads = [
     ...(showClient ? ["Client"] : []),
     "Stock", "Qty", "Buy",
     ...(kind === "closed" ? ["Sell"] : []),
+    ...(showSL ? ["SL"] : []),
     kind === "open" ? "Bought" : "Exited",
     kind === "open" ? "Unrealized" : "Realized",
   ];
@@ -758,6 +832,11 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
             <div className="num" style={{ fontSize: 12.5, textAlign: "right" }}>{r.qty}</div>
             <div className="num" style={{ fontSize: 12.5, textAlign: "right", color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div>
             {kind === "closed" && <div className="num" style={{ fontSize: 12.5, textAlign: "right", color: "var(--ink-2)" }}>{fmt(r.sellPrice)}</div>}
+            {showSL && (
+              <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
+                      saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
+                      onSave={onSaveLevel} />
+            )}
             <div className="num" style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
             <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600,
                  color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
@@ -878,6 +957,53 @@ export default function App() {
     else { setSortCol(col); setSortDir("desc"); }
   };
 
+  // Stop-loss / target levels. Typed in, not fetched from a broker — Dhan exposes chart drawings
+  // through no API (see migrations/006). A row with client_id === null is the SHARED level every
+  // client holding that symbol gets; a row with a client_id overrides it for that client alone.
+  const [levels, setLevels] = useState([]);
+  const [levelSaving, setLevelSaving] = useState("");
+  const clientIdByName = useMemo(
+    () => Object.fromEntries(clients.map(c => [c.name, c.id])), [clients]);
+  const levelIndex = useMemo(() => {
+    const shared = {}, byClient = {};
+    for (const r of levels) {
+      if (r.client_id) (byClient[r.client_id] ||= {})[r.stock_symbol] = r;
+      else shared[r.stock_symbol] = r;
+    }
+    return { shared, byClient };
+  }, [levels]);
+  // Override first, shared second. `own` tells the UI this client differs from the shared level.
+  const levelFor = useCallback((clientName, symbol) => {
+    const cid = clientIdByName[clientName];
+    const own = cid ? levelIndex.byClient[cid]?.[symbol] : null;
+    if (own) return { ...own, own: true };
+    const sh = levelIndex.shared[symbol];
+    return sh ? { ...sh, own: false } : null;
+  }, [clientIdByName, levelIndex]);
+  // Save (or clear) a level. `clientName` null => the shared level for everyone holding it.
+  const saveLevel = useCallback(async (symbol, stopLoss, clientName) => {
+    const cid = clientName ? clientIdByName[clientName] : null;
+    setLevelSaving(`${clientName || "ALL"}|${symbol}`);
+    try {
+      if (stopLoss === null) {
+        await apiFetch(`/levels/${symbol}${cid ? `?client_id=${cid}` : ""}`, { method: "DELETE" });
+      } else {
+        // Preserve any target already set for this scope — this editor only touches the stop.
+        const existing = cid ? levelIndex.byClient[cid]?.[symbol] : levelIndex.shared[symbol];
+        await apiFetch(`/levels/${symbol}`, {
+          method: "PUT",
+          body: JSON.stringify({ stop_loss: stopLoss, target: existing?.target ?? null,
+                                 client_id: cid }),
+        });
+      }
+      setLevels(await apiFetch("/levels"));
+    } catch (err) {
+      alert(err.message || "Could not save the level");
+    } finally {
+      setLevelSaving("");
+    }
+  }, [clientIdByName, levelIndex]);
+
   // Set once live prices have been fetched, so the post-mount priming effect stays inert.
   const pricesPrimed = useRef(false);
 
@@ -887,13 +1013,15 @@ export default function App() {
       // to be fetched after mount, so the user waited twice — once for data, then again for
       // valuations to stop showing last-trade prices. /prices with no symbols arg prices every
       // traded stock, which is what lets it start without waiting on /trades.
-      const [c, t, live] = await Promise.all([
+      const [c, t, live, lv] = await Promise.all([
         apiFetch("/clients"),
         apiFetch("/trades"),
         apiFetch("/prices").catch(() => ({})),
+        apiFetch("/levels").catch(() => []),
       ]);
       setClients(c);
       setTrades(t);
+      setLevels(lv || []);
       const initCmp = {};
       t.forEach(tr => { if (!initCmp[tr.stock_symbol]) initCmp[tr.stock_symbol] = Number(tr.price); });
       const stocks = [...new Set(t.map(tr => tr.stock_symbol))];
@@ -960,7 +1088,8 @@ export default function App() {
       })));
     const closed = portfolio.flatMap(p => p.matchDetails.map(m => ({ client: p.client, stock: p.stock, ...m })));
     return {
-      recentOpen: [...openLots].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5),
+      // Ten, not five — the open book is what gets watched against stops day to day.
+      recentOpen: [...openLots].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
       recentClosed: [...closed].sort((a, b) => b.sellDate.localeCompare(a.sellDate)).slice(0, 5),
       best: [...closed].filter(m => m.pl > 0).sort((a, b) => b.pl - a.pl).slice(0, 5),
       worst: [...closed].filter(m => m.pl < 0).sort((a, b) => a.pl - b.pl).slice(0, 5),
@@ -2449,8 +2578,10 @@ export default function App() {
         <div style={{ display: "grid", gap: 14 }}>
           {isAdmin && <ClientTradeStatsPanel rows={clientTradeStats}
                                              scopedTo={filterClient === "All" ? null : filterClient} />}
-          <HighlightPanel title="Recent open trades" note="Newest lots still held"
-                          rows={highlights.recentOpen} kind="open" showClient={filterClient === "All"} />
+          <HighlightPanel title="Recent open trades" note="Newest 10 lots still held"
+                          rows={highlights.recentOpen} kind="open" showClient={filterClient === "All"}
+                          levelFor={levelFor} onSaveLevel={saveLevel} isAdmin={isAdmin}
+                          levelSaving={levelSaving} />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
                           rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All"} />
           <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
