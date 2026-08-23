@@ -35,14 +35,31 @@ SYMBOL_MAP = next(p for p in (os.path.join(HERE, "symbol_map.json"),
 # Lots bought before a client joined are untracked, so their disposals must be too — importing a
 # sell whose buy we never held drives the position negative. Same rule the first Om load used
 # (scratch/insert_om_trades.py): a hard cutoff, plus the few positions that were taken over.
+# Only a client whose rule differs from "cutoff = their joining_date" needs an entry here. Everyone
+# else has theirs derived from clients.joining_date — see rules_for.
 JOIN_RULES = {
     "Om Gunjal": {
+        # Later than his joining_date (2026-02-03): the book was taken over in March, apart from the
+        # three positions below.
         "cutoff": datetime.date(2026, 3, 9),
         # Bought before the cutoff but managed from the start, so they ARE tracked.
         "carried_over": {"ANANT RAJ LIMITED", "BHARAT ELECTRONICS LTD", "KRISHANA PHOSCHEM LIMITED"},
         "carried_over_from": datetime.date(2026, 2, 3),
     },
 }
+
+
+def rules_for(client, joining_date):
+    """The join rule to filter lots by: an explicit JOIN_RULES entry, else the client's joining_date.
+
+    Defaulting to joining_date is safe because it is what every client's first load already used in
+    effect — each one's earliest tracked trade sits on or just after it. With no date at all we
+    would import lots bought before the client existed here and drive their positions negative."""
+    if client in JOIN_RULES:
+        return JOIN_RULES[client]
+    if joining_date:
+        return {"cutoff": joining_date, "carried_over": set(), "carried_over_from": joining_date}
+    return None
 
 
 def _date(s):
@@ -124,28 +141,34 @@ def main():
     realised, unrealised = parse_report(args.file)
     print(f"report: {len(realised)} realised lots, {len(unrealised)} unrealised lots")
 
-    rules = JOIN_RULES.get(args.client)
+    conn = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
+                            dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
+                            password=os.getenv("DB_PASSWORD"), sslmode="require")
+    cur = conn.cursor()
+    cur.execute("select id, joining_date from portfolio_tracker.clients where name=%s",
+                (args.client,))
+    row = cur.fetchone()
+    if not row:
+        sys.exit(f"no client named {args.client!r}")
+    cid, joining_date = row
+
+    rules = rules_for(args.client, joining_date)
+    if not rules:
+        sys.exit(f"{args.client} has neither a joining_date nor a JOIN_RULES entry — set one first, "
+                 "or lots bought before they joined get filed as their trades.")
+    print(f"join cutoff {rules['cutoff']} "
+          f"(from {'JOIN_RULES' if args.client in JOIN_RULES else 'clients.joining_date'})")
     merged, skipped, unmapped = to_events(realised, unrealised, rules, name2sym)
-    if rules:
-        print(f"join cutoff {rules['cutoff']}: skipped {sum(skipped.values())} pre-join lots across "
-              f"{len(skipped)} name(s) — their disposals are untracked too")
+    if skipped:
+        print(f"  skipped {sum(skipped.values())} pre-join lot(s) across {len(skipped)} name(s) — "
+              "their disposals are untracked too")
     if unmapped:
-        print(f"\n{len(unmapped)} NAME(S) WITH NO TICKER in scratch/symbol_map.json:")
+        print(f"\n{len(unmapped)} NAME(S) WITH NO TICKER in tools/symbol_map.json:")
         for n, isin in sorted(unmapped.items()):
             print(f"   {n}  ({isin})")
         sys.exit("Refusing to run — add these to symbol_map.json first (a guessed ticker files the "
                  "trade against the wrong company).")
     print(f"{len(merged)} merged (symbol, date, side) rows\n")
-
-    conn = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
-                            dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
-                            password=os.getenv("DB_PASSWORD"), sslmode="require")
-    cur = conn.cursor()
-    cur.execute("select id from portfolio_tracker.clients where name=%s", (args.client,))
-    row = cur.fetchone()
-    if not row:
-        sys.exit(f"no client named {args.client!r}")
-    cid = row[0]
 
     cur.execute("""select stock_symbol, date, type, quantity, price, broker
                    from portfolio_tracker.trades where client_id=%s""", (cid,))
