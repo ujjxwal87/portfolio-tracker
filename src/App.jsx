@@ -681,7 +681,8 @@ function ClientTradeStatsPanel({ rows, scopedTo }) {
   const totals = rows.reduce((a, r) => ({
     wins: a.wins + r.wins, winSum: a.winSum + r.winSum,
     losses: a.losses + r.losses, lossSum: a.lossSum + r.lossSum,
-  }), { wins: 0, winSum: 0, losses: 0, lossSum: 0 });
+    net: a.net + r.net,
+  }), { wins: 0, winSum: 0, losses: 0, lossSum: 0, net: 0 });
   const cell = { fontSize: 12.5, textAlign: "right" };
   return (
     <div style={{ ...PANEL, overflow: "hidden" }}>
@@ -719,7 +720,7 @@ function ClientTradeStatsPanel({ rows, scopedTo }) {
           <div className="fig" style={{ ...cell, fontWeight: 600 }}>{totals.wins ? fmt(totals.winSum / totals.wins) : "—"}</div>
           <div className="num" style={cell}>{totals.losses}</div>
           <div className="fig" style={{ ...cell, fontWeight: 600 }}>{totals.losses ? fmt(totals.lossSum / totals.losses) : "—"}</div>
-          <div className="fig" style={{ ...cell, fontWeight: 700, color: (totals.winSum + totals.lossSum) >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(totals.winSum + totals.lossSum)}</div>
+          <div className="fig" style={{ ...cell, fontWeight: 700, color: totals.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(totals.net)}</div>
         </div>
         )}
       </>)}
@@ -1105,7 +1106,7 @@ export default function App() {
   // Admin-only per-client scoreboard of BOOKED (FIFO-matched) exits. Follows the client filter:
   // "All clients" lists everyone, picking one narrows it to that single row. Averages are per
   // matched exit, not per sell order, because one sell can close several buy lots at different
-  // prices. Exact-zero P&L counts as neither a win nor a loss, so wins + losses can be fewer
+  // prices. Only decisive exits count (see WIN_PCT/LOSS_PCT), so wins + losses can be fewer
   // than the client's total exits.
   const clientTradeStats = useMemo(() => {
     if (!isAdmin) return [];
@@ -1113,7 +1114,7 @@ export default function App() {
     const source = filterClient === "All" ? portfolioAll : portfolio;
     const by = {};
     const rowFor = name => {
-      if (!by[name]) by[name] = { client: name, wins: 0, winSum: 0, losses: 0, lossSum: 0 };
+      if (!by[name]) by[name] = { client: name, wins: 0, winSum: 0, losses: 0, lossSum: 0, booked: 0 };
       return by[name];
     };
     // Seed from the client list so someone with no exits yet still gets a row.
@@ -1121,13 +1122,14 @@ export default function App() {
     source.forEach(p => {
       const r = rowFor(p.client);
       p.matchDetails.forEach(m => {
-        if (m.pl > 0) { r.wins += 1; r.winSum += m.pl; }
-        else if (m.pl < 0) { r.losses += 1; r.lossSum += m.pl; }
+        r.booked += m.pl;
+        if (isDecisiveWin(m)) { r.wins += 1; r.winSum += m.pl; }
+        else if (isDecisiveLoss(m)) { r.losses += 1; r.lossSum += m.pl; }
       });
     });
     return Object.values(by)
       .filter(r => filterClient === "All" || r.client === filterClient)
-      .map(r => ({ ...r, net: r.winSum + r.lossSum,
+      .map(r => ({ ...r, net: r.booked,
                    avgWin: r.wins ? r.winSum / r.wins : 0,
                    avgLoss: r.losses ? r.lossSum / r.losses : 0 }))
       .sort((a, b) => b.net - a.net);
