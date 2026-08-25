@@ -605,6 +605,13 @@ function PnlComboChart({ points }) {
   );
 }
 
+// Win rate counts only decisive exits: a gain of at least 10% is a win, a loss worse than 1.5%
+// is a loss at 1.5% or worse. Anything between the two is noise, left out of both sides.
+const WIN_PCT = 10, LOSS_PCT = -1.5;
+const lotPct = m => { const cost = m.buyPrice * m.qty; return cost > 0 ? (m.pl / cost) * 100 : 0; };
+const isDecisiveWin = m => lotPct(m) >= WIN_PCT;
+const isDecisiveLoss = m => lotPct(m) <= LOSS_PCT;
+
 // Mobile twin of HighlightPanel: same four lists, redrawn as stacked cards instead of a grid.
 const MHighlight = ({ title, note, rows, kind }) => (
   <div style={{ ...MCARD, borderRadius: 16, padding: "13px 14px", boxSizing: "border-box", maxWidth: "100%", overflow: "hidden" }}>
@@ -1154,8 +1161,9 @@ export default function App() {
     const totalInvested = portfolio.reduce((s, p) => s + p.investedHolding, 0) + portfolio.reduce((s, p) => s + p.matchDetails.reduce((ss, m) => ss + m.buyPrice * m.qty, 0), 0);
     const totalReturn = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
     const realizedTrades = portfolio.flatMap(p => p.matchDetails);
-    const wins = realizedTrades.filter(m => m.pl > 0).length;
-    const winRate = realizedTrades.length > 0 ? (wins / realizedTrades.length) * 100 : 0;
+    const wins = realizedTrades.filter(isDecisiveWin).length;
+    const decisive = wins + realizedTrades.filter(isDecisiveLoss).length;
+    const winRate = decisive > 0 ? (wins / decisive) * 100 : 0;
     let maxDD = 0, peak = 0, running = 0;
     realizedTrades.sort((a, b) => a.sellDate.localeCompare(b.sellDate)).forEach(m => { running += m.pl; if (running > peak) peak = running; const dd = peak > 0 ? ((peak - running) / peak) * 100 : 0; if (dd > maxDD) maxDD = dd; });
     const currentVal = holdings.reduce((s, h) => s + h.currentVal, 0);
@@ -1390,7 +1398,8 @@ export default function App() {
   const returnText = returnReady ? pct(returnPct) : "—";
   const returnSub = returnReady ? returnBasis : "calculating return…";
   const realizedLots = portfolio.reduce((n, p) => n + p.matchDetails.length, 0);
-  const winCount = portfolio.reduce((n, p) => n + p.matchDetails.filter(m => m.pl > 0).length, 0);
+  const winCount = portfolio.reduce((n, p) => n + p.matchDetails.filter(isDecisiveWin).length, 0);
+  const decisiveLots = winCount + portfolio.reduce((n, p) => n + p.matchDetails.filter(isDecisiveLoss).length, 0);
 
   // The Clients tab is the book of business \u2014 admin only.
   const NAV = [["dashboard","Dashboard","\u25c7"],["clients","Clients","\u25c9"],
@@ -1461,7 +1470,7 @@ export default function App() {
       { title: "ALPHA", value: nifty ? `${pct(RET - nifty.return_pct)} pp` : "—",
         sub: nifty ? `XIRR ${bmk.alpha_xirr_pp >= 0 ? "+" : ""}${bmk.alpha_xirr_pp} pp` : "needs deposit dates",
         accent: nifty ? tone(RET - nifty.return_pct) : "var(--ink-3)", tone: nifty ? tone(RET - nifty.return_pct) : undefined },
-      { title: "WIN RATE", value: stats.winRate.toFixed(0) + "%", sub: `${winCount} of ${realizedLots} exits`, accent: "var(--accent)" },
+      { title: "WIN RATE", value: stats.winRate.toFixed(0) + "%", sub: `${winCount} of ${decisiveLots} decisive exits`, accent: "var(--accent)" },
     ];
 
     const logTrades = [...filteredTrades]
@@ -2354,7 +2363,7 @@ export default function App() {
               <Card title="Alpha" value="—" sub="needs deposit dates" />
             </>)}
             <Card title="Win Rate" value={stats.winRate.toFixed(0) + "%"}
-                  sub={`${winCount} of ${realizedLots} exits profitable`} accent="var(--accent)" />
+                  sub={`${winCount} of ${decisiveLots} decisive exits profitable`} accent="var(--accent)" />
           </div>
 
           <div style={PANEL}>
