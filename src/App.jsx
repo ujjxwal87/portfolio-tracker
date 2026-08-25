@@ -611,7 +611,8 @@ const WIN_PCT = 10, LOSS_PCT = -1.5;
 const lotPct = m => { const cost = m.buyPrice * m.qty; return cost > 0 ? (m.pl / cost) * 100 : 0; };
 const isDecisiveWin = m => lotPct(m) >= WIN_PCT;
 const isDecisiveLoss = m => lotPct(m) <= LOSS_PCT;
-const rrText = rr => rr == null ? "—" : `${rr.toFixed(2)} : 1`;
+// Risk first, reward second: the average loss is the 1 that the average profit is measured against.
+const rrText = rr => rr == null ? "—" : `1 : ${rr.toFixed(2)}`;
 
 // Mobile twin of HighlightPanel: same four lists, redrawn as stacked cards instead of a grid.
 const MHighlight = ({ title, note, rows, kind }) => (
@@ -1483,7 +1484,7 @@ export default function App() {
         { title: "WIN RATE", value: stats.winRate.toFixed(0) + "%", sub: `${winCount} of ${decisiveLots} decisive exits`, accent: "var(--accent)" },
         { title: "RISK : REWARD", value: rrText(stats.riskReward),
           sub: stats.riskReward == null ? "no decisive losses yet"
-             : `avg ${compactINR(stats.avgWin)} won · ${compactINR(stats.avgLoss)} lost`,
+             : `avg ${compactINR(stats.avgLoss)} lost · ${compactINR(stats.avgWin)} won`,
           accent: "var(--accent)" },
       ] : []),
     ];
@@ -2382,7 +2383,7 @@ export default function App() {
                     sub={`${winCount} of ${decisiveLots} decisive exits profitable`} accent="var(--accent)" />
               <Card title="Risk : Reward" value={rrText(stats.riskReward)}
                     sub={stats.riskReward == null ? "no decisive losses yet"
-                       : `avg profit ${fmt(stats.avgWin)} vs avg loss ${fmt(stats.avgLoss)}`}
+                       : `avg loss ${fmt(stats.avgLoss)} vs avg profit ${fmt(stats.avgWin)}`}
                     accent="var(--accent)" />
             </>)}
           </div>
