@@ -611,6 +611,7 @@ const WIN_PCT = 10, LOSS_PCT = -1.5;
 const lotPct = m => { const cost = m.buyPrice * m.qty; return cost > 0 ? (m.pl / cost) * 100 : 0; };
 const isDecisiveWin = m => lotPct(m) >= WIN_PCT;
 const isDecisiveLoss = m => lotPct(m) <= LOSS_PCT;
+const rrText = rr => rr == null ? "—" : `${rr.toFixed(2)} : 1`;
 
 // Mobile twin of HighlightPanel: same four lists, redrawn as stacked cards instead of a grid.
 const MHighlight = ({ title, note, rows, kind }) => (
@@ -1163,16 +1164,22 @@ export default function App() {
     const totalInvested = portfolio.reduce((s, p) => s + p.investedHolding, 0) + portfolio.reduce((s, p) => s + p.matchDetails.reduce((ss, m) => ss + m.buyPrice * m.qty, 0), 0);
     const totalReturn = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
     const realizedTrades = portfolio.flatMap(p => p.matchDetails);
-    const wins = realizedTrades.filter(isDecisiveWin).length;
-    const decisive = wins + realizedTrades.filter(isDecisiveLoss).length;
+    const winLots = realizedTrades.filter(isDecisiveWin);
+    const lossLots = realizedTrades.filter(isDecisiveLoss);
+    const wins = winLots.length;
+    const decisive = wins + lossLots.length;
     const winRate = decisive > 0 ? (wins / decisive) * 100 : 0;
+    const avgWin = wins ? winLots.reduce((a, m) => a + m.pl, 0) / wins : 0;
+    const avgLoss = lossLots.length ? Math.abs(lossLots.reduce((a, m) => a + m.pl, 0) / lossLots.length) : 0;
+    // Rupees won per rupee lost on the average decisive exit. Undefined with no losses to divide by.
+    const riskReward = avgLoss > 0 ? avgWin / avgLoss : null;
     let maxDD = 0, peak = 0, running = 0;
     realizedTrades.sort((a, b) => a.sellDate.localeCompare(b.sellDate)).forEach(m => { running += m.pl; if (running > peak) peak = running; const dd = peak > 0 ? ((peak - running) / peak) * 100 : 0; if (dd > maxDD) maxDD = dd; });
     const currentVal = holdings.reduce((s, h) => s + h.currentVal, 0);
     // Cost of what is still held. Comparable with currentVal; totalInvested is not, because it
     // also carries the cost of lots already sold.
     const openInvested = holdings.reduce((s, h) => s + h.investedHolding, 0);
-    return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, openInvested, totalReturn, winRate, maxDD, currentVal };
+    return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, openInvested, totalReturn, winRate, avgWin, avgLoss, riskReward, maxDD, currentVal };
   }, [portfolio, holdings]);
 
   // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
@@ -1472,7 +1479,13 @@ export default function App() {
       { title: "ALPHA", value: nifty ? `${pct(RET - nifty.return_pct)} pp` : "—",
         sub: nifty ? `XIRR ${bmk.alpha_xirr_pp >= 0 ? "+" : ""}${bmk.alpha_xirr_pp} pp` : "needs deposit dates",
         accent: nifty ? tone(RET - nifty.return_pct) : "var(--ink-3)", tone: nifty ? tone(RET - nifty.return_pct) : undefined },
-      { title: "WIN RATE", value: stats.winRate.toFixed(0) + "%", sub: `${winCount} of ${decisiveLots} decisive exits`, accent: "var(--accent)" },
+      ...(isAdmin ? [
+        { title: "WIN RATE", value: stats.winRate.toFixed(0) + "%", sub: `${winCount} of ${decisiveLots} decisive exits`, accent: "var(--accent)" },
+        { title: "RISK : REWARD", value: rrText(stats.riskReward),
+          sub: stats.riskReward == null ? "no decisive losses yet"
+             : `avg ${compactINR(stats.avgWin)} won · ${compactINR(stats.avgLoss)} lost`,
+          accent: "var(--accent)" },
+      ] : []),
     ];
 
     const logTrades = [...filteredTrades]
@@ -1569,7 +1582,7 @@ export default function App() {
               <h2 style={MHEADLINE}>{filteredTrades.length} trade{filteredTrades.length === 1 ? "" : "s"} booked</h2>
               <div style={MSUB}>
                 Realized <span className="fig" style={{ color: "#fff" }}>{compactINR(pnlTotals.realized)}</span>
-                {" · "}Win rate <span className="fig" style={{ color: "#fff" }}>{stats.winRate.toFixed(0)}%</span>
+                {isAdmin && <>{" · "}Win rate <span className="fig" style={{ color: "#fff" }}>{stats.winRate.toFixed(0)}%</span></>}
               </div>
             </>)}
 
@@ -1864,7 +1877,7 @@ export default function App() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14, paddingTop: 13,
                               borderTop: "1px solid #CDEEDA", fontSize: 11.5, color: "var(--ink-2)" }}>
                   <div>Your XIRR<br /><strong className="fig" style={{ color: "var(--ink)", fontSize: 14 }}>{bmk.portfolio_xirr_pct}%</strong></div>
-                  <div>Win rate<br /><strong className="fig" style={{ color: "var(--ink)", fontSize: 14 }}>{stats.winRate.toFixed(0)}%</strong></div>
+                  {isAdmin && <div>Win rate<br /><strong className="fig" style={{ color: "var(--ink)", fontSize: 14 }}>{stats.winRate.toFixed(0)}%</strong></div>}
                 </div>
               </div>
 
@@ -2364,8 +2377,14 @@ export default function App() {
                     sub={benchmarkState === "all" ? "select a client" : benchmarkState === "loading" ? "loading\u2026" : "no deposits recorded"} />
               <Card title="Alpha" value="—" sub="needs deposit dates" />
             </>)}
-            <Card title="Win Rate" value={stats.winRate.toFixed(0) + "%"}
-                  sub={`${winCount} of ${decisiveLots} decisive exits profitable`} accent="var(--accent)" />
+            {isAdmin && (<>
+              <Card title="Win Rate" value={stats.winRate.toFixed(0) + "%"}
+                    sub={`${winCount} of ${decisiveLots} decisive exits profitable`} accent="var(--accent)" />
+              <Card title="Risk : Reward" value={rrText(stats.riskReward)}
+                    sub={stats.riskReward == null ? "no decisive losses yet"
+                       : `avg profit ${fmt(stats.avgWin)} vs avg loss ${fmt(stats.avgLoss)}`}
+                    accent="var(--accent)" />
+            </>)}
           </div>
 
           <div style={PANEL}>
@@ -2539,7 +2558,7 @@ export default function App() {
           <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
             Realized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(pnlTotals.realized)}</strong>
             {" · "}Unrealized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(pnlTotals.unrealized)}</strong>
-            {" · "}Win rate <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{stats.winRate.toFixed(0)}%</strong>
+            {isAdmin && <>{" · "}Win rate <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{stats.winRate.toFixed(0)}%</strong></>}
           </div>
         </Hero>
 
@@ -2749,10 +2768,12 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                <div>
-                  <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Win rate</div>
-                  <div className="fig" style={{ fontSize: 14, fontWeight: 700 }}>{stats.winRate.toFixed(0)}%</div>
-                </div>
+                {isAdmin && (
+                  <div>
+                    <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Win rate</div>
+                    <div className="fig" style={{ fontSize: 14, fontWeight: 700 }}>{stats.winRate.toFixed(0)}%</div>
+                  </div>
+                )}
               </div>
             </div>
           )}
