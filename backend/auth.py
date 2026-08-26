@@ -1,7 +1,8 @@
 """Password hashing, JWT issue/verify, and the FastAPI dependencies that enforce roles.
 
-Two roles. `admin` (you) sees everything; `client` sees only the rows belonging to its own
-client_id. Tokens are self-contained — role and client_id ride inside the JWT, so authorizing
+Three roles. `admin` sees the clients IT OWNS — there is more than one advisor now, and they
+are peers, so an admin is scoped to its own book exactly as a client is scoped to itself;
+`client` sees only the rows belonging to its own client_id; `guest` sees the demo slice. Tokens are self-contained — role and client_id ride inside the JWT, so authorizing
 a request needs no database round trip.
 """
 import logging
@@ -171,6 +172,26 @@ def require_admin(user: CurrentUser = Depends(current_user)) -> CurrentUser:
     return user
 
 
+def owns_client(user: CurrentUser, client_id: str) -> bool:
+    """Is `client_id` in this admin's own book? False for anyone who is not an admin."""
+    if not user.is_admin or not client_id:
+        return False
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM portfolio_tracker.clients WHERE id = %s AND owner_id = %s",
+                (client_id, user.id),
+            )
+            return cur.fetchone() is not None
+
+
+def assert_owns_client(user: CurrentUser, client_id: str) -> None:
+    """404, not 403, when the client belongs to the other advisor — a 403 would confirm the id
+    exists, which is itself a leak between two books that must not know about each other."""
+    if not owns_client(user, client_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Client not found")
+
+
 def scope_client_id(
     user: CurrentUser, requested: Optional[str], guest_ids: Optional[list] = None
 ) -> Optional[str]:
@@ -181,6 +202,8 @@ def scope_client_id(
     else's id is a 403 rather than a silent rewrite.
     """
     if user.is_admin:
+        if requested:
+            assert_owns_client(user, requested)
         return requested
     if user.is_guest:
         allowed = guest_ids or []

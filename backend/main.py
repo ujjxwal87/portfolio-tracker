@@ -104,12 +104,13 @@ def change_password(
 
 @app.post("/api/clients/{client_id}/credentials", status_code=201)
 def upsert_client_credentials(
-    client_id: str, body: CredentialsBody, _: auth.CurrentUser = Depends(auth.require_admin)
+    client_id: str, body: CredentialsBody, user: auth.CurrentUser = Depends(auth.require_admin)
 ):
     """Create a client's login, or reset the password on an existing one.
 
     Returns the temporary password in plaintext — the only time it is ever visible.
     """
+    auth.assert_owns_client(user, client_id)
     plain = body.password or auth.temp_password()
     auth.validate_password(plain)
     with get_db() as conn:
@@ -218,26 +219,29 @@ def list_clients(user: auth.CurrentUser = Depends(auth.current_user)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             if user.is_admin:
-                cur.execute(cols + "ORDER BY created_at DESC")
+                # An admin's own book only. The two advisors are peers, not a hierarchy.
+                cur.execute(cols + "WHERE owner_id = %s ORDER BY created_at DESC", (user.id,))
             else:
                 cur.execute(cols + "WHERE id = %s", (user.client_id,))
             return cur.fetchall()
 
 
 @app.post("/api/clients", status_code=201)
-def create_client(body: ClientCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
+def create_client(body: ClientCreate, user: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
-                "INSERT INTO portfolio_tracker.clients (name, phone, email, joining_date) "
-                "VALUES (%s, %s, %s, %s) RETURNING id, name, phone, email, joining_date, created_at, updated_at",
-                (body.name, body.phone, body.email, body.joining_date),
+                "INSERT INTO portfolio_tracker.clients (name, phone, email, joining_date, owner_id) "
+                "VALUES (%s, %s, %s, %s, %s) RETURNING id, name, phone, email, joining_date, created_at, updated_at",
+                (body.name, body.phone, body.email, body.joining_date, user.id),
             )
             return cur.fetchone()
 
 
 @app.put("/api/clients/{client_id}")
-def update_client(client_id: str, body: ClientCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
+def update_client(client_id: str, body: ClientCreate,
+                  user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, client_id)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -256,7 +260,8 @@ def update_client(client_id: str, body: ClientCreate, _: auth.CurrentUser = Depe
 
 
 @app.delete("/api/clients/{client_id}", status_code=204)
-def delete_client(client_id: str, _: auth.CurrentUser = Depends(auth.require_admin)):
+def delete_client(client_id: str, user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, client_id)
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -272,7 +277,7 @@ def delete_client(client_id: str, _: auth.CurrentUser = Depends(auth.require_adm
 def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
     labels = guest_client_map() if user.is_guest else {}
     if user.is_admin:
-        where, params = "", ()
+        where, params = "WHERE c.owner_id = %s ", (user.id,)
     elif user.is_guest:
         where, params = "WHERE t.client_id = ANY(%s::uuid[]) ", (list(labels),)
     else:
@@ -297,8 +302,18 @@ def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
     return rows
 
 
+def _trade_client_id(trade_id: str) -> Optional[str]:
+    """The client a trade belongs to, so ownership can be checked before touching it."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT client_id FROM portfolio_tracker.trades WHERE id=%s", (trade_id,))
+            row = cur.fetchone()
+            return str(row[0]) if row else None
+
+
 @app.post("/api/trades", status_code=201)
-def create_trade(body: TradeCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
+def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, body.client_id)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -334,7 +349,11 @@ def create_trade(body: TradeCreate, _: auth.CurrentUser = Depends(auth.require_a
 
 
 @app.put("/api/trades/{trade_id}")
-def update_trade(trade_id: str, body: TradeCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
+def update_trade(trade_id: str, body: TradeCreate,
+                 user: auth.CurrentUser = Depends(auth.require_admin)):
+    # Both ends: the client it currently sits under, and the one it is being moved to.
+    auth.assert_owns_client(user, _trade_client_id(trade_id))
+    auth.assert_owns_client(user, body.client_id)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -374,7 +393,8 @@ def update_trade(trade_id: str, body: TradeCreate, _: auth.CurrentUser = Depends
 
 
 @app.delete("/api/trades/{trade_id}", status_code=204)
-def delete_trade(trade_id: str, _: auth.CurrentUser = Depends(auth.require_admin)):
+def delete_trade(trade_id: str, user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, _trade_client_id(trade_id))
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -626,12 +646,17 @@ def list_cash_flows(client_id: Optional[str] = None, user: auth.CurrentUser = De
                     (guest_ids,),
                 )
             else:
-                cur.execute("SELECT * FROM portfolio_tracker.cash_flows ORDER BY date")
+                # Admin, no client named: their own book, not everyone's.
+                cur.execute(
+                    "SELECT f.* FROM portfolio_tracker.cash_flows f "
+                    "JOIN portfolio_tracker.clients c ON c.id = f.client_id "
+                    "WHERE c.owner_id = %s ORDER BY f.date", (user.id,))
             return cur.fetchall()
 
 
 @app.post("/api/cash-flows", status_code=201)
-def create_cash_flow(body: CashFlowCreate, _: auth.CurrentUser = Depends(auth.require_admin)):
+def create_cash_flow(body: CashFlowCreate, user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, body.client_id)
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -643,10 +668,12 @@ def create_cash_flow(body: CashFlowCreate, _: auth.CurrentUser = Depends(auth.re
 
 
 @app.delete("/api/cash-flows/{flow_id}", status_code=204)
-def delete_cash_flow(flow_id: str, _: auth.CurrentUser = Depends(auth.require_admin)):
+def delete_cash_flow(flow_id: str, user: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM portfolio_tracker.cash_flows WHERE id=%s", (flow_id,))
+            cur.execute(
+                "DELETE FROM portfolio_tracker.cash_flows f USING portfolio_tracker.clients c "
+                "WHERE f.id=%s AND c.id = f.client_id AND c.owner_id = %s", (flow_id, user.id))
             if cur.rowcount == 0:
                 raise HTTPException(404, "Cash flow not found")
     return None
@@ -672,8 +699,13 @@ def list_levels(user: auth.CurrentUser = Depends(auth.current_user)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             if user.is_admin:
-                cur.execute("SELECT * FROM portfolio_tracker.stock_levels "
-                            "ORDER BY stock_symbol, client_id NULLS FIRST")
+                # This admin's shared rows, plus overrides on clients they own.
+                cur.execute("SELECT s.* FROM portfolio_tracker.stock_levels s "
+                            "LEFT JOIN portfolio_tracker.clients c ON c.id = s.client_id "
+                            "WHERE (s.client_id IS NULL AND s.owner_id = %s) "
+                            "   OR c.owner_id = %s "
+                            "ORDER BY s.stock_symbol, s.client_id NULLS FIRST",
+                            (user.id, user.id))
             else:
                 cur.execute("SELECT * FROM portfolio_tracker.stock_levels "
                             "WHERE client_id IS NULL OR client_id=%s "
@@ -683,7 +715,10 @@ def list_levels(user: auth.CurrentUser = Depends(auth.current_user)):
 
 
 @app.put("/api/levels/{symbol}")
-def upsert_level(symbol: str, body: LevelBody, _: auth.CurrentUser = Depends(auth.require_admin)):
+def upsert_level(symbol: str, body: LevelBody,
+                 user: auth.CurrentUser = Depends(auth.require_admin)):
+    if body.client_id:
+        auth.assert_owns_client(user, body.client_id)
     symbol = (symbol or "").strip().upper()
     if not symbol:
         raise HTTPException(400, "Symbol is required")
@@ -711,31 +746,32 @@ def upsert_level(symbol: str, body: LevelBody, _: auth.CurrentUser = Depends(aut
                 )
             else:
                 cur.execute(
-                    "INSERT INTO portfolio_tracker.stock_levels (stock_symbol,stop_loss,target,notes) "
-                    "VALUES (%s,%s,%s,%s) "
-                    "ON CONFLICT (stock_symbol) WHERE client_id IS NULL "
+                    "INSERT INTO portfolio_tracker.stock_levels "
+                    "(stock_symbol,stop_loss,target,notes,owner_id) VALUES (%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (owner_id, stock_symbol) WHERE client_id IS NULL "
                     "DO UPDATE SET stop_loss=EXCLUDED.stop_loss, target=EXCLUDED.target, "
                     "notes=EXCLUDED.notes, updated_at=NOW() RETURNING *",
-                    (symbol, body.stop_loss, body.target, body.notes),
+                    (symbol, body.stop_loss, body.target, body.notes, user.id),
                 )
             return cur.fetchone()
 
 
 @app.delete("/api/levels/{symbol}", status_code=204)
 def delete_level(symbol: str, client_id: Optional[str] = None,
-                 _: auth.CurrentUser = Depends(auth.require_admin)):
+                 user: auth.CurrentUser = Depends(auth.require_admin)):
     """No client_id clears the shared level; with one, clears just that client's override so they
     fall back to the shared level."""
     with get_db() as conn:
         with conn.cursor() as cur:
             if client_id:
+                auth.assert_owns_client(user, client_id)
                 cur.execute("DELETE FROM portfolio_tracker.stock_levels "
                             "WHERE stock_symbol=%s AND client_id=%s",
                             ((symbol or "").strip().upper(), client_id))
             else:
                 cur.execute("DELETE FROM portfolio_tracker.stock_levels "
-                            "WHERE stock_symbol=%s AND client_id IS NULL",
-                            ((symbol or "").strip().upper(),))
+                            "WHERE stock_symbol=%s AND client_id IS NULL AND owner_id=%s",
+                            ((symbol or "").strip().upper(), user.id))
             if cur.rowcount == 0:
                 raise HTTPException(404, "No levels set for that symbol")
     return None

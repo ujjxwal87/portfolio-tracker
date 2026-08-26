@@ -23,8 +23,8 @@ def migrate():
     files = sorted((Path(__file__).parent / "migrations").glob("0*.sql"))
     with get_db() as conn, conn.cursor() as cur:
         for f in files:
-            if not f.name.startswith(("003", "004")):
-                continue  # 001/002 predate this CLI and are applied already
+            if f.name.startswith(("001", "002")):
+                continue  # predate this CLI and are applied already
             cur.execute(f.read_text())
             print(f"{f.name} applied")
 
