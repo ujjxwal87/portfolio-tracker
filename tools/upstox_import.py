@@ -36,8 +36,8 @@ FINANCIAL_YEARS = ["2021", "2122", "2223", "2324", "2425", "2526", "2627"]
 
 # ISINs the P&L report still names by their PRE-SPLIT value — a face-value split mints a new ISIN,
 # and the historical rows keep the old one, so the instrument master can't resolve them. Mapped by
-# hand to the current symbol. Prices/quantities stay AS TRADED: every one of these is a closed
-# position, so the split never has to be applied for the P&L to be right.
+# hand to the current symbol. Mapping alone is not enough where the split falls inside the trading
+# window — see SPLITS below for the rescale that has to go with it.
 ISIN_ALIASES = {
     "INE249Z01012": "MAZDOCK",     # -> INE249Z01020
     "INE258A01016": "BEML",        # -> INE258A01024
@@ -49,6 +49,33 @@ ISIN_DELISTED = {
     "INE274G01010": "DHANI",       # Dhani Services, now Indiabulls Securities
     "INE591Q01016": "SUUMAYA",     # Suumaya Industries
 }
+
+# Face-value SPLITS that fall inside this account's trading history, as (symbol, date, ratio).
+#
+# Upstox reports each matched lot on the price scale as of that lot's SELL date: a lot closed
+# before the split keeps the old scale, one closed after carries the new. The same buy order can
+# therefore appear at two prices ten-fold apart, and merging those into a weighted average — which
+# is what (symbol, date, side) merging does — invents a price that never traded. Measured on
+# 2026-08-26: ANGELONE 2024-12-10 came out at 767.22 from a mix of 3461.80 and 346.19.
+#
+# So every lot is normalised to the CURRENT scale before merging: a lot sold before the split gets
+# qty * ratio, price / ratio. Same convention as the Dhan importer — this DB stores the
+# split-ADJUSTED view, so one symbol reads on one scale from end to end.
+#
+# BONUS issues are deliberately NOT listed. Upstox books those as a separate zero-cost buy for the
+# free shares (NBCC 250 @ 0.00 on 2024-10-07 for the 1:2 bonus), which already leaves quantities
+# whole; rescaling on top of that would count the bonus shares twice.
+SPLITS = [
+    ("ANGELONE", datetime.date(2026, 2, 26), 10),
+]
+
+
+def split_adjust(symbol, sell_date, qty, price):
+    """One lot moved onto the current price scale. See SPLITS."""
+    for sym, when, ratio in SPLITS:
+        if sym == symbol and sell_date < when:
+            qty, price = qty * ratio, price / ratio
+    return qty, price
 
 
 def api(path, token, params=None):
@@ -102,22 +129,33 @@ def fetch_pnl(token, segment="EQ"):
 def to_trades(rows, symbols):
     """Matched lots -> merged (symbol, date, side) trades at a weighted-average price."""
     agg, unresolved = collections.defaultdict(lambda: [0, 0.0]), set()
+    scales = collections.defaultdict(list)
     for r in rows:
         isin = r["isin"]
         sym = ISIN_ALIASES.get(isin) or ISIN_DELISTED.get(isin) or symbols.get(isin)
         if not sym:
             unresolved.add((isin, r["scrip_name"]))
             continue
-        qty = int(round(float(r["quantity"])))
+        sell_day = datetime.datetime.strptime(r["sell_date"], "%d-%m-%Y").date()
         for side, dt, price in (("BUY", r["buy_date"], r["buy_average"]),
                                 ("SELL", r["sell_date"], r["sell_average"])):
             day = datetime.datetime.strptime(dt, "%d-%m-%Y").date()
+            qty, price = split_adjust(sym, sell_day, int(round(float(r["quantity"]))), float(price))
             slot = agg[(sym, day, side)]
             slot[0] += qty
-            slot[1] += qty * float(price)
+            slot[1] += qty * price
+            scales[(sym, day, side)].append(price)
     trades = [{"symbol": s, "date": d, "type": side, "quantity": q,
                "price": round(amt / q, 4)}
               for (s, d, side), (q, amt) in agg.items() if q]
+    # A group whose prices still span two scales means a split is missing from SPLITS, and the
+    # average about to be stored is a price that never traded. Loud, because it is invisible later.
+    for (s, d, side), prices in scales.items():
+        # min() can be 0 — a bonus credit is booked as a zero-cost buy, and it shares no scale
+        # with anything, so it is not evidence of a split.
+        if prices and min(prices) > 0 and max(prices) / min(prices) > 1.5:
+            print(f"  ! {s} {d} {side}: prices span {min(prices):.2f}..{max(prices):.2f} — "
+                  f"an unrecorded split? the merged average will be wrong")
     trades.sort(key=lambda t: (t["date"], t["symbol"], t["type"]))
     return trades, sorted(unresolved)
 
