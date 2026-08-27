@@ -22,6 +22,7 @@ export const SYMBOL_LOGOS = {
   "BANCOINDIA": "/logos/BANCOINDIA.jpeg",
   "BEL": "/logos/BEL.svg",
   "BHARATFORG": "/logos/BHARATFORG.webp",
+  "BLEL": "/logos/BLEL.png",
   "BLUESTONE": "/logos/BLUESTONE.webp",
   "BPCL": "/logos/BPCL.webp",
   "CGPOWER": "/logos/CGPOWER.webp",
@@ -95,6 +96,7 @@ export const SYMBOL_LOGOS = {
   "SHYAMMETL": "/logos/SHYAMMETL.webp",
   "SOLARINDS": "/logos/SOLARINDS.webp",
   "SONACOMS": "/logos/SONACOMS.webp",
+  "SUDEEPPHRM": "/logos/SUDEEPPHRM.png",
   "TATACONSUM": "/logos/TATACONSUM.webp",
   "TATATECH": "/logos/TATATECH.webp",
   "TDPOWERSYS": "/logos/TDPOWERSYS.png",
@@ -110,4 +112,5 @@ export const SYMBOL_LOGOS = {
   "XPROINDIA": "/logos/XPROINDIA.png",
   "YATHARTH": "/logos/YATHARTH.webp"
 };
+
 
