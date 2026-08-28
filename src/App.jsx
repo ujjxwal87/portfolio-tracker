@@ -605,6 +605,68 @@ function PnlComboChart({ points }) {
   );
 }
 
+function PnlTotalBarChart({ points }) {
+  const [hover, setHover] = useState(-1);
+  const W = 760, H = 300, ML = 58, MR = 16, MT = 18, MB = 40;
+  const plotW = W - ML - MR, plotH = H - MT - MB;
+  const totals = points.map(p => p.realized + p.unrealized);
+  let vmax = Math.max(0, ...totals), vmin = Math.min(0, ...totals);
+  if (vmax === vmin) { vmax += 1; vmin -= 1; }
+  const pad = (vmax - vmin) * 0.08; vmax += pad; vmin -= pad;
+  const rawStep = (vmax - vmin) / 5;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const step = [1, 2, 2.5, 5, 10].find(m => m * mag >= rawStep) * mag;
+  vmin = Math.floor(vmin / step) * step;
+  vmax = Math.ceil(vmax / step) * step;
+  const yOf = (v) => MT + plotH * (vmax - v) / (vmax - vmin);
+  const y0 = yOf(0);
+  const band = plotW / points.length;
+  const barW = band * 0.5;
+  const ticks = [];
+  for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
+  const C_GOOD = "#16a34a", C_BAD = "#dc2626";
+  return (
+    <div style={{ position: "relative" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", overflow: "visible" }}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={ML} x2={W - MR} y1={yOf(t)} y2={yOf(t)} stroke={Math.abs(t) < 1e-6 ? "#cbd5e1" : "#f1f5f9"} strokeWidth={Math.abs(t) < 1e-6 ? 1.5 : 1} />
+            <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#94a3b8">{fmtCompact(t)}</text>
+          </g>
+        ))}
+        {points.map((p, i) => {
+          const total = totals[i];
+          const x = ML + band * i + (band - barW) / 2;
+          const y = Math.min(y0, yOf(total));
+          const h = Math.max(1, Math.abs(yOf(total) - y0));
+          return (
+            <rect key={i} x={x} y={y} width={barW} height={h} rx={3}
+                  fill={total >= 0 ? C_GOOD : C_BAD} opacity={hover === -1 || hover === i ? 1 : 0.45} />
+          );
+        })}
+        {points.map((p, i) => (
+          <g key={i}>
+            <text x={ML + band * (i + 0.5)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#475569" fontWeight="600">{p.label}</text>
+            <rect x={ML + band * i} y={MT} width={band} height={plotH} fill="transparent"
+                  onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "pointer" }} />
+          </g>
+        ))}
+      </svg>
+      {hover >= 0 && (
+        <div style={{
+          position: "absolute", left: `${((hover + 0.5) / points.length) * 100}%`, top: 0,
+          transform: `translateX(${hover > points.length / 2 ? "-105%" : "5%"})`,
+          background: "#0f172a", color: "#fff", borderRadius: 8, padding: "8px 10px", fontSize: 11,
+          pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "0 4px 14px rgba(0,0,0,.18)", zIndex: 5,
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{points[hover].label}{points[hover].sub ? ` · ${points[hover].sub}` : ""}</div>
+          <div>Total P&amp;L: <b>{fmt(totals[hover])}</b></div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Win rate counts only decisive exits: a gain of at least 10% is a win, a loss worse than 1.5%
 // is a loss at 1.5% or worse. Anything between the two is noise, left out of both sides.
 const WIN_PCT = 10, LOSS_PCT = -1.5;
@@ -2404,6 +2466,14 @@ export default function App() {
             }>Realized vs Unrealized P&L</PanelTitle>
             <div style={{ padding: "10px 14px 16px" }}>
               {pnlChartData.length > 0 ? <PnlComboChart points={pnlChartData} /> :
+                <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No data for this period.</div>}
+            </div>
+          </div>
+
+          <div style={PANEL}>
+            <PanelTitle>Total P&L (Realized + Unrealized)</PanelTitle>
+            <div style={{ padding: "10px 14px 16px" }}>
+              {pnlChartData.length > 0 ? <PnlTotalBarChart points={pnlChartData} /> :
                 <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No data for this period.</div>}
             </div>
           </div>
