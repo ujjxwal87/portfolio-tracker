@@ -873,6 +873,13 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
 
     start = min(f["date"] for f in flows).strftime("%Y-%m-%d")
     net_invested = sum(float(f["amount"]) for f in flows)
+    # High-water mark of capital actually staked. Withdrawing profit shrinks net_invested, which
+    # inflates any return measured against it; the peak is what the client really put at risk.
+    _run = 0.0
+    peak_invested = 0.0
+    for f in flows:
+        _run += float(f["amount"])
+        peak_invested = max(peak_invested, _run)
     xirr_flows = [(f["date"], -float(f["amount"])) for f in flows]
 
     # Hidden on the server, not just in the UI — a client cannot reach benchmarks they were not
@@ -969,6 +976,7 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
     result = {
         "client_id": client_id,
         "net_invested": round(net_invested, 2),
+        "peak_invested": round(peak_invested, 2),
         "as_of": latest_day,
         "nifty_now": latest_level,
         "benchmark_value": bench_value,
@@ -983,6 +991,9 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
         result["portfolio_gain"] = round(portfolio_value - net_invested, 2)
         result["portfolio_return_pct"] = (
             round((portfolio_value - net_invested) / net_invested * 100, 2) if net_invested else None
+        )
+        result["portfolio_return_pct_peak"] = (
+            round((portfolio_value - net_invested) / peak_invested * 100, 2) if peak_invested else None
         )
         result["portfolio_xirr_pct"] = _xirr(xirr_flows + [(end, portfolio_value)])
         if result["portfolio_return_pct"] is not None and result["benchmark_return_pct"] is not None:

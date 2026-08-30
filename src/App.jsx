@@ -1459,11 +1459,12 @@ export default function App() {
 
   const bmk0 = benchmarkState === "ok" ? benchmark : null;
 
-  // Return on the money actually deposited — the only figure comparable with the index beside
-  // it. Falls back to cumulative buy value for clients whose deposits aren't recorded, where
-  // repeated redeployment of the same rupee inflates the denominator.
-  const returnPct = bmk0 ? bmk0.portfolio_return_pct : stats.totalReturn;
-  const returnBasis = bmk0 ? `on ${compactINR(bmk0.net_invested)} invested` : "on capital deployed";
+  // Admin-only for now: measure against peak capital staked, not net. Withdrawing profit shrinks
+  // net_invested and inflates the return against it (Sohil 1.25x, Vinti 1.28x).
+  const usePeak = isAdmin && bmk0?.portfolio_return_pct_peak != null;
+  const returnPct = bmk0 ? (usePeak ? bmk0.portfolio_return_pct_peak : bmk0.portfolio_return_pct) : stats.totalReturn;
+  const alphaPP = bmk0 ? returnPct - bmk0.benchmark_return_pct : 0;
+  const returnBasis = bmk0 ? `on ${compactINR(usePeak ? bmk0.peak_invested : bmk0.net_invested)} invested` : "on capital deployed";
   // While the money-weighted figure is still loading, show nothing rather than flash the
   // cumulative-cost fallback and then correct it upward.
   const returnReady = benchmarkState !== "loading";
@@ -1533,15 +1534,15 @@ export default function App() {
         accent: tone(stats.totalRealizedPL), tone: tone(stats.totalRealizedPL) },
       { title: "UNREALIZED", value: compactINR(stats.totalUnrealizedPL), sub: `${holdings.length} open position${holdings.length === 1 ? "" : "s"}`,
         accent: tone(stats.totalUnrealizedPL), tone: tone(stats.totalUnrealizedPL) },
-      { title: "YOUR RETURN", value: pct(RET), sub: bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on capital deployed",
-        accent: tone(RET), tone: tone(RET) },
+      { title: "YOUR RETURN", value: pct(returnPct), sub: bmk ? `XIRR ${bmk.portfolio_xirr_pct}%` : "on capital deployed",
+        accent: tone(returnPct), tone: tone(returnPct) },
       { title: "NIFTY 50", value: nifty ? pct(nifty.return_pct) : "—",
         sub: nifty ? `same timing · XIRR ${nifty.xirr_pct}%`
                    : benchmarkState === "all" ? "select a client" : benchmarkState === "loading" ? "loading…" : "no deposits recorded",
         accent: "var(--ink-3)" },
-      { title: "ALPHA", value: nifty ? `${pct(RET - nifty.return_pct)} pp` : "—",
+      { title: "ALPHA", value: nifty ? `${pct(returnPct - nifty.return_pct)} pp` : "—",
         sub: nifty ? `XIRR ${bmk.alpha_xirr_pp >= 0 ? "+" : ""}${bmk.alpha_xirr_pp} pp` : "needs deposit dates",
-        accent: nifty ? tone(RET - nifty.return_pct) : "var(--ink-3)", tone: nifty ? tone(RET - nifty.return_pct) : undefined },
+        accent: nifty ? tone(returnPct - nifty.return_pct) : "var(--ink-3)", tone: nifty ? tone(returnPct - nifty.return_pct) : undefined },
       ...(isAdmin ? [
         { title: "WIN RATE", value: stats.winRate.toFixed(0) + "%", sub: `${winCount} of ${decisiveLots} decisive exits`, accent: "var(--accent)" },
         { title: "RISK : REWARD", value: rrText(stats.riskReward),
@@ -2422,16 +2423,16 @@ export default function App() {
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
             {benchmarkState === "ok" ? (<>
-              <Card title="Your Return" value={pct(benchmark.portfolio_return_pct)}
-                    sub={`XIRR ${benchmark.portfolio_xirr_pct}% · on ${fmt(benchmark.net_invested)} invested`}
-                    tone={benchmark.portfolio_return_pct >= 0 ? "var(--good)" : "var(--bad)"}
-                    accent={benchmark.portfolio_return_pct >= 0 ? "var(--good)" : "var(--bad)"} />
+              <Card title="Your Return" value={returnText}
+                    sub={`XIRR ${benchmark.portfolio_xirr_pct}% · on ${fmt(usePeak ? benchmark.peak_invested : benchmark.net_invested)} invested`}
+                    tone={returnPct >= 0 ? "var(--good)" : "var(--bad)"}
+                    accent={returnPct >= 0 ? "var(--good)" : "var(--bad)"} />
               <Card title="Nifty 50 — same timing" value={pct(benchmark.benchmark_return_pct)}
                     sub={`XIRR ${benchmark.benchmark_xirr_pct}% · ${fmt(benchmark.benchmark_value)}`} accent="var(--ink-3)" />
-              <Card title="Alpha" value={`${pct(benchmark.alpha_pct_pp)} pp`}
+              <Card title="Alpha" value={`${pct(alphaPP)} pp`}
                     sub={`XIRR ${benchmark.alpha_xirr_pp >= 0 ? "+" : ""}${benchmark.alpha_xirr_pp} pp · ${fmt(benchmark.portfolio_value - benchmark.benchmark_value)}`}
-                    tone={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"}
-                    accent={benchmark.alpha_pct_pp >= 0 ? "var(--good)" : "var(--bad)"} />
+                    tone={alphaPP >= 0 ? "var(--good)" : "var(--bad)"}
+                    accent={alphaPP >= 0 ? "var(--good)" : "var(--bad)"} />
             </>) : (<>
               <Card title="Your Return" value={returnText} sub={returnSub}
                     tone={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"}
