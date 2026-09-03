@@ -566,5 +566,125 @@
   "symbol": "YATHARTH",
   "yahoo_name": "YATHARTH HOSP & TRA C S L",
   "price": null
+ },
+ "NHPC LTD": {
+  "isin": null,
+  "symbol": "NHPC",
+  "yahoo_name": "NHPC LTD",
+  "price": null
+ },
+ "BSE LIMITED": {
+  "isin": "INE118H01025",
+  "symbol": "BSE",
+  "yahoo_name": "BSE LIMITED",
+  "price": null
+ },
+ "TATA ELXSI LIMITED": {
+  "isin": null,
+  "symbol": "TATAELXSI",
+  "yahoo_name": "TATA ELXSI LIMITED",
+  "price": null
+ },
+ "HIGHWAY INFRASTRUCTURE L": {
+  "isin": null,
+  "symbol": "HILINFRA",
+  "yahoo_name": "HIGHWAY INFRASTRUCTURE L",
+  "price": null
+ },
+ "TECH MAHINDRA LIMITED": {
+  "isin": null,
+  "symbol": "TECHM",
+  "yahoo_name": "TECH MAHINDRA LIMITED",
+  "price": null
+ },
+ "BALAJI AMINES LIMITED": {
+  "isin": null,
+  "symbol": "BALAMINES",
+  "yahoo_name": "BALAJI AMINES LIMITED",
+  "price": null
+ },
+ "INDO-MIM LIMITED": {
+  "isin": null,
+  "symbol": "INDOMIM",
+  "yahoo_name": "INDO-MIM LIMITED",
+  "price": null
+ },
+ "BANCO PRODUCTS (I) LTD": {
+  "isin": null,
+  "symbol": "BANCOINDIA",
+  "yahoo_name": "BANCO PRODUCTS (I) LTD",
+  "price": null
+ },
+ "STATE BANK OF INDIA": {
+  "isin": null,
+  "symbol": "SBIN",
+  "yahoo_name": "STATE BANK OF INDIA",
+  "price": null
+ },
+ "VA TECH WABAG LTD": {
+  "isin": null,
+  "symbol": "WABAG",
+  "yahoo_name": "VA TECH WABAG LTD",
+  "price": null
+ },
+ "LENSKART SOLUTIONS LTD": {
+  "isin": null,
+  "symbol": "LENSKART",
+  "yahoo_name": "LENSKART SOLUTIONS LTD",
+  "price": null
+ },
+ "NIPPONAMC - NETFSILVER": {
+  "isin": null,
+  "symbol": "SILVERBEES",
+  "yahoo_name": "NIPPONAMC - NETFSILVER",
+  "price": null
+ },
+ "ENGINEERS INDIA LTD": {
+  "isin": null,
+  "symbol": "ENGINERSIN",
+  "yahoo_name": "ENGINEERS INDIA LTD",
+  "price": null
+ },
+ "PHYSICSWALLAH LIMITED": {
+  "isin": null,
+  "symbol": "PWL",
+  "yahoo_name": "PHYSICSWALLAH LIMITED",
+  "price": null
+ },
+ "KUSUMGAR LIMITED": {
+  "isin": null,
+  "symbol": "KUSUMGAR",
+  "yahoo_name": "KUSUMGAR LIMITED",
+  "price": null
+ },
+ "BHEL": {
+  "isin": null,
+  "symbol": "BHEL",
+  "yahoo_name": "BHEL",
+  "price": null
+ },
+ "DHOOT TRANSMISSION LTD": {
+  "isin": null,
+  "symbol": "DHOOTTRANS",
+  "yahoo_name": "DHOOT TRANSMISSION LTD",
+  "price": null
+ },
+ "National Securities Depository": {
+  "isin": "INE301O01023",
+  "symbol": "NSDL",
+  "yahoo_name": "NATIONAL SECURITIES DEPOSITORY LTD",
+  "price": null
+ },
+ "CMR GREEN TECHNOLOGIES L": {
+  "isin": null,
+  "symbol": "CMRGREEN",
+  "yahoo_name": "CMR GREEN TECHNOLOGIES L",
+  "price": null
+ },
+ "NIP IND ETF GOLD BEES": {
+  "isin": null,
+  "symbol": "GOLDBEES",
+  "yahoo_name": "NIP IND ETF GOLD BEES",
+  "price": null
  }
 }
