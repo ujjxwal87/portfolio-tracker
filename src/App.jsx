@@ -1123,7 +1123,11 @@ export default function App() {
   const ownNames = useMemo(
     () => new Set(clients.filter(c => c.is_own_money).map(c => c.name)), [clients]);
   const hidingOwn = view === "dashboard" && filterClient === "All" && ownNames.size > 0;
+  // "Own" is a pseudo-client, like "All" — every own-money account combined, so two-plus family
+  // books can be looked at together without also pulling in any real client.
+  const scopeLabel = (fc) => fc === "All" ? "All clients" : fc === "Own" ? "Family" : fc;
   const filteredTrades = useMemo(() => {
+    if (filterClient === "Own") return trades.filter(t => ownNames.has(t.client_name));
     if (filterClient !== "All") return trades.filter(t => t.client_name === filterClient);
     if (!hidingOwn) return trades;
     return trades.filter(t => !ownNames.has(t.client_name));
@@ -1138,8 +1142,11 @@ export default function App() {
     return m;
   }, [portfolioAll]);
   // Biggest book first, so the clients that matter most are at the top of the filter.
-  const clientNames = useMemo(() => ["All", ...clients.map(c => c.name)
-    .sort((a, b) => (clientValue[b] || 0) - (clientValue[a] || 0))], [clients, clientValue]);
+  // "Own" only earns a spot once there are two-plus own-money accounts to combine — with just
+  // one, it would just be that person's row again.
+  const clientNames = useMemo(() => ["All", ...(ownNames.size > 1 ? ["Own"] : []),
+    ...clients.map(c => c.name).sort((a, b) => (clientValue[b] || 0) - (clientValue[a] || 0))],
+    [clients, clientValue, ownNames]);
   const holdings = useMemo(() => portfolio.filter(p => p.netQty > 0)
     .sort((a, b) => b.currentVal - a.currentVal), [portfolio]);
   const allStocks = useMemo(() => [...new Set(trades.map(t => t.stock_symbol))], [trades]);
@@ -1205,12 +1212,12 @@ export default function App() {
       });
     });
     return Object.values(by)
-      .filter(r => filterClient === "All" || r.client === filterClient)
+      .filter(r => filterClient === "All" || (filterClient === "Own" ? ownNames.has(r.client) : r.client === filterClient))
       .map(r => ({ ...r, net: r.booked,
                    avgWin: r.wins ? r.winSum / r.wins : 0,
                    avgLoss: r.losses ? r.lossSum / r.losses : 0 }))
       .sort((a, b) => b.net - a.net);
-  }, [isAdmin, clients, portfolio, portfolioAll, filterClient]);
+  }, [isAdmin, clients, portfolio, portfolioAll, filterClient, ownNames]);
   // Admin-only holdings search: spans EVERY client regardless of the client filter, because the
   // question it answers is "who holds this?".
   const holdingHits = useMemo(() => {
@@ -1273,7 +1280,9 @@ export default function App() {
   }, [indexChoices, benchIndex]);
   useEffect(() => {
     const client = clients.find(c => c.name === filterClient);
-    if (!client) { setBenchmark(null); setBenchmarkState(filterClient === "All" ? "all" : "idle"); return; }
+    // Benchmark needs one deposit history to price against — neither "All" nor "Own" is a
+    // single account, so both fall into the same "pick a client" state as before.
+    if (!client) { setBenchmark(null); setBenchmarkState((filterClient === "All" || filterClient === "Own") ? "all" : "idle"); return; }
     const pv = stats.currentVal + Number(client.cash_balance || 0);
     if (!(pv > 0)) { setBenchmark(null); setBenchmarkState("idle"); return; }
     let cancelled = false;
@@ -1287,7 +1296,10 @@ export default function App() {
   // Idle broker cash. Without showing it, deposits minus holdings value silently misses it.
   const selectedClient = useMemo(
     () => clients.find(x => x.name === filterClient) || null, [clients, filterClient]);
-  const selectedCash = Number(selectedClient?.cash_balance || 0);
+  // "Own" spans every own-money account, so its idle cash is the sum of theirs, not any one row.
+  const selectedCash = filterClient === "Own"
+    ? clients.filter(c => ownNames.has(c.name)).reduce((s, c) => s + Number(c.cash_balance || 0), 0)
+    : Number(selectedClient?.cash_balance || 0);
   const joinedOn = fmtDateLong(selectedClient?.joining_date);
 
   const refreshPrices = useCallback(async () => {
@@ -1491,7 +1503,9 @@ export default function App() {
   const NAV = [["dashboard","Dashboard","\u25c7"],["clients","Clients","\u25c9"],
                ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],["benchmark","Custom Benchmark","\u25c8"]]
               .filter(([v]) => isAdmin || v !== "clients");
-  const tradeCountFor = (name) => name === "All" ? trades.length : trades.filter(t => t.client_name === name).length;
+  const tradeCountFor = (name) => name === "All" ? trades.length
+    : name === "Own" ? trades.filter(t => ownNames.has(t.client_name)).length
+    : trades.filter(t => t.client_name === name).length;
 
   // ══ MOBILE (<768px) ═════════════════════════════════════════════════════════
   // Same state, same maths — the sidebar's three jobs move to the tab bar, a header
@@ -1501,7 +1515,7 @@ export default function App() {
     const MNAV = [["dashboard", "Home", "◇"], ["clients", "Clients", "◉"],
                   ["portfolio", "Holdings", "▤"], ["trades", "Trades", "⇄"],
                   ["benchmark", "Bench", "◈"]].filter(([v]) => isAdmin || v !== "clients");
-    const scopeLabel = filterClient === "All" ? "All clients" : filterClient;
+    const scopeText = scopeLabel(filterClient);
     const holdingsValue = holdings.reduce((s, h) => s + h.currentVal, 0);
     // Same admin-only cross-client search as desktop; null when the box is empty.
     const mSearching = isAdmin && holdingHits !== null;
@@ -1589,7 +1603,7 @@ export default function App() {
                     background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.22)", color: "#fff",
                     padding: "6px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer",
                     maxWidth: 240, minHeight: 32 }}>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel}</span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeText}</span>
               <span style={{ fontSize: 8, opacity: .85 }}>▼</span>
             </button>
             <button onClick={refreshPrices} disabled={priceLoading} aria-label="Refresh prices"
@@ -2021,10 +2035,10 @@ export default function App() {
                             background: on ? "#EFF6FF" : "var(--surface)",
                             border: `1px solid ${on ? "#BFDBFE" : "transparent"}` }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", flex: "none",
-                                     background: c === "All" ? "var(--ink-3)" : tintFor(c)[1] }} />
+                                     background: (c === "All" || c === "Own") ? "var(--ink-3)" : tintFor(c)[1] }} />
                       <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "#334155", minWidth: 0,
                                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {c === "All" ? "All clients" : c}
+                        {scopeLabel(c)}
                       </span>
                       <span className="num" style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{tradeCountFor(c)} trades</span>
                       <span style={{ width: 14, textAlign: "right", color: "var(--accent)", fontSize: 12 }}>{on ? "✓" : ""}</span>
@@ -2198,10 +2212,10 @@ export default function App() {
                   border: on ? "1px solid #BFDBFE" : "1px solid transparent",
                 }}>
                   <span style={{ width: 6, height: 6, borderRadius: "50%", flex: "none",
-                                 background: c === "All" ? "var(--ink-3)" : tintFor(c)[1] }} />
+                                 background: (c === "All" || c === "Own") ? "var(--ink-3)" : tintFor(c)[1] }} />
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: on ? "var(--ink)" : "var(--ink-2)",
                                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {c === "All" ? "All clients" : c}
+                    {scopeLabel(c)}
                   </span>
                   <span className="num" style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>{tradeCountFor(c)}</span>
                 </button>
@@ -2410,7 +2424,7 @@ export default function App() {
       {/* ── DASHBOARD TAB ────────────────────────────────────────────────────── */}
       {view === "dashboard" && (<>
         <Hero view="dashboard"
-          eyebrow={`Total P&L · ${filterClient === "All" ? (hidingOwn ? "All clients · client money only" : "All clients") : filterClient}`}
+          eyebrow={`Total P&L · ${filterClient === "All" ? (hidingOwn ? "All clients · client money only" : "All clients") : scopeLabel(filterClient)}`}
           right={
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
               {joinedOn && (
@@ -2525,7 +2539,7 @@ export default function App() {
         // column is forced on — the point of searching is to see who else holds the name.
         const searching = isAdmin && holdingHits !== null;
         const rows = searching ? holdingHits : holdings;
-        const showClient = searching || filterClient === "All";
+        const showClient = searching || filterClient === "All" || filterClient === "Own";
         const totalVal = rows.reduce((s, h) => s + h.currentVal, 0);
         const totalInvested = rows.reduce((s, h) => s + h.investedHolding, 0);
         const unreal = totalVal - totalInvested;
@@ -2535,7 +2549,7 @@ export default function App() {
         const heads = [...(showClient ? ["Client"] : []),
                        "Stock","Net Qty","Avg Buy","CMP","Invested","Current Value","P&L","Weight"];
         return (<>
-          <Hero view="portfolio" eyebrow={`Portfolio · ${filterClient === "All" ? "All clients" : filterClient}`}
+          <Hero view="portfolio" eyebrow={`Portfolio · ${scopeLabel(filterClient)}`}
             right={
               <div style={{ background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.2)",
                             borderRadius: 16, padding: "14px 20px", textAlign: "right" }}>
@@ -2589,7 +2603,7 @@ export default function App() {
                             padding: "12px 22px", background: "var(--table-head)", borderBottom: "1px solid var(--line)" }}>
                 {heads.map((h, i) => (
                   <div key={h} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
-                                        color: "var(--ink-3)", textAlign: i >= (filterClient === "All" ? 2 : 1) ? "right" : "left" }}>{h}</div>
+                                        color: "var(--ink-3)", textAlign: i >= ((filterClient === "All" || filterClient === "Own") ? 2 : 1) ? "right" : "left" }}>{h}</div>
                 ))}
               </div>
               {rows.map((h, i) => {
@@ -2653,7 +2667,7 @@ export default function App() {
       {/* ── TRADES TAB ──────────────────────────────────────────────────────── */}
       {view === "trades" && isGuest && <LockedPanel what="Trades" />}
       {view === "trades" && !isGuest && (<>
-        <Hero view="trades" eyebrow={`Trades · ${filterClient === "All" ? "All clients" : filterClient}`}
+        <Hero view="trades" eyebrow={`Trades · ${scopeLabel(filterClient)}`}
           right={isAdmin && !showForm && (
             <button onClick={openAddTrade} disabled={clients.length === 0}
                     style={{ padding: "11px 20px", borderRadius: 11, border: "none", background: "#fff",
@@ -2716,18 +2730,18 @@ export default function App() {
 
         <div style={{ display: "grid", gap: 14 }}>
           {isAdmin && <ClientTradeStatsPanel rows={clientTradeStats}
-                                             scopedTo={filterClient === "All" ? null : filterClient} />}
+                                             scopedTo={filterClient === "All" ? null : scopeLabel(filterClient)} />}
           <HighlightPanel title="Recent open trades" note="Newest 10 lots still held"
-                          rows={highlights.recentOpen} kind="open" showClient={filterClient === "All"}
+                          rows={highlights.recentOpen} kind="open" showClient={filterClient === "All" || filterClient === "Own"}
                           levelFor={levelFor} onSaveLevel={saveLevel} isAdmin={isAdmin}
                           levelSaving={levelSaving} />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
-                          rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All"} />
+                          rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
-                          rows={highlights.best} kind="closed" showClient={filterClient === "All"} />
+                          rows={highlights.best} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           {isAdmin && (
             <HighlightPanel title="Top 5 losing trades" note="Admin only · hidden from client logins"
-                            rows={highlights.worst} kind="closed" showClient={filterClient === "All"} />
+                            rows={highlights.worst} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           )}
         </div>
 
