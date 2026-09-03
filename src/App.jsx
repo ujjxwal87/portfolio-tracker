@@ -419,9 +419,13 @@ function resolvePortfolio(trades, cmp) {
     let status = totalSoldQty === 0 ? "holding" : netQty === 0 ? "fully_booked" : "partially_booked";
     const avgBuyPrice = netQty > 0 ? holdingLots.reduce((s, b) => s + b.price * b.remainQty, 0) / netQty : 0;
     const investedHolding = netQty > 0 ? holdingLots.reduce((s, b) => s + b.price * b.remainQty, 0) : 0;
-    const currentVal = netQty * (cmp[g.stock] || 0);
+    // No live quote for this stock yet (a Yahoo fetch can still fail after the backend's own
+    // retries) — assume flat rather than falling back to 0, which would read as the holding
+    // being wiped out and swing the whole book's P&L on nothing but a dropped price fetch.
+    const livePrice = cmp[g.stock];
+    const currentVal = netQty * (livePrice || avgBuyPrice);
     const unrealizedPL = currentVal - investedHolding;
-    resolved.push({ client: g.client, stock: g.stock, status, netQty, totalBuys, totalSells: totalSoldQty, avgBuyPrice, investedHolding, currentVal, unrealizedPL, realizedPL, totalPL: realizedPL + unrealizedPL, cmp: cmp[g.stock] || 0, matchDetails, holdingLots });
+    resolved.push({ client: g.client, stock: g.stock, status, netQty, totalBuys, totalSells: totalSoldQty, avgBuyPrice, investedHolding, currentVal, unrealizedPL, realizedPL, totalPL: realizedPL + unrealizedPL, cmp: livePrice || 0, matchDetails, holdingLots });
   });
   return resolved;
 }

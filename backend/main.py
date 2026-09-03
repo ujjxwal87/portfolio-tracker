@@ -410,12 +410,22 @@ def delete_trade(trade_id: str, user: auth.CurrentUser = Depends(auth.require_ad
 _YF_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
 
-def _fetch_one_price(sym: str):
+def _fetch_one_price(sym: str, retries: int = 2):
+    # Yahoo throttles bursts of 30+ concurrent unauthenticated requests (exactly what a
+    # full-book page load sends), so a lone failed attempt does not mean the symbol is bad.
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}.NS"
-    r = requests.get(url, headers=_YF_HEADERS, timeout=8)
-    r.raise_for_status()
-    price = r.json()["chart"]["result"][0]["meta"]["regularMarketPrice"]
-    return sym, round(float(price), 2)
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            r = requests.get(url, headers=_YF_HEADERS, timeout=8)
+            r.raise_for_status()
+            price = r.json()["chart"]["result"][0]["meta"]["regularMarketPrice"]
+            return sym, round(float(price), 2)
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                time.sleep(0.4 * (attempt + 1))
+    raise last_err
 
 
 # ── Live prices (Yahoo Finance v8 chart API — free, no key needed) ─────────────
@@ -499,6 +509,18 @@ def get_prices(symbols: Optional[str] = None, force: bool = False,
         with _price_lock:
             _price_cache.update(prices)
             _price_cache_at = time.time()
+    # A symbol that failed even after retries falls back to whatever price is still sitting in
+    # the cache, however stale — a slightly-old real price beats reporting the holding as worth
+    # zero, which is what silently omitting it here used to do to the P&L totals.
+    missing = [s for s in symbol_list if s not in prices]
+    if missing:
+        with _price_lock:
+            for s in missing:
+                if s in _price_cache:
+                    prices[s] = _price_cache[s]
+        still_missing = [s for s in symbol_list if s not in prices]
+        if still_missing:
+            logger.warning(f"No price at all (fresh or stale) for: {still_missing}")
     return prices
 
 
