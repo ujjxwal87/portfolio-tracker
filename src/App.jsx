@@ -1245,7 +1245,17 @@ export default function App() {
     const totalUnrealizedPL = portfolio.reduce((s, p) => s + p.unrealizedPL, 0);
     const totalPL = totalRealizedPL + totalUnrealizedPL;
     const totalInvested = portfolio.reduce((s, p) => s + p.investedHolding, 0) + portfolio.reduce((s, p) => s + p.matchDetails.reduce((ss, m) => ss + m.buyPrice * m.qty, 0), 0);
-    const totalReturn = totalInvested > 0 ? (totalPL / totalInvested) * 100 : 0;
+    // Return needs a denominator of capital actually AT RISK, not every rupee ever bought with —
+    // dividing by cumulative gross buys (totalInvested) dilutes the % for anyone who has cycled
+    // the same capital through many round trips, same trap the peak-capital benchmark fix
+    // avoids for clients with deposit history. Without deposits to price against, fall back to
+    // the peak of running (buys − sells) cash committed across the trade history itself.
+    let committed = 0, peakCommitted = 0;
+    [...filteredTrades].sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(t => {
+      committed += (t.type === "BUY" ? 1 : -1) * t.quantity * Number(t.price);
+      if (committed > peakCommitted) peakCommitted = committed;
+    });
+    const totalReturn = peakCommitted > 0 ? (totalPL / peakCommitted) * 100 : 0;
     const realizedTrades = portfolio.flatMap(p => p.matchDetails);
     const winLots = realizedTrades.filter(isDecisiveWin);
     const lossLots = realizedTrades.filter(isDecisiveLoss);
@@ -1263,7 +1273,7 @@ export default function App() {
     // also carries the cost of lots already sold.
     const openInvested = holdings.reduce((s, h) => s + h.investedHolding, 0);
     return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, openInvested, totalReturn, winRate, avgWin, avgLoss, riskReward, maxDD, currentVal };
-  }, [portfolio, holdings]);
+  }, [portfolio, holdings, filteredTrades]);
 
   // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
   const [benchIndex, setBenchIndex] = useState("nifty50");
