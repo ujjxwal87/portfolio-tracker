@@ -919,7 +919,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
   );
 }
 
-const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "", benchmark_keys: [] };
+const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "", benchmark_keys: [], is_own_money: false };
 const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "" };
 
 export default function App() {
@@ -1114,7 +1114,16 @@ export default function App() {
 
   useEffect(() => { if (session) { setAppLoading(true); loadData(); } }, [loadData, session]);
 
-  const filteredTrades = useMemo(() => filterClient === "All" ? trades : trades.filter(t => t.client_name === filterClient), [trades, filterClient]);
+  // Accounts flagged as our own money. Their profit is not advisory performance, so the dashboard's
+  // all-clients view leaves them out; every other tab counts them like any other book.
+  const ownNames = useMemo(
+    () => new Set(clients.filter(c => c.is_own_money).map(c => c.name)), [clients]);
+  const hidingOwn = view === "dashboard" && filterClient === "All" && ownNames.size > 0;
+  const filteredTrades = useMemo(() => {
+    if (filterClient !== "All") return trades.filter(t => t.client_name === filterClient);
+    if (!hidingOwn) return trades;
+    return trades.filter(t => !ownNames.has(t.client_name));
+  }, [trades, filterClient, hidingOwn, ownNames]);
   const portfolio = useMemo(() => resolvePortfolio(filteredTrades, cmp), [filteredTrades, cmp]);
   // Clients view is never client-filtered, so it needs the all-clients resolve.
   const portfolioAll = useMemo(() => resolvePortfolio(trades, cmp), [trades, cmp]);
@@ -1298,7 +1307,7 @@ export default function App() {
   // ── Client CRUD ──────────────────────────────────────────────────────────────
 
   const openAddClient = () => { setClientForm(EMPTY_CLIENT_FORM); setEditingClientId(null); setShowClientForm(true); };
-  const openEditClient = (c) => { setClientForm({ name: c.name, phone: c.phone || "", email: c.email || "", joining_date: c.joining_date ? String(c.joining_date).slice(0, 10) : "", benchmark_keys: c.benchmark_keys || [] }); setEditingClientId(c.id); setShowClientForm(true); };
+  const openEditClient = (c) => { setClientForm({ name: c.name, phone: c.phone || "", email: c.email || "", joining_date: c.joining_date ? String(c.joining_date).slice(0, 10) : "", benchmark_keys: c.benchmark_keys || [], is_own_money: Boolean(c.is_own_money) }); setEditingClientId(c.id); setShowClientForm(true); };
   const cancelClientForm = () => { setShowClientForm(false); setEditingClientId(null); setClientForm(EMPTY_CLIENT_FORM); };
 
   const handleSaveClient = async () => {
@@ -1590,7 +1599,7 @@ export default function App() {
 
           <div style={{ position: "relative", marginTop: 14 }}>
             {view === "dashboard" && (<>
-              <div style={MEYEBROW}>TOTAL P&L</div>
+              <div style={MEYEBROW}>TOTAL P&L{hidingOwn ? " · CLIENT MONEY ONLY" : ""}</div>
               <div className="fig" style={{ fontSize: 34, fontWeight: 600, letterSpacing: "-.03em", marginTop: 6 }}>
                 {inrRound(stats.totalPL)}
               </div>
@@ -2077,6 +2086,15 @@ export default function App() {
                 <input style={MINPUT} type="date" value={clientForm.joining_date}
                        onChange={e => setClientForm(p => ({ ...p, joining_date: e.target.value }))} />
               </div>
+              <button type="button" onClick={() => setClientForm(p => ({ ...p, is_own_money: !p.is_own_money }))}
+                      style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 11,
+                               cursor: "pointer", background: clientForm.is_own_money ? "#FEF3C7" : "var(--surface)",
+                               border: `1px solid ${clientForm.is_own_money ? "#FCD34D" : "#E1E6EE"}` }}>
+                <span style={{ width: 16, height: 16, borderRadius: 5, display: "inline-block",
+                               background: clientForm.is_own_money ? "#B45309" : "transparent",
+                               border: `1px solid ${clientForm.is_own_money ? "#B45309" : "#E1E6EE"}` }} />
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>Our own money</span>
+              </button>
             </div>
             <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
               <button onClick={handleSaveClient} disabled={clientSaving} style={{ flex: 1, padding: 13, borderRadius: 11,
@@ -2316,6 +2334,21 @@ export default function App() {
                   Nifty 50 is always compared. Anything selected here is added to this client's own view.
                 </div>
               </div>
+              <div style={{ marginTop: 16 }}>
+                <button type="button" onClick={() => setClientForm(f => ({ ...f, is_own_money: !f.is_own_money }))}
+                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 11,
+                                 cursor: "pointer", background: clientForm.is_own_money ? "#FEF3C7" : "var(--surface)",
+                                 border: `1px solid ${clientForm.is_own_money ? "#FCD34D" : "var(--line)"}` }}>
+                  <span style={{ width: 16, height: 16, borderRadius: 5, display: "inline-block",
+                                 background: clientForm.is_own_money ? "#B45309" : "transparent",
+                                 border: `1px solid ${clientForm.is_own_money ? "#B45309" : "var(--line)"}` }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>Our own money</span>
+                </button>
+                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
+                  Kept out of the All-clients dashboard totals. Still shows in Portfolio, Trades, and when
+                  this name is picked on its own.
+                </div>
+              </div>
               <div style={{ marginTop: 16, display: "flex", gap: 9 }}>
                 <button onClick={handleSaveClient} disabled={clientSaving}
                         style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: "var(--ink)", color: "#fff",
@@ -2373,7 +2406,7 @@ export default function App() {
       {/* ── DASHBOARD TAB ────────────────────────────────────────────────────── */}
       {view === "dashboard" && (<>
         <Hero view="dashboard"
-          eyebrow={`Total P&L · ${filterClient === "All" ? "All clients" : filterClient}`}
+          eyebrow={`Total P&L · ${filterClient === "All" ? (hidingOwn ? "All clients · client money only" : "All clients") : filterClient}`}
           right={
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
               {joinedOn && (

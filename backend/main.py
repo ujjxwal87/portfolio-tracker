@@ -184,6 +184,8 @@ class ClientCreate(BaseModel):
     joining_date: Optional[date] = None
     # Extra benchmarks beyond Nifty 50, which every client always gets.
     benchmark_keys: Optional[list[str]] = None
+    # House money (ours, not a client's) — kept out of the all-clients dashboard aggregate.
+    is_own_money: bool = False
 
 
 class TradeCreate(BaseModel):
@@ -201,7 +203,7 @@ class TradeCreate(BaseModel):
 @app.get("/api/clients")
 def list_clients(user: auth.CurrentUser = Depends(auth.current_user)):
     cols = ("SELECT id, name, phone, email, joining_date, cash_balance, benchmark_keys, "
-            "created_at, updated_at FROM portfolio_tracker.clients ")
+            "is_own_money, created_at, updated_at FROM portfolio_tracker.clients ")
     if user.is_guest:
         labels = guest_client_map()
         with get_db() as conn:
@@ -231,9 +233,10 @@ def create_client(body: ClientCreate, user: auth.CurrentUser = Depends(auth.requ
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
-                "INSERT INTO portfolio_tracker.clients (name, phone, email, joining_date, owner_id) "
-                "VALUES (%s, %s, %s, %s, %s) RETURNING id, name, phone, email, joining_date, created_at, updated_at",
-                (body.name, body.phone, body.email, body.joining_date, user.id),
+                "INSERT INTO portfolio_tracker.clients (name, phone, email, joining_date, is_own_money, owner_id) "
+                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id, name, phone, email, joining_date, "
+                "         is_own_money, created_at, updated_at",
+                (body.name, body.phone, body.email, body.joining_date, body.is_own_money, user.id),
             )
             return cur.fetchone()
 
@@ -246,11 +249,11 @@ def update_client(client_id: str, body: ClientCreate,
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
                 "UPDATE portfolio_tracker.clients "
-                "SET name=%s, phone=%s, email=%s, joining_date=%s, "
+                "SET name=%s, phone=%s, email=%s, joining_date=%s, is_own_money=%s, "
                 "    benchmark_keys=COALESCE(%s, benchmark_keys), updated_at=NOW() "
                 "WHERE id=%s RETURNING id, name, phone, email, joining_date, benchmark_keys, "
-                "         created_at, updated_at",
-                (body.name, body.phone, body.email, body.joining_date,
+                "         is_own_money, created_at, updated_at",
+                (body.name, body.phone, body.email, body.joining_date, body.is_own_money,
                  _valid_benchmarks(body.benchmark_keys), client_id),
             )
             row = cur.fetchone()
