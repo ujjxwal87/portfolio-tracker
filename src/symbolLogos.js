@@ -5,6 +5,7 @@ export const SYMBOL_LOGOS = {
   "ADANIENSOL": "/logos/ADANIENSOL.webp",
   "ADANIGREEN": "/logos/ADANIGREEN.webp",
   "ADANIPOWER": "/logos/ADANIPOWER.webp",
+  "AETHER": "/logos/AETHER.webp",
   "AIIL": "/logos/AIIL.webp",
   "ANANDRATHI": "/logos/ANANDRATHI.png",
   "ANANTRAJ": "/logos/ANANTRAJ.png",
