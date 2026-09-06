@@ -12,6 +12,23 @@ const fmtDateLong = (d) => { if (!d) return null; const dt = new Date(d);
   return `${String(dt.getUTCDate()).padStart(2,"0")} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][dt.getUTCMonth()]} ${dt.getUTCFullYear()}`; };
 const fmtDate = (d) => { if (!d) return "—"; const dt = new Date(d); const dd = String(dt.getUTCDate()).padStart(2,"0"); const mm = String(dt.getUTCMonth()+1).padStart(2,"0"); return `${dd}/${mm}/${dt.getUTCFullYear()}`; };
 
+// Catmull-Rom → cubic bezier: every line chart's points, drawn as one smooth curve instead of
+// straight polyline segments. Control points sit at ±(next − prev)/6 either side of each point.
+function smoothPathFromPoints(P) {
+  let d = `M${P[0][0].toFixed(1)} ${P[0][1].toFixed(1)}`;
+  for (let i = 0; i < P.length - 1; i++) {
+    const p0 = P[i - 1] || P[i], p1 = P[i], p2 = P[i + 1], p3 = P[i + 2] || P[i + 1];
+    d += ` C${(p1[0] + (p2[0] - p0[0]) / 6).toFixed(1)} ${(p1[1] + (p2[1] - p0[1]) / 6).toFixed(1)}`
+       + `,${(p2[0] - (p3[0] - p1[0]) / 6).toFixed(1)} ${(p2[1] - (p3[1] - p1[1]) / 6).toFixed(1)}`
+       + `,${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
+function smoothPath(vals, w, h, pad, mn, sp) {
+  const P = vals.map((v, i) => [(i / (vals.length - 1)) * w, h - pad - ((v - mn) / sp) * (h - pad * 2)]);
+  return { d: smoothPathFromPoints(P), points: P };
+}
+
 const Badge = ({ children, color }) => {
   const colors = { green: ["#dcfce7","#166534"], blue: ["#dbeafe","#1e40af"], amber: ["#fef3c7","#92400e"], red: ["#fee2e2","#991b1b"], gray: ["#f3f4f6","#374151"] };
   const [bg, fg] = colors[color] || colors.gray;
@@ -97,14 +114,23 @@ const Sparkline = ({ points, w = 280, h = 100 }) => {
   if (!points || points.length < 2) return null;
   const vals = points.map(p => p.realized + p.unrealized);   // realized is already cumulative
   const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
-  const x = (i) => (i / (vals.length - 1)) * (w - 6) + 3;
-  const y = (v) => h - 8 - ((v - min) / span) * (h - 20);
-  const d = vals.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const pad = 8;
+  const { d, points: P } = smoothPath(vals, w, h, pad, min, span);
+  const last = P[P.length - 1];
+  const gid = "sparkFill";
   return (
     <svg width={w} height={h} style={{ display: "block", overflow: "visible" }} aria-hidden="true">
-      <polyline points={d} fill="none" stroke="rgba(255,255,255,.92)" strokeWidth="2.5"
-                strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={x(vals.length - 1)} cy={y(vals[vals.length - 1])} r="4.5" fill="#fff" />
+      <defs>
+        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fff" stopOpacity=".55" />
+          <stop offset="58%" stopColor="#fff" stopOpacity=".154" />
+          <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${d} L ${w} ${h} L 0 ${h} Z`} fill={`url(#${gid})`} />
+      <path d={d} fill="none" stroke="rgba(255,255,255,.92)" strokeWidth="2.5"
+            strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <circle cx={last[0]} cy={last[1]} r="4.2" fill="#fff" />
     </svg>
   );
 };
@@ -171,17 +197,15 @@ const Segmented = ({ options, value, onChange }) => (
 // lets the delta line carry direction.
 // `size` bumps the figure when fewer cards share a row. `hypothetical` switches the
 // shell to a dashed, shadowless surface so a counterfactual never reads as real money.
-const Card = ({ title, value, sub, accent, tone, size = 23, hypothetical }) => (
+const Card = ({ title, value, sub, accent, tone, size = 29, hypothetical }) => (
   <div className={hypothetical ? "" : "card-hover"} style={{
-    ...PANEL, borderRadius: 16, padding: "16px 18px 17px",
+    ...PANEL, borderRadius: 16, padding: "18px 20px 16px",
     ...(hypothetical ? { background: "#FAFBFD", border: "1px dashed #D7DEE8", boxShadow: "none" } : {}),
   }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <span style={{ width: 3, height: 13, borderRadius: 2, background: accent || "var(--ink-3)", flex: "none" }} />
-      <span style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>{title}</span>
-    </div>
-    <div className="fig" style={{ fontSize: size, lineHeight: 1.22, fontWeight: 600, color: tone || "var(--ink)", marginTop: 8, letterSpacing: "-.02em" }}>{value}</div>
-    {sub && <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4, lineHeight: 1.35 }}>{sub}</div>}
+    <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: accent || "var(--ink-3)" }} />
+    <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 12 }}>{title}</div>
+    <div className="fig" style={{ fontSize: size, lineHeight: 1.15, fontWeight: 800, color: tone || "var(--ink)", marginTop: 8, letterSpacing: "-.04em" }}>{value}</div>
+    {sub && <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.35 }}>{sub}</div>}
   </div>
 );
 
@@ -560,8 +584,12 @@ function PnlComboChart({ points }) {
   const cx = (i) => ML + band * (i + 0.5);
   const ticks = [];
   for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
-  const ptsOf = (k) => points.map((p, i) => `${cx(i)},${yOf(p[k])}`).join(" ");
   const C_REAL = "#2563eb", C_LINE = "#d97706";
+  // Realized keeps its straight polyline (it is inherently a step series, one value per bucket);
+  // unrealized becomes a smooth Catmull-Rom curve with a soft gradient fill under it.
+  const realP = points.map((p, i) => [cx(i), yOf(p.realized)]);
+  const unrlP = points.map((p, i) => [cx(i), yOf(p.unrealized)]);
+  const unrlD = smoothPathFromPoints(unrlP);
   return (
     <div style={{ position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", overflow: "visible" }}>
@@ -571,9 +599,18 @@ function PnlComboChart({ points }) {
             <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#94a3b8">{fmtCompact(t)}</text>
           </g>
         ))}
+        <defs>
+          <linearGradient id="pnlUnrlFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={C_LINE} stopOpacity=".34" />
+            <stop offset="100%" stopColor={C_LINE} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${unrlD} L ${unrlP[unrlP.length - 1][0].toFixed(1)} ${yOf(0).toFixed(1)} L ${unrlP[0][0].toFixed(1)} ${yOf(0).toFixed(1)} Z`}
+              fill="url(#pnlUnrlFill)" />
+        <polyline points={realP.map(p => p.join(",")).join(" ")} fill="none" stroke={C_REAL} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={unrlD} fill="none" stroke={C_LINE} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {[["realized", C_REAL], ["unrealized", C_LINE]].map(([k, c]) => (
           <g key={k}>
-            <polyline points={ptsOf(k)} fill="none" stroke={c} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
             {points.map((p, i) => (
               <circle key={i} cx={cx(i)} cy={yOf(p[k])} r={hover === i ? 5.5 : 4.5} fill={c} stroke="var(--surface)" strokeWidth="2" />
             ))}
@@ -2446,7 +2483,7 @@ export default function App() {
             </div>
           }>
           <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
-            <div className="fig" style={{ fontSize: 46, fontWeight: 600, letterSpacing: "-.03em", lineHeight: 1.05 }}>
+            <div className="fig" style={{ fontSize: 52, fontWeight: 800, letterSpacing: "-.045em", lineHeight: 1.05 }}>
               {fmt(stats.totalPL)}
             </div>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 99,
@@ -2511,6 +2548,37 @@ export default function App() {
                     accent="var(--accent)" />
             </>)}
           </div>
+
+          {holdings.length > 0 && (() => {
+            const allocTotal = holdings.reduce((s, h) => s + h.currentVal, 0);
+            const RAMP = ["#1E3A8A", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#7DA9F5"];
+            const top6 = holdings.slice(0, 6);
+            return (
+              <div style={{ ...PANEL, padding: "18px 20px 20px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Allocation</div>
+                  <div className="num" style={{ fontSize: 12, color: "var(--ink-3)" }}>{fmt(allocTotal)}</div>
+                </div>
+                {top6.map((h, i) => {
+                  const w = allocTotal > 0 ? (h.currentVal / allocTotal * 100) : 0;
+                  return (
+                    <div key={h.stock + h.client} style={{ marginBottom: 13 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</div>
+                        <div style={{ display: "flex", gap: 10, flex: "none" }}>
+                          <div className="num" style={{ fontSize: 12, color: "var(--ink-3)" }}>{fmt(h.currentVal)}</div>
+                          <div className="num" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: "-.02em" }}>{w.toFixed(1)}%</div>
+                        </div>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: "#F1F4F8", marginTop: 6, overflow: "hidden" }}>
+                        <div style={{ height: 6, borderRadius: 99, width: `${w}%`, background: RAMP[i] }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           <div style={PANEL}>
             <PanelTitle right={
