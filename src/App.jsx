@@ -2549,6 +2549,37 @@ export default function App() {
             </>)}
           </div>
 
+          {holdings.length > 0 && (() => {
+            const allocTotal = holdings.reduce((s, h) => s + h.currentVal, 0);
+            const RAMP = ["#1E3A8A", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#7DA9F5"];
+            const top6 = holdings.slice(0, 6);
+            return (
+              <div style={{ ...PANEL, padding: "18px 20px 20px" }}>
+                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Allocation</div>
+                  <div className="num" style={{ fontSize: 12, color: "var(--ink-3)" }}>{fmt(allocTotal)}</div>
+                </div>
+                {top6.map((h, i) => {
+                  const w = allocTotal > 0 ? (h.currentVal / allocTotal * 100) : 0;
+                  return (
+                    <div key={h.stock + h.client} style={{ marginBottom: 13 }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</div>
+                        <div style={{ display: "flex", gap: 10, flex: "none" }}>
+                          <div className="num" style={{ fontSize: 12, color: "var(--ink-3)" }}>{fmt(h.currentVal)}</div>
+                          <div className="num" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: "-.02em" }}>{w.toFixed(1)}%</div>
+                        </div>
+                      </div>
+                      <div style={{ height: 6, borderRadius: 99, background: "#F1F4F8", marginTop: 6, overflow: "hidden" }}>
+                        <div style={{ height: 6, borderRadius: 99, width: `${w}%`, background: RAMP[i] }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           <div style={PANEL}>
             <PanelTitle right={
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
