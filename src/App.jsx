@@ -607,7 +607,7 @@ function PnlComboChart({ points }) {
         </defs>
         <path d={`${unrlD} L ${unrlP[unrlP.length - 1][0].toFixed(1)} ${yOf(0).toFixed(1)} L ${unrlP[0][0].toFixed(1)} ${yOf(0).toFixed(1)} Z`}
               fill="url(#pnlUnrlFill)" />
-        <polyline points={realP.map(p => p.join(",")).join(" ")} fill="none" stroke={C_REAL} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+        <path d={smoothPathFromPoints(realP)} fill="none" stroke={C_REAL} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         <path d={unrlD} fill="none" stroke={C_LINE} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         {[["realized", C_REAL], ["unrealized", C_LINE]].map(([k, c]) => (
           <g key={k}>
