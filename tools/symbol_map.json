@@ -686,5 +686,41 @@
   "symbol": "GOLDBEES",
   "yahoo_name": "NIP IND ETF GOLD BEES",
   "price": null
+ },
+ "TATA MOTORS PASS VEH LTD": {
+  "isin": null,
+  "symbol": "TMPV",
+  "yahoo_name": "TATA MOTORS PASS VEH LTD",
+  "price": null
+ },
+ "SKF INDIA LTD": {
+  "isin": null,
+  "symbol": "SKFINDIA",
+  "yahoo_name": "SKF INDIA LTD",
+  "price": null
+ },
+ "MOTILAL OS NASDAQ100 ETF": {
+  "isin": null,
+  "symbol": "MON100",
+  "yahoo_name": "MOTILAL OS NASDAQ100 ETF",
+  "price": null
+ },
+ "INOX WIND LIMITED": {
+  "isin": null,
+  "symbol": "INOXWIND",
+  "yahoo_name": "INOX WIND LIMITED",
+  "price": null
+ },
+ "TATAAML-TATSILV": {
+  "isin": null,
+  "symbol": "TATSILV",
+  "yahoo_name": "TATAAML-TATSILV",
+  "price": null
+ },
+ "KARNATAKA BANK LIMITED": {
+  "isin": null,
+  "symbol": "KTKBANK",
+  "yahoo_name": "KARNATAKA BANK LIMITED",
+  "price": null
  }
 }
