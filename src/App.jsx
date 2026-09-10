@@ -298,6 +298,7 @@ const MobileCombo = ({ points }) => {
   const yOf = (v) => H - PAD - ((v - mn) / span) * (H - PAD * 2);
   const cx = (i) => PAD + (i + 0.5) * ((W - PAD * 2) / points.length);
   const zero = yOf(0);
+  const lblEvery = Math.ceil(points.length / 6), dotR = points.length > 14 ? 2 : 3.2;
   const path = (k) => points.map((p, i) => (i ? "L" : "M") + cx(i).toFixed(1) + " " + yOf(p[k]).toFixed(1)).join(" ");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ display: "block" }}>
@@ -306,10 +307,10 @@ const MobileCombo = ({ points }) => {
       {[["realized", "#2563EB"], ["unrealized", "#D97706"]].map(([k, c]) => (
         <g key={k}>
           <path d={path(k)} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
-          {points.map((p, i) => <circle key={i} cx={cx(i)} cy={yOf(p[k])} r={3.2} fill={c} stroke="#fff" strokeWidth={1.6} />)}
+          {points.map((p, i) => <circle key={i} cx={cx(i)} cy={yOf(p[k])} r={dotR} fill={c} stroke="#fff" strokeWidth={1.6} />)}
         </g>
       ))}
-      {points.map((p, i) => (
+      {points.map((p, i) => (i % lblEvery === 0 || i === points.length - 1) && (
         <text key={i} x={cx(i)} y={H - 3} textAnchor="middle" fontSize={9} fill="#94A3B8">{p.label}</text>
       ))}
     </svg>
@@ -532,35 +533,56 @@ function realizedThrough(portfolio, endIso) {
   return r;
 }
 
-function computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, year, quarter, month) {
+const PNL_VIEWS = ["daily", "monthly", "quarterly", "yearly"];
+const PNL_VIEW_LABEL = { daily: "Daily", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
+const PNL_DAILY_DAYS = 30, PNL_MONTHLY_MONTHS = 12, PNL_QUARTERLY_QTRS = 4, PNL_FIRST_YEAR = 2026;
+
+const shiftDays = (iso, n) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + n));
+  return isoOf(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+};
+
+// The monthly view reaches 12 months back, so price history has to start earlier than that.
+const pnlHistoryStart = () => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - (PNL_MONTHLY_MONTHS + 1));
+  return isoOf(d.getFullYear(), d.getMonth(), 1);
+};
+
+function computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, view) {
   const priceAsOf = makePriceAsOf(dailyPrices, cmp);
   const tIso = todayIso();
   const clamp = (d) => (d > tIso ? tIso : d);
+  const ty = Number(tIso.slice(0, 4)), tm = Number(tIso.slice(5, 7)) - 1;
+  const at = (label, sub, startIso, endIso) => ({
+    label, sub, startIso, endIso,
+    realized: realizedThrough(portfolio, clamp(endIso)),
+    unrealized: unrealizedAsOf(filteredTrades, clamp(endIso), priceAsOf),
+  });
   const points = [];
-  const monthPoint = (m) => {
-    const start = isoOf(year, m, 1), end = isoOf(year, m, lastDayOfMonth(year, m));
-    if (start > tIso) return;   // a month that hasn't started has no data to plot
-    points.push({
-      label: MONTHS[m], sub: String(year), startIso: start, endIso: end,
-      realized: realizedThrough(portfolio, clamp(end)),
-      unrealized: unrealizedAsOf(filteredTrades, clamp(end), priceAsOf),
-    });
-  };
-  if (month !== "All") {
-    const m = month, ld = lastDayOfMonth(year, m);
-    [[1, 7], [8, 14], [15, 21], [22, ld]].forEach(([a, b]) => {
-      const start = isoOf(year, m, a), end = isoOf(year, m, b);
-      points.push({
-        label: `${a}–${b}`, sub: `${MONTHS[m]} ${year}`, startIso: start, endIso: end,
-        realized: realizedThrough(portfolio, clamp(end)),
-        unrealized: unrealizedAsOf(filteredTrades, clamp(end), priceAsOf),
-      });
-    });
-  } else if (quarter !== "All") {
-    const qm = (quarter - 1) * 3;
-    [qm, qm + 1, qm + 2].forEach(monthPoint);
+  if (view === "daily") {
+    // A close only exists on trading days, so priceAsOf carries the last one into weekends
+    // and holidays -- every one of the 30 days gets a value.
+    for (let i = PNL_DAILY_DAYS - 1; i >= 0; i--) {
+      const d = shiftDays(tIso, -i), dd = Number(d.slice(8, 10)), mm = Number(d.slice(5, 7)) - 1;
+      points.push(at(String(dd), `${dd} ${MONTHS[mm]} ${d.slice(0, 4)}`, d, d));
+    }
+  } else if (view === "monthly") {
+    for (let i = PNL_MONTHLY_MONTHS - 1; i >= 0; i--) {
+      const n = tm - i, y = ty + Math.floor(n / 12), m = ((n % 12) + 12) % 12;
+      points.push(at(MONTHS[m], String(y), isoOf(y, m, 1), isoOf(y, m, lastDayOfMonth(y, m))));
+    }
+  } else if (view === "quarterly") {
+    const tq = Math.floor(tm / 3);
+    for (let i = PNL_QUARTERLY_QTRS - 1; i >= 0; i--) {
+      const n = tq - i, y = ty + Math.floor(n / 4), q = ((n % 4) + 4) % 4, em = q * 3 + 2;
+      points.push(at(`Q${q + 1}`, String(y), isoOf(y, q * 3, 1), isoOf(y, em, lastDayOfMonth(y, em))));
+    }
   } else {
-    for (let m = 0; m < 12; m++) monthPoint(m);
+    for (let y = PNL_FIRST_YEAR; y <= ty; y++) {
+      points.push(at(String(y), "", isoOf(y, 0, 1), isoOf(y, 11, 31)));
+    }
   }
   return points;
 }
@@ -584,6 +606,7 @@ function PnlComboChart({ points }) {
   const cx = (i) => ML + band * (i + 0.5);
   const ticks = [];
   for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
+  const lblEvery = Math.ceil(points.length / 8);
   const C_REAL = "#2563eb", C_LINE = "#d97706";
   // Realized keeps its straight polyline (it is inherently a step series, one value per bucket);
   // unrealized becomes a smooth Catmull-Rom curve with a soft gradient fill under it.
@@ -618,7 +641,9 @@ function PnlComboChart({ points }) {
         ))}
         {points.map((p, i) => (
           <g key={i}>
-            <text x={cx(i)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#475569" fontWeight="600">{p.label}</text>
+            {(i % lblEvery === 0 || i === points.length - 1) && (
+              <text x={cx(i)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#475569" fontWeight="600">{p.label}</text>
+            )}
             <rect x={ML + band * i} y={MT} width={band} height={plotH} fill="transparent"
                   onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "pointer" }} />
           </g>
@@ -665,6 +690,7 @@ function PnlTotalBarChart({ points }) {
   const barW = band * 0.5;
   const ticks = [];
   for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
+  const lblEvery = Math.ceil(points.length / 8);
   const C_GOOD = "#16a34a", C_BAD = "#dc2626";
   return (
     <div style={{ position: "relative" }}>
@@ -687,7 +713,9 @@ function PnlTotalBarChart({ points }) {
         })}
         {points.map((p, i) => (
           <g key={i}>
-            <text x={ML + band * (i + 0.5)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#475569" fontWeight="600">{p.label}</text>
+            {(i % lblEvery === 0 || i === points.length - 1) && (
+              <text x={ML + band * (i + 0.5)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#475569" fontWeight="600">{p.label}</text>
+            )}
             <rect x={ML + band * i} y={MT} width={band} height={plotH} fill="transparent"
                   onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "pointer" }} />
           </g>
@@ -967,9 +995,7 @@ export default function App() {
   const [clients, setClients] = useState([]);
   const [trades, setTrades] = useState([]);
   const [dailyPrices, setDailyPrices] = useState({});
-  const [pnlYear, setPnlYear] = useState(null);
-  const [pnlQuarter, setPnlQuarter] = useState("All");   // "All" | 1..4
-  const [pnlMonth, setPnlMonth] = useState("All");        // "All" | 0..11
+  const [pnlView, setPnlView] = useState("monthly");   // daily | monthly | quarterly | yearly
   const [cmp, setCmp] = useState({});
   const [appLoading, setAppLoading] = useState(true);
   const [appError, setAppError] = useState("");
@@ -1143,7 +1169,7 @@ export default function App() {
       setCmp(prev => ({ ...initCmp, ...prev, ...live }));
       // Only the P&L chart needs history, so let it stream in behind the UI.
       if (stocks.length > 0) {
-        apiFetch(`/prices/history?symbols=${stocks.join(",")}`).then(hp => setDailyPrices(hp)).catch(() => {});
+        apiFetch(`/prices/history?symbols=${stocks.join(",")}&start=${pnlHistoryStart()}`).then(hp => setDailyPrices(hp)).catch(() => {});
       }
     } catch (e) {
       // A 401 is handled by the session watcher, which shows the login screen instead.
@@ -1267,14 +1293,9 @@ export default function App() {
     realized: portfolio.reduce((s, p) => s + p.realizedPL, 0),
     unrealized: portfolio.reduce((s, p) => s + (p.netQty > 0 ? p.unrealizedPL : 0), 0),
   }), [portfolio]);
-  const pnlYears = useMemo(() => {
-    const ys = new Set(filteredTrades.map(t => Number(String(t.date).slice(0, 4))));
-    return [...ys].sort();
-  }, [filteredTrades]);
-  const effYear = pnlYear ?? (pnlYears[pnlYears.length - 1] ?? new Date().getFullYear());
   const pnlChartData = useMemo(
-    () => computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, effYear, pnlQuarter, pnlMonth),
-    [filteredTrades, portfolio, dailyPrices, cmp, effYear, pnlQuarter, pnlMonth]
+    () => computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, pnlView),
+    [filteredTrades, portfolio, dailyPrices, cmp, pnlView]
   );
 
   const stats = useMemo(() => {
@@ -1777,10 +1798,7 @@ export default function App() {
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: 3, background: "#F1F4F8", padding: 3, borderRadius: 9, marginTop: 11 }}>
-                  {["All", 1, 2, 3, 4].map(q => segTab(q === "All" ? "All" : `Q${q}`, pnlQuarter === q, () => {
-                    setPnlQuarter(q);
-                    if (q !== "All" && pnlMonth !== "All") { const st = (q - 1) * 3; if (pnlMonth < st || pnlMonth > st + 2) setPnlMonth("All"); }
-                  }))}
+                  {PNL_VIEWS.map(v => segTab(PNL_VIEW_LABEL[v], pnlView === v, () => setPnlView(v)))}
                 </div>
                 <div style={{ height: 170, marginTop: 12 }}>
                   {pnlChartData.length > 0 ? <MobileCombo points={pnlChartData} />
@@ -2589,9 +2607,8 @@ export default function App() {
                 <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--ink-2)" }}>
                   <span style={{ width: 16, height: 3, borderRadius: 2, background: "var(--amber)" }} />Unrealized
                 </span>
-                <Segmented options={["All", 1, 2, 3, 4].map(q => ({ value: q, label: q === "All" ? "All" : `Q${q}` }))}
-                           value={pnlQuarter}
-                           onChange={q => { setPnlQuarter(q); if (q !== "All" && pnlMonth !== "All") { const st = (q - 1) * 3; if (pnlMonth < st || pnlMonth > st + 2) setPnlMonth("All"); } }} />
+                <Segmented options={PNL_VIEWS.map(v => ({ value: v, label: PNL_VIEW_LABEL[v] }))}
+                           value={pnlView} onChange={setPnlView} />
               </div>
             }>Realized vs Unrealized P&L</PanelTitle>
             <div style={{ padding: "10px 14px 16px" }}>
