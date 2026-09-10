@@ -95,6 +95,8 @@ def create_token(
     user_id: str, role: str, client_id, username: str, name, pv: int = 0, oat: Optional[int] = None
 ) -> str:
     now = datetime.now(timezone.utc)
+    # Admin sessions never expire — neither clock applies (see the "oat" check below too).
+    idle_ttl = timedelta(days=3650) if role == "admin" else timedelta(minutes=IDLE_TTL_MINUTES)
     payload = {
         "sub": str(user_id),
         "role": role,
@@ -104,7 +106,7 @@ def create_token(
         "pv": pv,
         "oat": oat or int(now.timestamp()),  # original login; the absolute cap counts from here
         "iat": now,
-        "exp": now + timedelta(minutes=IDLE_TTL_MINUTES),
+        "exp": now + idle_ttl,
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=ALGORITHM)
 
@@ -142,7 +144,7 @@ def current_user(
 
     now = int(datetime.now(timezone.utc).timestamp())
     oat = int(payload.get("oat") or payload.get("iat") or now)
-    if now - oat > ABSOLUTE_TTL_DAYS * 86400:
+    if payload.get("role") != "admin" and now - oat > ABSOLUTE_TTL_DAYS * 86400:
         raise _unauthorized("Session expired")
 
     user = CurrentUser(
