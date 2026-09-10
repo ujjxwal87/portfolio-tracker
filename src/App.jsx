@@ -996,6 +996,7 @@ export default function App() {
   const [trades, setTrades] = useState([]);
   const [dailyPrices, setDailyPrices] = useState({});
   const [pnlView, setPnlView] = useState("monthly");   // daily | monthly | quarterly | yearly
+  const [pnlTotalView, setPnlTotalView] = useState("monthly");   // the Total P&L panel picks its own
   const [cmp, setCmp] = useState({});
   const [appLoading, setAppLoading] = useState(true);
   const [appError, setAppError] = useState("");
@@ -1296,6 +1297,11 @@ export default function App() {
   const pnlChartData = useMemo(
     () => computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, pnlView),
     [filteredTrades, portfolio, dailyPrices, cmp, pnlView]
+  );
+  const pnlTotalChartData = useMemo(
+    () => pnlTotalView === pnlView ? pnlChartData
+        : computePnlSeries(filteredTrades, portfolio, dailyPrices, cmp, pnlTotalView),
+    [filteredTrades, portfolio, dailyPrices, cmp, pnlTotalView, pnlView, pnlChartData]
   );
 
   const stats = useMemo(() => {
@@ -2618,9 +2624,12 @@ export default function App() {
           </div>
 
           <div style={PANEL}>
-            <PanelTitle>Total P&L (Realized + Unrealized)</PanelTitle>
+            <PanelTitle right={
+              <Segmented options={PNL_VIEWS.map(v => ({ value: v, label: PNL_VIEW_LABEL[v] }))}
+                         value={pnlTotalView} onChange={setPnlTotalView} />
+            }>Total P&L (Realized + Unrealized)</PanelTitle>
             <div style={{ padding: "10px 14px 16px" }}>
-              {pnlChartData.length > 0 ? <PnlTotalBarChart points={pnlChartData} /> :
+              {pnlTotalChartData.length > 0 ? <PnlTotalBarChart points={pnlTotalChartData} /> :
                 <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No data for this period.</div>}
             </div>
           </div>
