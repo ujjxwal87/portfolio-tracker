@@ -30,7 +30,7 @@ function smoothPath(vals, w, h, pad, mn, sp) {
 }
 
 const Badge = ({ children, color }) => {
-  const colors = { green: ["#dcfce7","#166534"], blue: ["#dbeafe","#1e40af"], amber: ["#fef3c7","#92400e"], red: ["#fee2e2","#991b1b"], gray: ["#f3f4f6","#374151"] };
+  const colors = { green: ["#dcfce7","#166534"], blue: ["#dbeafe","#1e40af"], amber: ["#fef3c7","#92400e"], red: ["#fee2e2","#991b1b"], violet: ["#f3e8ff","#6b21a8"], gray: ["#f3f4f6","#374151"] };
   const [bg, fg] = colors[color] || colors.gray;
   return <span style={{ background: bg, color: fg, padding: "2px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{children}</span>;
 };
@@ -107,6 +107,7 @@ const HERO_GRADIENT = {
   portfolio: "linear-gradient(135deg,#03201F 0%,#08544C 55%,#0D9488 100%)",
   trades:    "linear-gradient(135deg,#241203 0%,#7C3E06 55%,#D97706 100%)",
   benchmark: "linear-gradient(135deg,#04121F 0%,#0B4A63 52%,#0891B2 100%)",
+  investments: "linear-gradient(135deg,#1A0B24 0%,#5B1D63 52%,#C026D3 100%)",
 };
 
 // Cumulative total P&L over the plotted periods, drawn white-on-gradient inside the hero.
@@ -403,6 +404,18 @@ const StockAutocomplete = ({ value, onChange, style }) => {
   );
 };
 
+// Trade vs investment is decided on the BUY. A SELL has no label of its own — it takes the one
+// from the lot it closed, and a sell spanning both kinds is listed under each.
+function rowKindIndex(portfolio) {
+  const idx = new Map();
+  const add = (id, k) => { if (!id) return; const set = idx.get(id) || new Set(); set.add(k); idx.set(id, set); };
+  portfolio.forEach(p => {
+    p.holdingLots.forEach(l => add(l.id, l.kind || "trade"));
+    p.matchDetails.forEach(m => { add(m.buyId, m.kind); add(m.sellId, m.kind); });
+  });
+  return idx;
+}
+
 function resolvePortfolio(trades, cmp) {
   const groups = {};
   trades.forEach(t => {
@@ -430,7 +443,8 @@ function resolvePortfolio(trades, cmp) {
         const pl = (sell.price - buy.price) * matched;
         realizedPL += pl;
         totalSoldQty += matched;
-        matchDetails.push({ buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl, intraday: sameDayOnly });
+        matchDetails.push({ buyId: buy.id, sellId: sell.id, kind: buy.kind || "trade",
+                            buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl, intraday: sameDayOnly });
       }
     };
     // Pass 1: match same-day (intraday) buy↔sell pairs first, so an intraday
@@ -989,7 +1003,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
 }
 
 const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "", benchmark_keys: [], is_own_money: false };
-const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "" };
+const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "", kind: "trade" };
 
 export default function App() {
   const [clients, setClients] = useState([]);
@@ -1080,6 +1094,7 @@ export default function App() {
   // Trade form
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_TRADE_FORM);
+  const [kindSaving, setKindSaving] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [tradeSaving, setTradeSaving] = useState(false);
 
@@ -1238,11 +1253,12 @@ export default function App() {
   const highlights = useMemo(() => {
     // One entry per still-open FIFO lot, so "recent" means recently bought, not recently touched.
     const openLots = portfolio.filter(p => p.netQty > 0).flatMap(p =>
-      p.holdingLots.map(l => ({
+      p.holdingLots.filter(l => (l.kind || "trade") === "trade").map(l => ({
         client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
         cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
       })));
-    const closed = portfolio.flatMap(p => p.matchDetails.map(m => ({ client: p.client, stock: p.stock, ...m })));
+    const closed = portfolio.flatMap(p => p.matchDetails.filter(m => m.kind === "trade")
+      .map(m => ({ client: p.client, stock: p.stock, ...m })));
     return {
       // Ten, not five — the open book is what gets watched against stops day to day.
       recentOpen: [...openLots].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
@@ -1269,7 +1285,7 @@ export default function App() {
     clients.forEach(c => rowFor(c.name));
     source.forEach(p => {
       const r = rowFor(p.client);
-      p.matchDetails.forEach(m => {
+      p.matchDetails.filter(m => m.kind === "trade").forEach(m => {
         r.booked += m.pl;
         if (isDecisiveWin(m)) { r.wins += 1; r.winSum += m.pl; }
         else if (isDecisiveLoss(m)) { r.losses += 1; r.lossSum += m.pl; }
@@ -1282,6 +1298,37 @@ export default function App() {
                    avgLoss: r.losses ? r.lossSum / r.losses : 0 }))
       .sort((a, b) => b.net - a.net);
   }, [isAdmin, clients, portfolio, portfolioAll, filterClient, ownNames]);
+  const rowKinds = useMemo(() => rowKindIndex(portfolio), [portfolio]);
+  const rowIsKind = (t, k) => (rowKinds.get(t.id) || new Set([t.kind || "trade"])).has(k);
+  const tradeRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "trade")), [filteredTrades, rowKinds]);
+  const investmentRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "investment")), [filteredTrades, rowKinds]);
+
+  const tradePnl = useMemo(() => ({
+    realized: portfolio.reduce((s, p) => s + p.matchDetails.filter(m => m.kind === "trade")
+                                              .reduce((ss, m) => ss + m.pl, 0), 0),
+    unrealized: portfolio.filter(p => p.netQty > 0).reduce((s, p) => s + p.holdingLots
+      .filter(l => (l.kind || "trade") === "trade")
+      .reduce((ss, l) => ss + (p.cmp - l.price) * l.remainQty, 0), 0),
+  }), [portfolio]);
+
+  const investments = useMemo(() => {
+    const open = portfolio.filter(p => p.netQty > 0).flatMap(p =>
+      p.holdingLots.filter(l => (l.kind || "trade") === "investment").map(l => ({
+        client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
+        cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
+      })));
+    const closed = portfolio.flatMap(p => p.matchDetails.filter(m => m.kind === "investment")
+      .map(m => ({ client: p.client, stock: p.stock, ...m })));
+    return {
+      open: [...open].sort((a, b) => b.date.localeCompare(a.date)),
+      closed: [...closed].sort((a, b) => b.sellDate.localeCompare(a.sellDate)),
+      cost: open.reduce((s, l) => s + l.buyPrice * l.qty, 0),
+      value: open.reduce((s, l) => s + (l.cmp || l.buyPrice) * l.qty, 0),
+      unrealized: open.reduce((s, l) => s + l.pl, 0),
+      realized: closed.reduce((s, m) => s + m.pl, 0),
+    };
+  }, [portfolio]);
+
   // Admin-only holdings search: spans EVERY client regardless of the client filter, because the
   // question it answers is "who holds this?".
   const holdingHits = useMemo(() => {
@@ -1320,7 +1367,9 @@ export default function App() {
       if (committed > peakCommitted) peakCommitted = committed;
     });
     const totalReturn = peakCommitted > 0 ? (totalPL / peakCommitted) * 100 : 0;
-    const realizedTrades = portfolio.flatMap(p => p.matchDetails);
+    // Win rate, averages, risk/reward and drawdown describe trading skill, so positions opened
+    // as investments are excluded — a multi-year hold is not a trade that was won or lost.
+    const realizedTrades = portfolio.flatMap(p => p.matchDetails).filter(m => m.kind === "trade");
     const winLots = realizedTrades.filter(isDecisiveWin);
     const lossLots = realizedTrades.filter(isDecisiveLoss);
     const wins = winLots.length;
@@ -1446,7 +1495,7 @@ export default function App() {
   const cancelForm = () => { setShowForm(false); setEditingId(null); setForm(EMPTY_TRADE_FORM); };
 
   const startEdit = (t) => {
-    setForm({ client_id: t.client_id, stock_symbol: t.stock_symbol, type: t.type, quantity: String(t.quantity), price: String(t.price), date: typeof t.date === "string" ? t.date.slice(0, 10) : t.date, notes: t.notes || "" });
+    setForm({ client_id: t.client_id, stock_symbol: t.stock_symbol, type: t.type, quantity: String(t.quantity), price: String(t.price), date: typeof t.date === "string" ? t.date.slice(0, 10) : t.date, notes: t.notes || "", kind: t.kind || "trade" });
     setEditingId(t.id);
     setShowForm(true);
   };
@@ -1476,6 +1525,16 @@ export default function App() {
       setEditingId(null);
     } catch (e) { alert(e.message); }
     finally { setTradeSaving(false); }
+  };
+
+  const toggleKind = async (t) => {
+    const kind = (t.kind || "trade") === "trade" ? "investment" : "trade";
+    setKindSaving(t.id);
+    try {
+      await apiFetch(`/trades/${t.id}/kind`, { method: "PATCH", body: JSON.stringify({ kind }) });
+      setTrades(prev => prev.map(x => x.id === t.id ? { ...x, kind } : x));
+    } catch (e) { alert(e.message); }
+    finally { setKindSaving(null); }
   };
 
   const handleDeleteTrade = async (id) => {
@@ -1575,7 +1634,8 @@ export default function App() {
 
   // The Clients tab is the book of business \u2014 admin only.
   const NAV = [["dashboard","Dashboard","\u25c7"],["clients","Clients","\u25c9"],
-               ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],["benchmark","Custom Benchmark","\u25c8"]]
+               ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],
+               ["investments","Investments","\u25c6"],["benchmark","Custom Benchmark","\u25c8"]]
               .filter(([v]) => isAdmin || v !== "clients");
   const tradeCountFor = (name) => name === "All" ? trades.length
     : name === "Own" ? trades.filter(t => ownNames.has(t.client_name)).length
@@ -1588,6 +1648,7 @@ export default function App() {
     const art = MOBILE_ART[view] || MOBILE_ART.dashboard;
     const MNAV = [["dashboard", "Home", "◇"], ["clients", "Clients", "◉"],
                   ["portfolio", "Holdings", "▤"], ["trades", "Trades", "⇄"],
+                  ["investments", "Invest", "◆"],
                   ["benchmark", "Bench", "◈"]].filter(([v]) => isAdmin || v !== "clients");
     const scopeText = scopeLabel(filterClient);
     const holdingsValue = holdings.reduce((s, h) => s + h.currentVal, 0);
@@ -1653,7 +1714,7 @@ export default function App() {
       ] : []),
     ];
 
-    const logTrades = [...filteredTrades]
+    const logTrades = [...tradeRows]
       .filter(t => mTypeFilter === "All" || t.type === mTypeFilter)
       .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
@@ -1744,10 +1805,19 @@ export default function App() {
 
             {view === "trades" && !isGuest && (<>
               <div style={MEYEBROW}>TRADES · FIFO MATCHED</div>
-              <h2 style={MHEADLINE}>{filteredTrades.length} trade{filteredTrades.length === 1 ? "" : "s"} booked</h2>
+              <h2 style={MHEADLINE}>{tradeRows.length} trade{tradeRows.length === 1 ? "" : "s"} booked</h2>
               <div style={MSUB}>
-                Realized <span className="fig" style={{ color: "#fff" }}>{compactINR(pnlTotals.realized)}</span>
+                Realized <span className="fig" style={{ color: "#fff" }}>{compactINR(tradePnl.realized)}</span>
                 {isAdmin && <>{" · "}Win rate <span className="fig" style={{ color: "#fff" }}>{stats.winRate.toFixed(0)}%</span></>}
+              </div>
+            </>)}
+
+            {view === "investments" && !isGuest && (<>
+              <div style={MEYEBROW}>INVESTMENTS</div>
+              <h2 style={MHEADLINE}>{investments.open.length} open, {investments.closed.length} closed</h2>
+              <div style={MSUB}>
+                Held <span className="fig" style={{ color: "#fff" }}>{compactINR(investments.value)}</span>
+                {" · "}P&L <span className="fig" style={{ color: "#fff" }}>{compactINR(investments.unrealized + investments.realized)}</span>
               </div>
             </>)}
 
@@ -1964,6 +2034,15 @@ export default function App() {
                                    background: t.type === "BUY" ? "#EFF6FF" : "#FFF7ED",
                                    color: t.type === "BUY" ? "#1D4ED8" : "#C2410C" }}>{t.type}</span>
                     <div style={{ fontSize: 13.5, fontWeight: 700 }}>{t.stock_symbol}</div>
+                    {t.type === "BUY" && (
+                      <button onClick={() => isAdmin && toggleKind(t)} disabled={!isAdmin || kindSaving === t.id}
+                              style={{ border: "none", padding: "4px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700,
+                                       cursor: isAdmin ? "pointer" : "default", opacity: kindSaving === t.id ? .5 : 1,
+                                       background: (t.kind || "trade") === "investment" ? "#F3E8FF" : "#EEF2F7",
+                                       color: (t.kind || "trade") === "investment" ? "#6B21A8" : "#475569" }}>
+                        {(t.kind || "trade") === "investment" ? "INVEST" : "TRADE"}
+                      </button>
+                    )}
                     <div className="fig" style={{ marginLeft: "auto", fontSize: 13, fontWeight: 600 }}>{t.quantity} × {fmt(t.price)}</div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11, color: "var(--ink-3)" }}>
@@ -1986,6 +2065,28 @@ export default function App() {
 
             {isAdmin && dashedButton("+ Add trade", clients.length === 0 ? () => alert("Add at least one client before logging trades.") : openAddTrade)}
           </>)}
+
+          {/* INVESTMENTS */}
+          {view === "investments" && isGuest && <LockedPanel what="Investments" />}
+          {view === "investments" && !isGuest && (
+            investments.open.length === 0 && investments.closed.length === 0
+              ? empty("◆", "No investments yet", "Mark a BUY as Investment when you log it, or tap its TRADE chip in the trade log.")
+              : (<>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <MKpi title="CURRENT VALUE" value={compactINR(investments.value)} sub={`invested ${compactINR(investments.cost)}`} accent="#7C3AED" />
+                  <MKpi title="UNREALIZED" value={compactINR(investments.unrealized)} sub={`${investments.open.length} open lot${investments.open.length === 1 ? "" : "s"}`}
+                        accent={tone(investments.unrealized)} tone={tone(investments.unrealized)} />
+                  <MKpi title="REALIZED" value={compactINR(investments.realized)} sub={`${investments.closed.length} closed`}
+                        accent={tone(investments.realized)} tone={tone(investments.realized)} />
+                  <MKpi title="TOTAL P&L" value={compactINR(investments.unrealized + investments.realized)} sub="open + closed"
+                        accent={tone(investments.unrealized + investments.realized)} tone={tone(investments.unrealized + investments.realized)} />
+                </div>
+                <MHighlight title="Open investments" note={`${investments.open.length} lot${investments.open.length === 1 ? "" : "s"} held`}
+                            rows={investments.open} kind="open" />
+                <MHighlight title="Closed investments" note={`${investments.closed.length} exit${investments.closed.length === 1 ? "" : "s"}`}
+                            rows={investments.closed} kind="closed" />
+                {isAdmin && dashedButton("+ Add trade", clients.length === 0 ? () => alert("Add at least one client before logging trades.") : openAddTrade)}
+              </>))}
 
           {/* BENCHMARK */}
           {view === "benchmark" && (<>
@@ -2218,6 +2319,12 @@ export default function App() {
                        onChange={e => setForm(p => ({ ...p, price: e.target.value }))} />
               </div>
               <input style={MINPUT} type="date" value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} />
+              {form.type === "BUY" && (
+                <div style={{ display: "flex", gap: 3, background: "#E7EBF1", padding: 3, borderRadius: 11 }}>
+                  {[["trade", "Trade"], ["investment", "Investment"]].map(([k, l]) =>
+                    segTab(l, form.kind === k, () => setForm(p => ({ ...p, kind: k }))))}
+                </div>
+              )}
               <input style={MINPUT} placeholder="Optional notes…" value={form.notes}
                      onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
             </div>
@@ -2232,7 +2339,7 @@ export default function App() {
                 Cancel
               </button>
             </div>
-            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>SELL validates against FIFO holdings.</div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>SELL validates against FIFO holdings, and inherits the kind of the lot it closes.</div>
           </MSheet>
         )}
 
@@ -2780,11 +2887,11 @@ export default function App() {
               + Add trade
             </button>)}>
           <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
-            {filteredTrades.length} trade{filteredTrades.length === 1 ? "" : "s"}, FIFO matched
+            {tradeRows.length} trade{tradeRows.length === 1 ? "" : "s"}, FIFO matched
           </h2>
           <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
-            Realized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(pnlTotals.realized)}</strong>
-            {" · "}Unrealized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(pnlTotals.unrealized)}</strong>
+            Realized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(tradePnl.realized)}</strong>
+            {" · "}Unrealized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(tradePnl.unrealized)}</strong>
             {isAdmin && <>{" · "}Win rate <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{stats.winRate.toFixed(0)}%</strong></>}
           </div>
         </Hero>
@@ -2814,22 +2921,28 @@ export default function App() {
                 <input type="number" step="0.01" style={inp} value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} /></div>
               <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Date *</label>
                 <input type="date" style={inp} value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} /></div>
+              {form.type === "BUY" && (
+                <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Kind *</label>
+                  <select style={inp} value={form.kind} onChange={e => setForm(p => ({ ...p, kind: e.target.value }))}>
+                    <option value="trade">Trade</option><option value="investment">Investment</option>
+                  </select></div>
+              )}
               <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Notes</label>
                 <input style={inp} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes…" /></div>
             </div>
             <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
               <button onClick={handleSaveTrade} disabled={tradeSaving} style={{ ...btnP, background: editingId ? "#d97706" : "#2563eb", opacity: tradeSaving ? 0.7 : 1 }}>{tradeSaving ? "Saving…" : editingId ? "Save Changes" : "Add Trade"}</button>
               <button onClick={cancelForm} style={btnS}>Cancel</button>
-              <span style={{ fontSize: 11, color: "#6b7280" }}>SELL validates against FIFO holdings</span>
+              <span style={{ fontSize: 11, color: "#6b7280" }}>SELL validates against FIFO holdings, and inherits the kind of the lot it closes</span>
             </div>
           </div>
         )}
 
         {/* Company-grouped positions: one row per company → Realised / Unrealised P&L, expand for lots */}
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-          <Card title="Realized P&L" value={fmt(pnlTotals.realized)} accent={pnlTotals.realized >= 0 ? "#16a34a" : "#dc2626"} />
-          <Card title="Unrealized P&L" value={fmt(pnlTotals.unrealized)} accent={pnlTotals.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
-          <Card title="Total P&L" value={fmt(pnlTotals.realized + pnlTotals.unrealized)} accent={(pnlTotals.realized + pnlTotals.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
+          <Card title="Realized P&L" value={fmt(tradePnl.realized)} accent={tradePnl.realized >= 0 ? "#16a34a" : "#dc2626"} />
+          <Card title="Unrealized P&L" value={fmt(tradePnl.unrealized)} accent={tradePnl.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
+          <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
         </div>
 
         <div style={{ display: "grid", gap: 14 }}>
@@ -2858,9 +2971,9 @@ export default function App() {
             <div style={{ overflowX: "auto", marginTop: 10 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
-                  {["Client","Type","Stock","Qty","Price","Date","Notes",""].map(h => <th key={h} style={th}>{h}</th>)}
+                  {["Client","Type","Stock","Qty","Price","Date","Kind","Notes",""].map(h => <th key={h} style={th}>{h}</th>)}
                 </tr></thead>
-                <tbody>{[...filteredTrades].sort((a, b) => String(a.date).localeCompare(String(b.date))).map(t => {
+                <tbody>{[...tradeRows].sort((a, b) => String(a.date).localeCompare(String(b.date))).map(t => {
                   const isEditing = editingId === t.id;
                   return (<tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
                     <td style={td}>{t.client_name}</td>
@@ -2869,6 +2982,16 @@ export default function App() {
                     <td style={td}>{t.quantity}</td>
                     <td className="num" style={td}>{fmt(t.price)}</td>
                     <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
+                    <td style={td}>{t.type === "BUY"
+                      ? <button onClick={() => isAdmin && toggleKind(t)} disabled={!isAdmin || kindSaving === t.id}
+                                title={isAdmin ? "Click to reclassify" : undefined}
+                                style={{ border: "none", padding: 0, background: "none", cursor: isAdmin ? "pointer" : "default",
+                                         opacity: kindSaving === t.id ? .5 : 1 }}>
+                          <Badge color={(t.kind || "trade") === "investment" ? "violet" : "blue"}>
+                            {(t.kind || "trade") === "investment" ? "INVEST" : "TRADE"}
+                          </Badge>
+                        </button>
+                      : <span style={{ color: "#9ca3af", fontSize: 11 }}>inherits</span>}</td>
                     <td className="num" style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
                     <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>
                       {isAdmin && <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>}
@@ -2880,6 +3003,48 @@ export default function App() {
             </div>
           )}
         </div>
+      </>)}
+
+      {view === "investments" && isGuest && <LockedPanel what="Investments" />}
+      {view === "investments" && !isGuest && (<>
+        <Hero view="investments" eyebrow={`Investments · ${scopeLabel(filterClient)}`}
+          right={isAdmin && !showForm && (
+            <button onClick={openAddTrade} disabled={clients.length === 0}
+                    style={{ padding: "11px 20px", borderRadius: 11, border: "none", background: "#fff",
+                             color: "#86198F", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+                             opacity: clients.length === 0 ? .6 : 1 }}>
+              + Add trade
+            </button>)}>
+          <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
+            {investments.open.length} open, {investments.closed.length} closed
+          </h2>
+          <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
+            Held <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(investments.value)}</strong>
+            {" · "}Unrealized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(investments.unrealized)}</strong>
+            {" · "}Realized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(investments.realized)}</strong>
+          </div>
+        </Hero>
+
+        {investments.open.length === 0 && investments.closed.length === 0 ? (
+          <div style={{ ...PANEL, padding: 40, textAlign: "center", color: "#6b7280", fontSize: 13.5, marginTop: 14 }}>
+            Nothing classified as an investment yet. Mark a BUY as <strong>Investment</strong> when you log it,
+            or flip its Kind badge in the raw trade log on the Trades tab.
+          </div>
+        ) : (<>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "14px 0" }}>
+            <Card title="Invested" value={fmt(investments.cost)} accent="#7C3AED" />
+            <Card title="Current Value" value={fmt(investments.value)} accent="#7C3AED" />
+            <Card title="Unrealized P&L" value={fmt(investments.unrealized)} accent={investments.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
+            <Card title="Realized P&L" value={fmt(investments.realized)} accent={investments.realized >= 0 ? "#16a34a" : "#dc2626"} />
+          </div>
+          <div style={{ display: "grid", gap: 14 }}>
+            <HighlightPanel title="Open investments" note={`${investments.open.length} lot${investments.open.length === 1 ? "" : "s"} still held`}
+                            rows={investments.open} kind="open" showClient={filterClient === "All" || filterClient === "Own"}
+                            levelFor={levelFor} onSaveLevel={saveLevel} isAdmin={isAdmin} levelSaving={levelSaving} />
+            <HighlightPanel title="Closed investments" note={`${investments.closed.length} exit${investments.closed.length === 1 ? "" : "s"} booked`}
+                            rows={investments.closed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
+          </div>
+        </>)}
       </>)}
 
       {/* ── BENCHMARK TAB ───────────────────────────────────────────────────── */}

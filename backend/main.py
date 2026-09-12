@@ -5,7 +5,7 @@ import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
-from typing import Optional
+from typing import Literal, Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -196,6 +196,12 @@ class TradeCreate(BaseModel):
     price: float
     date: date
     notes: Optional[str] = None
+    # Set on the BUY leg only; a SELL inherits from the lot it closes, so its value is never read.
+    kind: Literal["trade", "investment"] = "trade"
+
+
+class TradeKind(BaseModel):
+    kind: Literal["trade", "investment"]
 
 
 # ── Clients ────────────────────────────────────────────────────────────────────
@@ -291,7 +297,7 @@ def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 """ + where + "ORDER BY t.date ASC, t.created_at ASC",
@@ -322,8 +328,8 @@ def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.requir
             cur.execute(
                 """
                 INSERT INTO portfolio_tracker.trades
-                    (client_id, stock_symbol, type, quantity, price, date, notes)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    (client_id, stock_symbol, type, quantity, price, date, notes, kind)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -334,6 +340,7 @@ def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.requir
                     body.price,
                     body.date,
                     body.notes,
+                    body.kind,
                 ),
             )
             new_id = cur.fetchone()["id"]
@@ -341,7 +348,7 @@ def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.requir
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 WHERE t.id = %s
@@ -363,7 +370,7 @@ def update_trade(trade_id: str, body: TradeCreate,
                 """
                 UPDATE portfolio_tracker.trades
                 SET client_id=%s, stock_symbol=%s, type=%s, quantity=%s,
-                    price=%s, date=%s, notes=%s, updated_at=NOW()
+                    price=%s, date=%s, notes=%s, kind=%s, updated_at=NOW()
                 WHERE id=%s
                 RETURNING id
                 """,
@@ -375,6 +382,7 @@ def update_trade(trade_id: str, body: TradeCreate,
                     body.price,
                     body.date,
                     body.notes,
+                    body.kind,
                     trade_id,
                 ),
             )
@@ -385,7 +393,7 @@ def update_trade(trade_id: str, body: TradeCreate,
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 WHERE t.id = %s
@@ -393,6 +401,21 @@ def update_trade(trade_id: str, body: TradeCreate,
                 (row["id"],),
             )
             return cur.fetchone()
+
+
+@app.patch("/api/trades/{trade_id}/kind")
+def set_trade_kind(trade_id: str, body: TradeKind,
+                   user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, _trade_client_id(trade_id))
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE portfolio_tracker.trades SET kind=%s, updated_at=NOW() WHERE id=%s RETURNING id",
+                (body.kind, trade_id),
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Trade not found")
+    return {"id": trade_id, "kind": body.kind}
 
 
 @app.delete("/api/trades/{trade_id}", status_code=204)
