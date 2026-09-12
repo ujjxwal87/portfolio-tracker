@@ -685,6 +685,101 @@ function PnlComboChart({ points }) {
   );
 }
 
+// Open investments read as a position, not a stream of fills: one row per company carrying the
+// combined quantity and a weighted-average buy, with the individual lots behind a chevron.
+function groupInvestmentLots(lots) {
+  const by = new Map();
+  lots.forEach(l => {
+    const key = `${l.client}||${l.stock}`;
+    if (!by.has(key)) by.set(key, { key, client: l.client, stock: l.stock, cmp: l.cmp, lots: [] });
+    by.get(key).lots.push(l);
+  });
+  return [...by.values()].map(g => {
+    const qty = g.lots.reduce((s, l) => s + l.qty, 0);
+    const invested = g.lots.reduce((s, l) => s + l.buyPrice * l.qty, 0);
+    const value = qty * (g.cmp || (invested / qty));
+    return {
+      ...g, qty, invested, value,
+      avgBuy: qty > 0 ? invested / qty : 0,
+      pl: value - invested,
+      lots: [...g.lots].sort((a, b) => b.date.localeCompare(a.date)),
+    };
+  }).sort((a, b) => b.value - a.value);
+}
+
+function InvestmentPositions({ groups, showClient }) {
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (k) => setOpen(prev => {
+    const next = new Set(prev);
+    next.has(k) ? next.delete(k) : next.add(k);
+    return next;
+  });
+  const cols = showClient ? "18px 1.1fr 1.2fr .7fr .9fr 1fr 1fr" : "18px 1.2fr .7fr .9fr 1fr 1fr";
+  const heads = ["", ...(showClient ? ["Client"] : []), "Stock", "Qty", "Avg Buy", "Invested", "Current Value"];
+  const firstNum = showClient ? 3 : 2;
+  const head = { fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--ink-3)" };
+  return (
+    <div style={{ ...PANEL, overflow: "hidden" }}>
+      <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+        {groups.length} compan{groups.length === 1 ? "y" : "ies"} · click a row for its lots
+      </span>}>Open investments</PanelTitle>
+      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
+                    padding: "12px 22px", marginTop: 12, background: "var(--table-head)",
+                    borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
+        {heads.map((h, i) => <div key={i} style={{ ...head, textAlign: i >= firstNum ? "right" : "left" }}>{h}</div>)}
+      </div>
+      {groups.map((g, i) => {
+        const isOpen = open.has(g.key);
+        return (
+          <div key={g.key} style={{ borderBottom: i === groups.length - 1 && !isOpen ? "none" : "1px solid var(--row-rule)" }}>
+            <div className="grid-row" onClick={() => toggle(g.key)}
+                 style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
+                          padding: "13px 22px", cursor: "pointer" }}>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", transition: "transform .15s",
+                            transform: isOpen ? "rotate(90deg)" : "none" }}>▸</div>
+              {showClient && <div style={{ fontSize: 13, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.client}</div>}
+              <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                <LogoChip symbol={g.stock} />
+                <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.stock}</span>
+                {g.lots.length > 1 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-3)", background: "#F1F4F8",
+                                 borderRadius: 5, padding: "2px 6px", flex: "none" }}>{g.lots.length} lots</span>
+                )}
+              </div>
+              <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{g.qty}</div>
+              <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.avgBuy)}</div>
+              <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.invested)}</div>
+              <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
+                   color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.value)}</div>
+            </div>
+            {isOpen && (
+              <div style={{ background: "var(--table-head)", padding: "4px 22px 12px 52px",
+                            borderTop: "1px solid var(--row-rule)" }}>
+                <div style={{ display: "grid", gridTemplateColumns: ".9fr .6fr .9fr 1fr 1fr", gap: 12, padding: "8px 0 6px" }}>
+                  {["Bought", "Qty", "Buy Price", "Invested", "P&L"].map((h, j) => (
+                    <div key={h} style={{ ...head, fontSize: 10, textAlign: j >= 1 ? "right" : "left" }}>{h}</div>
+                  ))}
+                </div>
+                {g.lots.map((l, j) => (
+                  <div key={j} style={{ display: "grid", gridTemplateColumns: ".9fr .6fr .9fr 1fr 1fr", gap: 12,
+                                        padding: "6px 0", borderTop: "1px solid var(--row-rule)" }}>
+                    <div className="num" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmtDate(l.date)}</div>
+                    <div className="num" style={{ fontSize: 12, textAlign: "right" }}>{l.qty}</div>
+                    <div className="num" style={{ fontSize: 12, textAlign: "right" }}>{fmt(l.buyPrice)}</div>
+                    <div className="num" style={{ fontSize: 12, textAlign: "right", color: "var(--ink-2)" }}>{fmt(l.buyPrice * l.qty)}</div>
+                    <div className="fig" style={{ fontSize: 12, textAlign: "right", fontWeight: 600,
+                         color: l.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(l.pl)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function PnlTotalBarChart({ points }) {
   const [hover, setHover] = useState(-1);
   const W = 760, H = 300, ML = 58, MR = 16, MT = 18, MB = 40;
@@ -760,6 +855,61 @@ const isDecisiveLoss = m => lotPct(m) <= LOSS_PCT;
 const rrText = rr => rr == null ? "—" : `1 : ${rr.toFixed(2)}`;
 
 // Mobile twin of HighlightPanel: same four lists, redrawn as stacked cards instead of a grid.
+// Mobile twin of InvestmentPositions: one card per company, tap to unfold its lots.
+const MInvestmentPositions = ({ groups }) => {
+  const [open, setOpen] = useState(() => new Set());
+  const toggle = (k) => setOpen(prev => {
+    const next = new Set(prev);
+    next.has(k) ? next.delete(k) : next.add(k);
+    return next;
+  });
+  return (
+    <>
+      {groups.map(g => {
+        const isOpen = open.has(g.key);
+        return (
+          <div key={g.key} style={MCARD}>
+            <div onClick={() => toggle(g.key)} style={{ display: "flex", alignItems: "center", gap: 11, cursor: "pointer" }}>
+              <LogoChip symbol={g.stock} w={64} h={30} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>{g.stock}</div>
+                <div style={{ fontSize: 10.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {g.client} · {g.qty} qty{g.lots.length > 1 ? ` · ${g.lots.length} lots` : ""}
+                </div>
+              </div>
+              <div style={{ textAlign: "right", flex: "none" }}>
+                <div className="fig" style={{ fontSize: 14.5, fontWeight: 600,
+                     color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{compactINR(g.value)}</div>
+                <div className="fig" style={{ fontSize: 11, fontWeight: 700, color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{compactINR(g.pl)}</div>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--ink-3)", flex: "none",
+                             transform: isOpen ? "rotate(90deg)" : "none", transition: "transform .15s" }}>▸</span>
+            </div>
+            <div style={MFOOTER}>
+              <MStat label="AVG BUY" value={fmt(g.avgBuy)} />
+              <MStat label="INVESTED" value={fmt(g.invested)} />
+              <MStat label="VALUE" value={fmt(g.value)} tone="var(--ink)" weight={600} />
+            </div>
+            {isOpen && (
+              <div style={{ marginTop: 10, borderTop: "1px solid var(--row-rule)", paddingTop: 8 }}>
+                {g.lots.map((l, j) => (
+                  <div key={j} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0",
+                                        fontSize: 11.5, borderTop: j ? "1px solid var(--row-rule)" : "none" }}>
+                    <span className="num" style={{ color: "var(--ink-3)", flex: "none" }}>{fmtDate(l.date)}</span>
+                    <span className="num">{l.qty} × {fmt(l.buyPrice)}</span>
+                    <span className="fig" style={{ marginLeft: "auto", fontWeight: 700,
+                          color: l.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{compactINR(l.pl)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+};
+
 const MHighlight = ({ title, note, rows, kind }) => (
   <div style={{ ...MCARD, borderRadius: 16, padding: "13px 14px", boxSizing: "border-box", maxWidth: "100%", overflow: "hidden" }}>
     <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
@@ -1321,6 +1471,7 @@ export default function App() {
       .map(m => ({ client: p.client, stock: p.stock, ...m })));
     return {
       open: [...open].sort((a, b) => b.date.localeCompare(a.date)),
+      openByCompany: groupInvestmentLots(open),
       closed: [...closed].sort((a, b) => b.sellDate.localeCompare(a.sellDate)),
       cost: open.reduce((s, l) => s + l.buyPrice * l.qty, 0),
       value: open.reduce((s, l) => s + (l.cmp || l.buyPrice) * l.qty, 0),
@@ -2118,8 +2269,10 @@ export default function App() {
                   <MKpi title="TOTAL P&L" value={compactINR(investments.unrealized + investments.realized)} sub="open + closed"
                         accent={tone(investments.unrealized + investments.realized)} tone={tone(investments.unrealized + investments.realized)} />
                 </div>
-                <MHighlight title="Open investments" note={`${investments.open.length} lot${investments.open.length === 1 ? "" : "s"} held`}
-                            rows={investments.open} kind="open" />
+                <div style={{ ...MMICRO, letterSpacing: ".05em", margin: "2px 2px -4px" }}>
+                  OPEN INVESTMENTS · {investments.openByCompany.length} COMPAN{investments.openByCompany.length === 1 ? "Y" : "IES"} · TAP FOR LOTS
+                </div>
+                <MInvestmentPositions groups={investments.openByCompany} />
                 <MHighlight title="Closed investments" note={`${investments.closed.length} exit${investments.closed.length === 1 ? "" : "s"}`}
                             rows={investments.closed} kind="closed" />
                 {isAdmin && dashedButton("+ Add trade", clients.length === 0 ? () => alert("Add at least one client before logging trades.") : openAddTrade)}
@@ -3093,9 +3246,8 @@ export default function App() {
             <Card title="Realized P&L" value={fmt(investments.realized)} accent={investments.realized >= 0 ? "#16a34a" : "#dc2626"} />
           </div>
           <div style={{ display: "grid", gap: 14 }}>
-            <HighlightPanel title="Open investments" note={`${investments.open.length} lot${investments.open.length === 1 ? "" : "s"} still held`}
-                            rows={investments.open} kind="open" showClient={filterClient === "All" || filterClient === "Own"}
-                            levelFor={levelFor} onSaveLevel={saveLevel} isAdmin={isAdmin} levelSaving={levelSaving} />
+            <InvestmentPositions groups={investments.openByCompany}
+                                 showClient={filterClient === "All" || filterClient === "Own"} />
             <HighlightPanel title="Closed investments" note={`${investments.closed.length} exit${investments.closed.length === 1 ? "" : "s"} booked`}
                             rows={investments.closed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           </div>
