@@ -707,8 +707,13 @@ function groupInvestmentLots(lots) {
   }).sort((a, b) => b.value - a.value);
 }
 
+function SortArrow({ active, dir }) {
+  return <span style={{ fontSize: 9, opacity: active ? 1 : .3 }}>{active ? (dir === "asc" ? "▲" : "▼") : "▲▼"}</span>;
+}
+
 function InvestmentPositions({ groups, showClient }) {
   const [open, setOpen] = useState(() => new Set());
+  const [sort, setSort] = useState({ col: null, dir: "desc" });
   const tInvested = groups.reduce((s, g) => s + g.invested, 0);
   const tValue = groups.reduce((s, g) => s + g.value, 0);
   const tPct = tInvested > 0 ? ((tValue - tInvested) / tInvested) * 100 : 0;
@@ -718,8 +723,29 @@ function InvestmentPositions({ groups, showClient }) {
     next.has(k) ? next.delete(k) : next.add(k);
     return next;
   });
-  const cols = showClient ? "18px 1.1fr 1.2fr .7fr .9fr 1fr 1fr 1fr" : "18px 1.2fr .7fr .9fr 1fr 1fr 1fr";
-  const heads = ["", ...(showClient ? ["Client"] : []), "Stock", "Qty", "Avg Buy", "Invested", "Current Value", "P&L"];
+  const toggleSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" });
+  const sortVal = (g, col) => {
+    switch (col) {
+      case "client": return g.client;
+      case "stock": return g.stock;
+      case "qty": return g.qty;
+      case "avgBuy": return g.avgBuy;
+      case "cmp": return g.cmp;
+      case "invested": return g.invested;
+      case "value": return g.value;
+      case "pl": return g.pl;
+      default: return null;
+    }
+  };
+  const sortedGroups = sort.col ? [...groups].sort((a, b) => {
+    const va = sortVal(a, sort.col), vb = sortVal(b, sort.col);
+    const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+    return sort.dir === "asc" ? c : -c;
+  }) : groups;
+  const cols = showClient ? "18px 1.1fr 1.2fr .7fr .9fr .9fr 1fr 1fr 1fr" : "18px 1.2fr .7fr .9fr .9fr 1fr 1fr 1fr";
+  const headDefs = [...(showClient ? [["client", "Client"]] : []),
+                    ["stock", "Stock"], ["qty", "Qty"], ["avgBuy", "Avg Buy"], ["cmp", "CMP"],
+                    ["invested", "Invested"], ["value", "Current Value"], ["pl", "P&L"]];
   const firstNum = showClient ? 3 : 2;
   const head = { fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--ink-3)" };
   return (
@@ -730,9 +756,17 @@ function InvestmentPositions({ groups, showClient }) {
       <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
                     padding: "12px 22px", marginTop: 12, background: "var(--table-head)",
                     borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
-        {heads.map((h, i) => <div key={i} style={{ ...head, textAlign: i >= firstNum ? "right" : "left" }}>{h}</div>)}
+        <div />
+        {headDefs.map(([key, label], i) => (
+          <div key={key} onClick={() => toggleSort(key)}
+               style={{ ...head, cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 4,
+                        justifyContent: i >= firstNum - 1 ? "flex-end" : "flex-start",
+                        color: sort.col === key ? "var(--ink)" : "var(--ink-3)" }}>
+            {label}<SortArrow active={sort.col === key} dir={sort.dir} />
+          </div>
+        ))}
       </div>
-      {groups.map((g, i) => {
+      {sortedGroups.map((g, i) => {
         const isOpen = open.has(g.key);
         return (
           <div key={g.key} style={{ borderBottom: i === groups.length - 1 && !isOpen ? "none" : "1px solid var(--row-rule)" }}>
@@ -752,6 +786,7 @@ function InvestmentPositions({ groups, showClient }) {
               </div>
               <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{g.qty}</div>
               <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.avgBuy)}</div>
+              <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600 }}>{fmt(g.cmp)}</div>
               <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.invested)}</div>
               <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
                    color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.value)}</div>
@@ -792,6 +827,7 @@ function InvestmentPositions({ groups, showClient }) {
         <div />
         {showClient && <div />}
         <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--ink-3)" }}>Total</div>
+        <div />
         <div />
         <div />
         <div className="num" style={{ fontSize: 13.5, textAlign: "right", fontWeight: 700 }}>{fmt(tInvested)}</div>
@@ -914,6 +950,7 @@ const MInvestmentPositions = ({ groups }) => {
             </div>
             <div style={MFOOTER}>
               <MStat label="AVG BUY" value={fmt(g.avgBuy)} />
+              <MStat label="CMP" value={fmt(g.cmp)} tone="var(--ink)" weight={600} />
               <MStat label="INVESTED" value={fmt(g.invested)} />
               <MStat label="VALUE" value={fmt(g.value)} tone="var(--ink)" weight={600} />
             </div>
@@ -1281,6 +1318,8 @@ export default function App() {
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [expandedRows, setExpandedRows] = useState({});
   const [showRawLog, setShowRawLog] = useState(false);
+  const [rawLogSort, setRawLogSort] = useState({ col: "date", dir: "asc" });
+  const toggleRawLogSort = (col) => setRawLogSort(s => s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" });
   const toggleRow = (k) => setExpandedRows(p => ({ ...p, [k]: !p[k] }));
   const [sortCol, setSortCol] = useState("total");
   const [sortDir, setSortDir] = useState("desc");
@@ -3218,9 +3257,25 @@ export default function App() {
             <div style={{ overflowX: "auto", marginTop: 10 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
-                  {["Client","Type","Stock","Qty","Price","Date","Kind","Notes",""].map(h => <th key={h} style={th}>{h}</th>)}
+                  {[["client_name","Client"],["type","Type"],["stock_symbol","Stock"],["quantity","Qty"],
+                    ["price","Price"],["date","Date"],["kind","Kind"],["notes","Notes"]].map(([key, label]) => (
+                    <th key={key} onClick={() => toggleRawLogSort(key)}
+                        style={{ ...th, cursor: "pointer", userSelect: "none",
+                                 color: rawLogSort.col === key ? "var(--ink)" : th.color }}>
+                      {label} <SortArrow active={rawLogSort.col === key} dir={rawLogSort.dir} />
+                    </th>
+                  ))}
+                  <th style={th}></th>
                 </tr></thead>
-                <tbody>{[...tradeRows].sort((a, b) => String(a.date).localeCompare(String(b.date))).map(t => {
+                <tbody>{[...tradeRows].sort((a, b) => {
+                  const val = (t) => rawLogSort.col === "kind" ? (t.type === "BUY" ? (t.kind || "trade") : "")
+                    : rawLogSort.col === "quantity" ? Number(t.quantity)
+                    : rawLogSort.col === "price" ? Number(t.price)
+                    : String(t[rawLogSort.col] ?? "");
+                  const va = val(a), vb = val(b);
+                  const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+                  return rawLogSort.dir === "asc" ? c : -c;
+                }).map(t => {
                   const isEditing = editingId === t.id;
                   return (<tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
                     <td style={td}>{t.client_name}</td>
