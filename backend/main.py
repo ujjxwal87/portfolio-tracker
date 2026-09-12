@@ -5,7 +5,7 @@ import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timezone
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -201,6 +201,11 @@ class TradeCreate(BaseModel):
 
 
 class TradeKind(BaseModel):
+    kind: Literal["trade", "investment"]
+
+
+class TradeKindBulk(BaseModel):
+    ids: List[str]
     kind: Literal["trade", "investment"]
 
 
@@ -401,6 +406,31 @@ def update_trade(trade_id: str, body: TradeCreate,
                 (row["id"],),
             )
             return cur.fetchone()
+
+
+@app.patch("/api/trades/kind")
+def set_trade_kind_bulk(body: TradeKindBulk,
+                        user: auth.CurrentUser = Depends(auth.require_admin)):
+    if not body.ids:
+        return {"updated": 0, "kind": body.kind}
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Every client touched must be one this admin owns — checked before anything is written.
+            cur.execute(
+                "SELECT DISTINCT client_id FROM portfolio_tracker.trades WHERE id = ANY(%s::uuid[])",
+                (body.ids,),
+            )
+            owners = [str(r[0]) for r in cur.fetchall()]
+            if not owners:
+                raise HTTPException(status_code=404, detail="No such trades")
+            for client_id in owners:
+                auth.assert_owns_client(user, client_id)
+            cur.execute(
+                """UPDATE portfolio_tracker.trades SET kind=%s, updated_at=NOW()
+                   WHERE id = ANY(%s::uuid[]) AND type = 'BUY'""",
+                (body.kind, body.ids),
+            )
+            return {"updated": cur.rowcount, "kind": body.kind}
 
 
 @app.patch("/api/trades/{trade_id}/kind")

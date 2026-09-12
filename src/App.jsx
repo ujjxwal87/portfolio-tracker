@@ -1527,6 +1527,28 @@ export default function App() {
     finally { setTradeSaving(false); }
   };
 
+  // A position's label, read off the lots it still holds. "mixed" means the open lots disagree,
+  // which happens when only some were relabelled.
+  const positionKind = (h) => {
+    const kinds = new Set((h.holdingLots || []).map(l => l.kind || "trade"));
+    return kinds.size > 1 ? "mixed" : (kinds.values().next().value || "trade");
+  };
+
+  // Relabels only what the position still HOLDS. Lots already sold keep whatever they were booked
+  // as, so past exits do not silently move in or out of the win-rate numbers.
+  const setPositionKind = async (h, kind) => {
+    const ids = (h.holdingLots || []).map(l => l.id).filter(Boolean);
+    if (ids.length === 0) return;
+    const key = `${h.client}||${h.stock}`;
+    setKindSaving(key);
+    try {
+      await apiFetch("/trades/kind", { method: "PATCH", body: JSON.stringify({ ids, kind }) });
+      const idSet = new Set(ids);
+      setTrades(prev => prev.map(t => idSet.has(t.id) ? { ...t, kind } : t));
+    } catch (e) { alert(e.message); }
+    finally { setKindSaving(null); }
+  };
+
   const toggleKind = async (t) => {
     const kind = (t.kind || "trade") === "trade" ? "investment" : "trade";
     setKindSaving(t.id);
@@ -1965,7 +1987,22 @@ export default function App() {
                 <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
                   {logoOf(h.stock)}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700 }}>{h.stock}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</span>
+                      {(() => {
+                        const k = positionKind(h), busy = kindSaving === `${h.client}||${h.stock}`;
+                        return (
+                          <button onClick={() => isAdmin && setPositionKind(h, k === "investment" ? "trade" : "investment")}
+                                  disabled={!isAdmin || busy}
+                                  style={{ border: "none", padding: "3px 7px", borderRadius: 6, fontSize: 9.5, fontWeight: 700,
+                                           flex: "none", cursor: isAdmin ? "pointer" : "default", opacity: busy ? .5 : 1,
+                                           background: k === "investment" ? "#F3E8FF" : k === "mixed" ? "#FEF3C7" : "#EEF2F7",
+                                           color: k === "investment" ? "#6B21A8" : k === "mixed" ? "#92400E" : "#475569" }}>
+                            {k === "investment" ? "INVEST" : k === "mixed" ? "MIXED" : "TRADE"}
+                          </button>
+                        );
+                      })()}
+                    </div>
                     <div style={{ fontSize: 10.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {h.client} · {h.netQty} qty
                     </div>
@@ -2755,10 +2792,12 @@ export default function App() {
         const totalInvested = rows.reduce((s, h) => s + h.investedHolding, 0);
         const unreal = totalVal - totalInvested;
         const cols = showClient
-          ? "1.2fr 1.1fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr"
-          : "1.1fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr";
+          ? "1.2fr 1.1fr .8fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr"
+          : "1.1fr .8fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr";
         const heads = [...(showClient ? ["Client"] : []),
-                       "Stock","Net Qty","Avg Buy","CMP","Invested","Current Value","P&L","Weight"];
+                       "Stock","Kind","Net Qty","Avg Buy","CMP","Invested","Current Value","P&L","Weight"];
+        // Client / Stock / Kind read left; every figure column reads right.
+        const firstNumCol = showClient ? 3 : 2;
         return (<>
           <Hero view="portfolio" eyebrow={`Portfolio · ${scopeLabel(filterClient)}`}
             right={
@@ -2814,7 +2853,7 @@ export default function App() {
                             padding: "12px 22px", background: "var(--table-head)", borderBottom: "1px solid var(--line)" }}>
                 {heads.map((h, i) => (
                   <div key={h} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
-                                        color: "var(--ink-3)", textAlign: i >= ((filterClient === "All" || filterClient === "Own") ? 2 : 1) ? "right" : "left" }}>{h}</div>
+                                        color: "var(--ink-3)", textAlign: i >= firstNumCol ? "right" : "left" }}>{h}</div>
                 ))}
               </div>
               {rows.map((h, i) => {
@@ -2827,6 +2866,22 @@ export default function App() {
                     <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                       <LogoChip symbol={h.stock} />
                       <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</span>
+                    </div>
+                    <div>
+                      {(() => {
+                        const k = positionKind(h), busy = kindSaving === `${h.client}||${h.stock}`;
+                        return (
+                          <button onClick={() => isAdmin && setPositionKind(h, k === "investment" ? "trade" : "investment")}
+                                  disabled={!isAdmin || busy}
+                                  title={isAdmin ? `Click to mark this position as ${k === "investment" ? "a trade" : "an investment"} (open lots only)` : undefined}
+                                  style={{ border: "none", padding: 0, background: "none",
+                                           cursor: isAdmin ? "pointer" : "default", opacity: busy ? .5 : 1 }}>
+                            <Badge color={k === "investment" ? "violet" : k === "mixed" ? "amber" : "blue"}>
+                              {k === "investment" ? "INVEST" : k === "mixed" ? "MIXED" : "TRADE"}
+                            </Badge>
+                          </button>
+                        );
+                      })()}
                     </div>
                     <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{h.netQty}</div>
                     <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(h.avgBuyPrice)}</div>
