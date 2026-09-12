@@ -718,8 +718,8 @@ function InvestmentPositions({ groups, showClient }) {
     next.has(k) ? next.delete(k) : next.add(k);
     return next;
   });
-  const cols = showClient ? "18px 1.1fr 1.2fr .7fr .9fr 1fr 1fr" : "18px 1.2fr .7fr .9fr 1fr 1fr";
-  const heads = ["", ...(showClient ? ["Client"] : []), "Stock", "Qty", "Avg Buy", "Invested", "Current Value"];
+  const cols = showClient ? "18px 1.1fr 1.2fr .7fr .9fr 1fr 1fr 1fr" : "18px 1.2fr .7fr .9fr 1fr 1fr 1fr";
+  const heads = ["", ...(showClient ? ["Client"] : []), "Stock", "Qty", "Avg Buy", "Invested", "Current Value", "P&L"];
   const firstNum = showClient ? 3 : 2;
   const head = { fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--ink-3)" };
   return (
@@ -753,9 +753,11 @@ function InvestmentPositions({ groups, showClient }) {
               <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{g.qty}</div>
               <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.avgBuy)}</div>
               <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.invested)}</div>
+              <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
+                   color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.value)}</div>
               <div style={{ textAlign: "right" }}>
-                <div className="num" style={{ fontSize: 13, fontWeight: 600,
-                     color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.value)}</div>
+                <div className="fig" style={{ fontSize: 13, fontWeight: 600,
+                     color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.pl)}</div>
                 <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>
                   {g.invested > 0 ? `(${g.pl >= 0 ? "+" : ""}${(g.pl / g.invested * 100).toFixed(2)}%)` : "—"}
                 </div>
@@ -793,8 +795,9 @@ function InvestmentPositions({ groups, showClient }) {
         <div />
         <div />
         <div className="num" style={{ fontSize: 13.5, textAlign: "right", fontWeight: 700 }}>{fmt(tInvested)}</div>
+        <div className="num" style={{ fontSize: 13.5, textAlign: "right", fontWeight: 700 }}>{fmt(tValue)}</div>
         <div style={{ textAlign: "right" }}>
-          <div className="num" style={{ fontSize: 13.5, fontWeight: 700, color: up ? "var(--good)" : "var(--bad)" }}>{fmt(tValue)}</div>
+          <div className="fig" style={{ fontSize: 13.5, fontWeight: 700, color: up ? "var(--good)" : "var(--bad)" }}>{fmt(tValue - tInvested)}</div>
           <div className="num" style={{ fontSize: 11, fontWeight: 700, marginTop: 1, color: up ? "var(--good)" : "var(--bad)" }}>
             ({up ? "+" : ""}{tPct.toFixed(2)}%)
           </div>
