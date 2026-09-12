@@ -709,6 +709,10 @@ function groupInvestmentLots(lots) {
 
 function InvestmentPositions({ groups, showClient }) {
   const [open, setOpen] = useState(() => new Set());
+  const tInvested = groups.reduce((s, g) => s + g.invested, 0);
+  const tValue = groups.reduce((s, g) => s + g.value, 0);
+  const tPct = tInvested > 0 ? ((tValue - tInvested) / tInvested) * 100 : 0;
+  const up = tValue >= tInvested;
   const toggle = (k) => setOpen(prev => {
     const next = new Set(prev);
     next.has(k) ? next.delete(k) : next.add(k);
@@ -749,8 +753,13 @@ function InvestmentPositions({ groups, showClient }) {
               <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{g.qty}</div>
               <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.avgBuy)}</div>
               <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.invested)}</div>
-              <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
-                   color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.value)}</div>
+              <div style={{ textAlign: "right" }}>
+                <div className="num" style={{ fontSize: 13, fontWeight: 600,
+                     color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.value)}</div>
+                <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>
+                  {g.invested > 0 ? `(${g.pl >= 0 ? "+" : ""}${(g.pl / g.invested * 100).toFixed(2)}%)` : "—"}
+                </div>
+              </div>
             </div>
             {isOpen && (
               <div style={{ background: "var(--table-head)", padding: "4px 22px 12px 52px",
@@ -776,6 +785,21 @@ function InvestmentPositions({ groups, showClient }) {
           </div>
         );
       })}
+      <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
+                    padding: "14px 22px", background: "var(--table-head)", borderTop: "2px solid var(--line)" }}>
+        <div />
+        {showClient && <div />}
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "var(--ink-3)" }}>Total</div>
+        <div />
+        <div />
+        <div className="num" style={{ fontSize: 13.5, textAlign: "right", fontWeight: 700 }}>{fmt(tInvested)}</div>
+        <div style={{ textAlign: "right" }}>
+          <div className="num" style={{ fontSize: 13.5, fontWeight: 700, color: up ? "var(--good)" : "var(--bad)" }}>{fmt(tValue)}</div>
+          <div className="num" style={{ fontSize: 11, fontWeight: 700, marginTop: 1, color: up ? "var(--good)" : "var(--bad)" }}>
+            ({up ? "+" : ""}{tPct.toFixed(2)}%)
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -2273,6 +2297,18 @@ export default function App() {
                   OPEN INVESTMENTS · {investments.openByCompany.length} COMPAN{investments.openByCompany.length === 1 ? "Y" : "IES"} · TAP FOR LOTS
                 </div>
                 <MInvestmentPositions groups={investments.openByCompany} />
+                {investments.openByCompany.length > 0 && (
+                  <div style={{ ...MCARD, display: "flex", alignItems: "center", gap: 10, padding: "12px 13px" }}>
+                    <span style={{ ...MMICRO, letterSpacing: ".05em" }}>TOTAL</span>
+                    <span className="num" style={{ fontSize: 12, color: "var(--ink-2)" }}>{fmt(investments.cost)}</span>
+                    <span style={{ marginLeft: "auto", textAlign: "right" }}>
+                      <div className="fig" style={{ fontSize: 14, fontWeight: 700, color: tone(investments.unrealized) }}>{fmt(investments.value)}</div>
+                      <div className="fig" style={{ fontSize: 11, fontWeight: 700, color: tone(investments.unrealized) }}>
+                        ({investments.unrealized >= 0 ? "+" : ""}{investments.cost > 0 ? (investments.unrealized / investments.cost * 100).toFixed(2) : "0.00"}%)
+                      </div>
+                    </span>
+                  </div>
+                )}
                 <MHighlight title="Closed investments" note={`${investments.closed.length} exit${investments.closed.length === 1 ? "" : "s"}`}
                             rows={investments.closed} kind="closed" />
                 {isAdmin && dashedButton("+ Add trade", clients.length === 0 ? () => alert("Add at least one client before logging trades.") : openAddTrade)}
@@ -3240,9 +3276,16 @@ export default function App() {
           </div>
         ) : (<>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "14px 0" }}>
-            <Card title="Invested" value={fmt(investments.cost)} accent="#7C3AED" />
-            <Card title="Current Value" value={fmt(investments.value)} accent="#7C3AED" />
-            <Card title="Unrealized P&L" value={fmt(investments.unrealized)} accent={investments.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
+            <Card title="Invested" value={fmt(investments.cost)} accent="#7C3AED"
+                  sub={`${investments.open.length} open lot${investments.open.length === 1 ? "" : "s"}`} />
+            <Card title="Current Value" value={fmt(investments.value)} accent="#7C3AED"
+                  sub={investments.cost > 0
+                    ? `${investments.value >= investments.cost ? "+" : ""}${((investments.value - investments.cost) / investments.cost * 100).toFixed(2)}% on cost`
+                    : "—"} />
+            <Card title="Unrealized P&L" value={fmt(investments.unrealized)} accent={investments.unrealized >= 0 ? "#16a34a" : "#dc2626"}
+                  sub={investments.cost > 0
+                    ? `(${investments.unrealized >= 0 ? "+" : ""}${(investments.unrealized / investments.cost * 100).toFixed(2)}%)`
+                    : "—"} />
             <Card title="Realized P&L" value={fmt(investments.realized)} accent={investments.realized >= 0 ? "#16a34a" : "#dc2626"} />
           </div>
           <div style={{ display: "grid", gap: 14 }}>
