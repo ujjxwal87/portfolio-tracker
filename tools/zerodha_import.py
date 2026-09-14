@@ -69,6 +69,12 @@ def main():
         sys.exit(f"no client named {args.client!r}")
     cid = row[0]
 
+    # A tradebook was actually pulled and parsed at this point, so this client has been checked
+    # as of now — stamp it whether or not the diff below finds anything new. Otherwise "no new
+    # trades" and "never checked" look identical from the clients table.
+    cur.execute("update portfolio_tracker.clients set trades_synced_at=NOW() where id=%s", (cid,))
+    c.commit()
+
     cur.execute("""select stock_symbol, date, type, quantity, price, broker
                    from portfolio_tracker.trades where client_id=%s""", (cid,))
     existing = {(s, d.isoformat(), t): {"qty": q, "price": float(p), "broker": b}

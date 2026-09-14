@@ -246,6 +246,12 @@ def main():
     print(f"Fetching Dhan trades {args.frm} → {args.to} …")
     fills = fetch_trades(token, args.frm, args.to)
     print(f"{len(fills)} fills\n")
+
+    # The token worked and Dhan was actually queried, so this client has been checked as of now
+    # — stamp it whether or not the diff below finds anything new. Otherwise "no new trades" and
+    # "never checked" look identical from the clients table.
+    cur.execute("update portfolio_tracker.clients set trades_synced_at=NOW() where id=%s", (cid,))
+    c.commit()
     raw = os.path.join(DUMP, f"dhan_raw_{args.client.split()[0].lower()}.json")
     json.dump(fills, open(raw, "w"), indent=2)
     print(f"raw fills saved -> {raw}")
