@@ -1320,6 +1320,9 @@ export default function App() {
   const [showRawLog, setShowRawLog] = useState(false);
   const [rawLogSort, setRawLogSort] = useState({ col: "date", dir: "asc" });
   const toggleRawLogSort = (col) => setRawLogSort(s => s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" });
+  const [tradeSearch, setTradeSearch] = useState("");
+  const [tradeSearchSort, setTradeSearchSort] = useState({ col: "date", dir: "desc" });
+  const toggleTradeSearchSort = (col) => setTradeSearchSort(s => s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" });
   const toggleRow = (k) => setExpandedRows(p => ({ ...p, [k]: !p[k] }));
   const [sortCol, setSortCol] = useState("total");
   const [sortDir, setSortDir] = useState("desc");
@@ -1518,6 +1521,13 @@ export default function App() {
   const rowIsKind = (t, k) => (rowKinds.get(t.id) || new Set([t.kind || "trade"])).has(k);
   const tradeRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "trade")), [filteredTrades, rowKinds]);
   const investmentRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "investment")), [filteredTrades, rowKinds]);
+  // Trades tab company search: every raw fill for a symbol, within the current client scope —
+  // unlike the highlight panels above, this is not capped to a handful of recent/top rows.
+  const tradeSearchHits = useMemo(() => {
+    const q = tradeSearch.trim().toUpperCase();
+    if (!q) return null;
+    return tradeRows.filter(t => t.stock_symbol.toUpperCase().includes(q));
+  }, [tradeSearch, tradeRows]);
 
   const tradePnl = useMemo(() => ({
     realized: portfolio.reduce((s, p) => s + p.matchDetails.filter(m => m.kind === "trade")
@@ -3180,6 +3190,23 @@ export default function App() {
             {" · "}Unrealized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(tradePnl.unrealized)}</strong>
             {isAdmin && <>{" · "}Win rate <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{stats.winRate.toFixed(0)}%</strong></>}
           </div>
+          <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ position: "relative", flex: "0 1 340px" }}>
+              <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
+                             fontSize: 13, color: "rgba(255,255,255,.55)", pointerEvents: "none" }}>⌕</span>
+              <input value={tradeSearch} onChange={e => setTradeSearch(e.target.value)}
+                     placeholder="Search a company — see every trade for it"
+                     style={{ width: "100%", boxSizing: "border-box", padding: "10px 34px 10px 30px",
+                              borderRadius: 11, border: "1px solid rgba(255,255,255,.28)",
+                              background: "rgba(255,255,255,.14)", color: "#fff", fontSize: 13, outline: "none" }} />
+              {tradeSearch && (
+                <button onClick={() => setTradeSearch("")} title="Clear"
+                        style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                                 border: "none", background: "none", color: "rgba(255,255,255,.75)",
+                                 fontSize: 17, cursor: "pointer", lineHeight: 1 }}>×</button>
+              )}
+            </div>
+          </div>
         </Hero>
 
         {clients.length === 0 && !showForm && (
@@ -3231,6 +3258,57 @@ export default function App() {
           <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
         </div>
 
+        {tradeSearchHits !== null ? (
+          <div style={{ ...PANEL, overflow: "hidden" }}>
+            <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
+              {tradeSearchHits.length} trade{tradeSearchHits.length === 1 ? "" : "s"} matching "{tradeSearch.trim()}"
+            </span>}>Search results</PanelTitle>
+            {tradeSearchHits.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>
+                No trade matches "{tradeSearch.trim()}"
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                    {[["client_name","Client"],["type","Type"],["stock_symbol","Stock"],["quantity","Qty"],
+                      ["price","Price"],["date","Date"],["kind","Kind"],["notes","Notes"]].map(([key, label]) => (
+                      <th key={key} onClick={() => toggleTradeSearchSort(key)}
+                          style={{ ...th, cursor: "pointer", userSelect: "none",
+                                   color: tradeSearchSort.col === key ? "var(--ink)" : th.color }}>
+                        {label} <SortArrow active={tradeSearchSort.col === key} dir={tradeSearchSort.dir} />
+                      </th>
+                    ))}
+                  </tr></thead>
+                  <tbody>{[...tradeSearchHits].sort((a, b) => {
+                    const val = (t) => tradeSearchSort.col === "kind" ? (t.type === "BUY" ? (t.kind || "trade") : "")
+                      : tradeSearchSort.col === "quantity" ? Number(t.quantity)
+                      : tradeSearchSort.col === "price" ? Number(t.price)
+                      : String(t[tradeSearchSort.col] ?? "");
+                    const va = val(a), vb = val(b);
+                    const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+                    return tradeSearchSort.dir === "asc" ? c : -c;
+                  }).map(t => (
+                    <tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={td}>{t.client_name}</td>
+                      <td style={td}><Badge color={t.type === "BUY" ? "green" : "red"}>{t.type}</Badge></td>
+                      <td className="num" style={{ ...td, fontWeight: 700 }}>{t.stock_symbol}</td>
+                      <td style={td}>{t.quantity}</td>
+                      <td className="num" style={td}>{fmt(t.price)}</td>
+                      <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>{fmtDate(t.date)}</td>
+                      <td style={td}>{t.type === "BUY"
+                        ? <Badge color={(t.kind || "trade") === "investment" ? "violet" : "blue"}>
+                            {(t.kind || "trade") === "investment" ? "INVEST" : "TRADE"}
+                          </Badge>
+                        : <span style={{ color: "#9ca3af", fontSize: 11 }}>inherits</span>}</td>
+                      <td className="num" style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : (
         <div style={{ display: "grid", gap: 14 }}>
           {isAdmin && <ClientTradeStatsPanel rows={clientTradeStats}
                                              scopedTo={filterClient === "All" ? null : scopeLabel(filterClient)} />}
@@ -3247,6 +3325,7 @@ export default function App() {
                             rows={highlights.worst} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           )}
         </div>
+        )}
 
 
           <div style={{ marginTop: 16 }}>
