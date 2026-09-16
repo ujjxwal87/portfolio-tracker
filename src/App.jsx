@@ -1479,9 +1479,8 @@ export default function App() {
     const closed = portfolio.flatMap(p => p.matchDetails.filter(m => m.kind === "trade")
       .map(m => ({ client: p.client, stock: p.stock, ...m })));
     return {
-      // Ten, not five — the open book is what gets watched against stops day to day.
       recentOpen: [...openLots].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
-      recentClosed: [...closed].sort((a, b) => b.sellDate.localeCompare(a.sellDate)).slice(0, 5),
+      recentClosed: [...closed].sort((a, b) => b.sellDate.localeCompare(a.sellDate)).slice(0, 10),
       best: [...closed].filter(m => m.pl > 0).sort((a, b) => b.pl - a.pl).slice(0, 5),
       worst: [...closed].filter(m => m.pl < 0).sort((a, b) => a.pl - b.pl).slice(0, 5),
     };
