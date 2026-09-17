@@ -1222,18 +1222,21 @@ function capitalDetailText(entry, row) {
 // closed lots carry a sell price and a booked P&L. Open lots additionally carry an SL column when
 // `levelFor` is supplied.
 function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride,
-                          levelFor, onSaveLevel, isAdmin, levelSaving }) {
+                          levelFor, onSaveLevel, isAdmin, levelSaving, capitalLedger }) {
   const showSL = kind === "open" && typeof levelFor === "function";
+  const showCapital = kind === "open" && !!capitalLedger;
+  const extraCols = (showSL ? 1 : 0) + (showCapital ? 1 : 0);
   const cols = showClient
-    ? (kind === "open" ? `1.1fr 1.4fr .6fr .8fr ${showSL ? "1fr " : ""}.9fr .9fr`
+    ? (kind === "open" ? `1.1fr 1.4fr .6fr .8fr ${"1fr ".repeat(extraCols)}.9fr .9fr`
                        : "1.1fr 1.4fr .6fr .8fr .8fr .9fr .9fr")
-    : (kind === "open" ? `1.6fr .6fr .8fr ${showSL ? "1fr " : ""}.9fr .9fr`
+    : (kind === "open" ? `1.6fr .6fr .8fr ${"1fr ".repeat(extraCols)}.9fr .9fr`
                        : "1.6fr .6fr .8fr .8fr .9fr .9fr");
   const heads = [
     ...(showClient ? ["Client"] : []),
     "Stock", "Qty", "Buy",
     ...(kind === "closed" ? ["Sell"] : []),
     ...(showSL ? ["SL"] : []),
+    ...(showCapital ? ["Capital"] : []),
     kind === "open" ? "Bought" : "Exited",
     kind === "open" ? "Unrealized" : "Realized",
   ];
@@ -1267,6 +1270,15 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                       saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
                       onSave={onSaveLevel} />
             )}
+            {showCapital && (() => {
+              const entry = capitalLedger.ledger.get(r.id);
+              return entry?.after == null
+                ? <div style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>—</div>
+                : <div className="num" title={capitalDetailText(entry, { stock_symbol: r.stock })}
+                       style={{ fontSize: 12.5, textAlign: "right", fontWeight: entry.manual ? 700 : 600 }}>
+                    {fmt(entry.after)}
+                  </div>;
+            })()}
             <div className="num" style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
             <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600,
                  color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
@@ -1537,7 +1549,7 @@ export default function App() {
     // One entry per still-open FIFO lot, so "recent" means recently bought, not recently touched.
     const openLots = portfolio.filter(p => p.netQty > 0).flatMap(p =>
       p.holdingLots.filter(l => (l.kind || "trade") === "trade").map(l => ({
-        client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
+        id: l.id, client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
         cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
       })));
     const closed = portfolio.flatMap(p => p.matchDetails.filter(m => m.kind === "trade")
@@ -1629,7 +1641,10 @@ export default function App() {
         ledger.set(row.id, { before, after: running, kind: "close", riskBack, pnl });
       }
     }
-    return ledger;
+    // Map insertion order follows the loop above, i.e. chronological — so the last entry set is
+    // the newest row's, which is exactly "capital available for the next trade" right now.
+    const latest = ledger.size ? [...ledger.values()].pop().after : null;
+    return { ledger, latest };
   }, [filterClient, portfolio, tradeRows, levelFor]);
   // Trades tab company search: every raw fill for a symbol, within the current client scope —
   // unlike the highlight panels above, this is not capped to a handful of recent/top rows.
@@ -3375,6 +3390,10 @@ export default function App() {
           <Card title="Realized P&L" value={fmt(tradePnl.realized)} accent={tradePnl.realized >= 0 ? "#16a34a" : "#dc2626"} />
           <Card title="Unrealized P&L" value={fmt(tradePnl.unrealized)} accent={tradePnl.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
           <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
+          {capitalLedger && (
+            <Card title="Swing Capital" value={capitalLedger.latest == null ? "Not set" : fmt(capitalLedger.latest)}
+                  sub="available for the next trade" accent="#7C3AED" />
+          )}
         </div>
 
         {tradeSearchHits !== null ? (
@@ -3434,7 +3453,7 @@ export default function App() {
           <HighlightPanel title="Recent open trades" note="Newest 10 lots still held"
                           rows={highlights.recentOpen} kind="open" showClient={filterClient === "All" || filterClient === "Own"}
                           levelFor={levelFor} onSaveLevel={saveLevel} isAdmin={isAdmin}
-                          levelSaving={levelSaving} />
+                          levelSaving={levelSaving} capitalLedger={capitalLedger} />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
                           rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
@@ -3476,7 +3495,7 @@ export default function App() {
                   return rawLogSort.dir === "asc" ? c : -c;
                 }).map(t => {
                   const isEditing = editingId === t.id;
-                  const entry = capitalLedger?.get(t.id);
+                  const entry = capitalLedger?.ledger.get(t.id);
                   const expanded = capitalDetailId === t.id;
                   return (<Fragment key={t.id}>
                   <tr style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
