@@ -33,9 +33,9 @@ const ART_BG = {
 
 const Logo = ({ size = 38 }) => (
   <div style={{ width: size, height: size, borderRadius: size * 0.32, display: "grid",
-                placeItems: "center", background: "linear-gradient(135deg,#2563EB,#0EA5E9)",
-                color: "#fff", fontSize: size * 0.45, fontWeight: 800, flex: "none",
-                boxShadow: "0 6px 18px -6px rgba(14,165,233,.8)" }}>E</div>
+                placeItems: "center", background: "linear-gradient(135deg,#B8860B,#F5D67B)",
+                color: "#3D2B00", fontSize: size * 0.45, fontWeight: 800, flex: "none",
+                boxShadow: "0 6px 18px -6px rgba(184,134,11,.7)" }}>M</div>
 );
 
 const Wordmark = ({ dark }) => (
@@ -43,7 +43,7 @@ const Wordmark = ({ dark }) => (
     <Logo />
     <div>
       <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.02em",
-                    color: dark ? "#fff" : "var(--ink)" }}>Eros Financial Service</div>
+                    color: dark ? "#fff" : "var(--ink)" }}>Mudra Securities</div>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase",
                     color: dark ? "rgba(255,255,255,.5)" : "var(--ink-3)" }}>Wealth tracker</div>
     </div>

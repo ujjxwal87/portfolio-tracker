@@ -2632,9 +2632,9 @@ export default function App() {
                       padding: "20px 14px", display: "flex", flexDirection: "column", gap: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 4px" }}>
           <div style={{ width: 32, height: 32, borderRadius: 10, display: "grid", placeItems: "center",
-                        background: "linear-gradient(135deg,#2563EB,#0EA5E9)", color: "#fff", fontWeight: 700, fontSize: 15 }}>E</div>
+                        background: "linear-gradient(135deg,#B8860B,#F5D67B)", color: "#3D2B00", fontWeight: 700, fontSize: 15 }}>M</div>
           <div>
-            <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Eros Financial Service</div>
+            <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Mudra Securities</div>
           </div>
         </div>
 
