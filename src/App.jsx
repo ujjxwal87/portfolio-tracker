@@ -1157,6 +1157,67 @@ function SLCell({ row, level, isAdmin, saving, onSave }) {
   );
 }
 
+// The Capital cell in the raw trade log — see capitalLedger's comment for the ledger rules.
+// A blank cell (before any anchor is set) offers "+ set" to admins. Once a row has a computed or
+// manual value, clicking the number itself expands a one-line breakdown below the row; a small
+// "edit"/"override" link switches that row into a manual anchor instead.
+function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCancelEdit, onSave, expanded, onToggleExpand }) {
+  const [draft, setDraft] = useState("");
+  if (editing) {
+    const commit = () => {
+      const raw = draft.trim();
+      const value = raw === "" ? null : Number(raw);
+      if (raw !== "" && (!Number.isFinite(value) || value < 0)) return;
+      onSave(value);
+    };
+    return (
+      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+        <input autoFocus type="number" step="0.01" placeholder="Capital" defaultValue={entry?.after ?? ""}
+               onChange={e => setDraft(e.target.value)}
+               onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") onCancelEdit(); }}
+               style={{ width: 96, padding: "3px 6px", fontSize: 12, textAlign: "right",
+                        border: "1px solid var(--accent)", borderRadius: 6 }} />
+        <button onClick={commit} style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+                 border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Set</button>
+        <button onClick={onCancelEdit} style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5,
+                 border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-3)", cursor: "pointer" }}>×</button>
+      </span>
+    );
+  }
+  if (saving) return <span style={{ fontSize: 11, color: "var(--ink-3)" }}>saving…</span>;
+  if (!entry || entry.after == null) {
+    return isAdmin
+      ? <span onClick={onStartEdit} title="Click to set this trade's capital"
+              style={{ fontSize: 12, color: "var(--ink-3)", cursor: "pointer" }}>+ set</span>
+      : <span style={{ fontSize: 12, color: "var(--ink-3)" }}>—</span>;
+  }
+  return (
+    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+      <span onClick={onToggleExpand} title={entry.manual ? "Manually set — click for details" : "Click for the breakdown"}
+            style={{ fontSize: 12.5, fontWeight: entry.manual ? 700 : 600, cursor: "pointer",
+                     textDecoration: expanded ? "underline" : "none" }}>
+        {fmt(entry.after)}
+      </span>
+      {isAdmin && (
+        <span onClick={onStartEdit} style={{ fontSize: 9, color: "var(--accent)", cursor: "pointer" }}>
+          {entry.manual ? "edit" : "override"}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function capitalDetailText(entry, row) {
+  if (entry.manual) return `Set manually to ${fmt(entry.after)}.`;
+  if (entry.kind === "open") {
+    const reason = entry.oneRule ? "no stop-loss set, so 1% of capital"
+                                  : `stop-loss ${fmt(entry.sl)} → (entry − SL) × qty`;
+    return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Opened ${row.stock_symbol}, risked ${fmt(entry.risk)} (${reason})`;
+  }
+  return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Closed ${row.stock_symbol}, released ${fmt(entry.riskBack)} risk `
+       + `${entry.pnl >= 0 ? "+" : "−"} ${fmt(Math.abs(entry.pnl))} P&L`;
+}
+
 // One "top 5" panel on the Trades tab. `kind` picks the columns: open lots carry no exit,
 // closed lots carry a sell price and a booked P&L. Open lots additionally carry an SL column when
 // `levelFor` is supplied.
@@ -1309,6 +1370,9 @@ export default function App() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_TRADE_FORM);
   const [kindSaving, setKindSaving] = useState(null);
+  const [capitalSaving, setCapitalSaving] = useState(null);
+  const [capitalEditingId, setCapitalEditingId] = useState(null);
+  const [capitalDetailId, setCapitalDetailId] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [tradeSaving, setTradeSaving] = useState(false);
 
@@ -1520,6 +1584,53 @@ export default function App() {
   const rowIsKind = (t, k) => (rowKinds.get(t.id) || new Set([t.kind || "trade"])).has(k);
   const tradeRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "trade")), [filteredTrades, rowKinds]);
   const investmentRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "investment")), [filteredTrades, rowKinds]);
+  // Risk-capital ledger: only makes sense scoped to ONE client's own book, chronologically. A BUY
+  // cuts a slice from the capital of the row before it (stop-loss distance × qty if this symbol has
+  // a stop set, else a flat 1%); a SELL gives back the slice(s) it closed — via the same FIFO matches
+  // resolvePortfolio already computed — plus the realized P&L, so a loss beyond the planned risk comes
+  // straight out of the total and a smaller loss (or a win) hands back the difference. Nothing is
+  // computed before the newest row someone has typed a capital value into; earlier rows read "—".
+  const capitalLedger = useMemo(() => {
+    if (filterClient === "All" || filterClient === "Own") return null;
+    const bySell = new Map();
+    portfolio.forEach(p => p.matchDetails.forEach(m => {
+      if (!bySell.has(m.sellId)) bySell.set(m.sellId, []);
+      bySell.get(m.sellId).push(m);
+    }));
+    const byId = new Map(tradeRows.map(r => [r.id, r]));
+    const sorted = [...tradeRows].sort((a, b) =>
+      String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    const ledger = new Map();
+    let running = null;
+    for (const row of sorted) {
+      if (row.capital != null) {
+        running = Number(row.capital);
+        ledger.set(row.id, { after: running, manual: true });
+        continue;
+      }
+      if (running == null) { ledger.set(row.id, { after: null }); continue; }
+      const before = running;
+      if (row.type === "BUY") {
+        const lvl = levelFor(filterClient, row.stock_symbol);
+        const sl = lvl?.stop_loss ?? null;
+        const oneRule = sl == null || sl >= Number(row.price);
+        const risk = oneRule ? before * 0.01 : (Number(row.price) - sl) * row.quantity;
+        running = before - risk;
+        ledger.set(row.id, { before, after: running, kind: "open", risk, sl, oneRule });
+      } else {
+        const matches = bySell.get(row.id) || [];
+        let riskBack = 0, pnl = 0;
+        matches.forEach(m => {
+          pnl += m.pl;
+          const buyEntry = ledger.get(m.buyId), buyRow = byId.get(m.buyId);
+          if (buyEntry?.risk != null && buyRow) riskBack += buyEntry.risk * (m.qty / buyRow.quantity);
+        });
+        running = before + riskBack + pnl;
+        ledger.set(row.id, { before, after: running, kind: "close", riskBack, pnl });
+      }
+    }
+    return ledger;
+  }, [filterClient, portfolio, tradeRows, levelFor]);
   // Trades tab company search: every raw fill for a symbol, within the current client scope —
   // unlike the highlight panels above, this is not capped to a handful of recent/top rows.
   const tradeSearchHits = useMemo(() => {
@@ -1783,6 +1894,15 @@ export default function App() {
       setTrades(prev => prev.map(x => x.id === t.id ? { ...x, kind } : x));
     } catch (e) { alert(e.message); }
     finally { setKindSaving(null); }
+  };
+
+  const saveCapital = async (id, capital) => {
+    setCapitalSaving(id);
+    try {
+      await apiFetch(`/trades/${id}/capital`, { method: "PATCH", body: JSON.stringify({ capital }) });
+      setTrades(prev => prev.map(x => x.id === id ? { ...x, capital } : x));
+    } catch (e) { alert(e.message); }
+    finally { setCapitalSaving(null); }
   };
 
   const handleDeleteTrade = async (id) => {
@@ -3343,6 +3463,7 @@ export default function App() {
                       {label} <SortArrow active={rawLogSort.col === key} dir={rawLogSort.dir} />
                     </th>
                   ))}
+                  {capitalLedger && <th style={{ ...th, textAlign: "right" }} title="Risk-capital ledger — see the Trades tab note">Capital</th>}
                   <th style={th}></th>
                 </tr></thead>
                 <tbody>{[...tradeRows].sort((a, b) => {
@@ -3355,7 +3476,10 @@ export default function App() {
                   return rawLogSort.dir === "asc" ? c : -c;
                 }).map(t => {
                   const isEditing = editingId === t.id;
-                  return (<tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
+                  const entry = capitalLedger?.get(t.id);
+                  const expanded = capitalDetailId === t.id;
+                  return (<Fragment key={t.id}>
+                  <tr style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
                     <td style={td}>{t.client_name}</td>
                     <td style={td}><Badge color={t.type === "BUY" ? "green" : "red"}>{t.type}</Badge></td>
                     <td className="num" style={{ ...td, fontWeight: 700 }}>{t.stock_symbol}</td>
@@ -3373,11 +3497,30 @@ export default function App() {
                         </button>
                       : <span style={{ color: "#9ca3af", fontSize: 11 }}>inherits</span>}</td>
                     <td className="num" style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
+                    {capitalLedger && (
+                      <td className="num" style={{ ...td, textAlign: "right" }}>
+                        <CapitalCell row={t} entry={entry} isAdmin={isAdmin}
+                          saving={capitalSaving === t.id} editing={capitalEditingId === t.id}
+                          onStartEdit={() => setCapitalEditingId(t.id)}
+                          onCancelEdit={() => setCapitalEditingId(null)}
+                          onSave={(value) => { setCapitalEditingId(null); saveCapital(t.id, value); }}
+                          expanded={expanded}
+                          onToggleExpand={() => setCapitalDetailId(expanded ? null : t.id)} />
+                      </td>
+                    )}
                     <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>
                       {isAdmin && <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>}
                       {isAdmin && <button onClick={() => handleDeleteTrade(t.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>}
                     </td>
-                  </tr>);
+                  </tr>
+                  {capitalLedger && expanded && entry && (
+                    <tr style={{ background: "#f8fafc", borderBottom: "1px solid #f3f4f6" }}>
+                      <td colSpan={10} style={{ ...td, fontSize: 11.5, color: "#475569", padding: "6px 8px" }}>
+                        {capitalDetailText(entry, t)}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>);
                 })}</tbody>
               </table>
             </div>

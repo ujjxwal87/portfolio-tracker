@@ -32,6 +32,9 @@ CREATE INDEX IF NOT EXISTS idx_trades_date         ON portfolio_tracker.trades(d
 -- See migrations/001_broker_and_cashflows.sql
 ALTER TABLE portfolio_tracker.trades ADD COLUMN IF NOT EXISTS broker TEXT;
 
+-- See migrations/013_trade_capital.sql
+ALTER TABLE portfolio_tracker.trades ADD COLUMN IF NOT EXISTS capital NUMERIC(14,2);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_trades_natural_key
     ON portfolio_tracker.trades (client_id, broker, stock_symbol, date, type)
     WHERE broker IS NOT NULL;

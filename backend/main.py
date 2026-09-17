@@ -204,6 +204,11 @@ class TradeKind(BaseModel):
     kind: Literal["trade", "investment"]
 
 
+class TradeCapital(BaseModel):
+    # None clears it — the ledger anchor moves back to whichever earlier row still has one set.
+    capital: Optional[float] = None
+
+
 class TradeKindBulk(BaseModel):
     ids: List[str]
     kind: Literal["trade", "investment"]
@@ -302,7 +307,7 @@ def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.kind, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.capital, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 """ + where + "ORDER BY t.date ASC, t.created_at ASC",
@@ -353,7 +358,7 @@ def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.requir
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.kind, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.capital, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 WHERE t.id = %s
@@ -398,7 +403,7 @@ def update_trade(trade_id: str, body: TradeCreate,
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.kind, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.capital, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 WHERE t.id = %s
@@ -446,6 +451,23 @@ def set_trade_kind(trade_id: str, body: TradeKind,
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Trade not found")
     return {"id": trade_id, "kind": body.kind}
+
+
+@app.patch("/api/trades/{trade_id}/capital")
+def set_trade_capital(trade_id: str, body: TradeCapital,
+                      user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, _trade_client_id(trade_id))
+    if body.capital is not None and body.capital < 0:
+        raise HTTPException(400, "Capital can't be negative")
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE portfolio_tracker.trades SET capital=%s, updated_at=NOW() WHERE id=%s RETURNING id",
+                (body.capital, trade_id),
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Trade not found")
+    return {"id": trade_id, "capital": body.capital}
 
 
 @app.delete("/api/trades/{trade_id}", status_code=204)
