@@ -13,6 +13,8 @@ import argparse, collections, json, os, sys, datetime
 import requests, psycopg2
 from dotenv import load_dotenv
 
+from dhan_auth import get_access_token
+
 BASE = "https://api.dhan.co/v2"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
@@ -229,9 +231,7 @@ def main():
     ap.add_argument("--ledger", action="store_true", help="also import deposits/withdrawals into cash_flows")
     args = ap.parse_args()
 
-    token = os.getenv("DHAN_ACCESS_TOKEN")
-    if not token:
-        sys.exit("set DHAN_ACCESS_TOKEN")
+    token = os.getenv("DHAN_ACCESS_TOKEN") or get_access_token()
 
     c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
                          dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
