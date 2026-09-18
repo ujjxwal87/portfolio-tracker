@@ -1213,8 +1213,8 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
   );
 }
 
-function capitalDetailText(entry, row) {
-  if (entry.manual) return `Set manually to ${fmt(entry.after)}.`;
+function capitalDetailText(entry) {
+  if (entry.manual) return `Set manually to ${fmt(entry.after)}${entry.symbol ? ` (on ${entry.symbol})` : ""}.`;
   if (entry.kind === "adjustment") {
     return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Lumpsum ${entry.amount >= 0 ? "added" : "removed"} `
          + `${fmt(Math.abs(entry.amount))}`;
@@ -1222,10 +1222,28 @@ function capitalDetailText(entry, row) {
   if (entry.kind === "open") {
     const reason = entry.oneRule ? "no stop-loss set, so 1% of capital"
                                   : `stop-loss ${fmt(entry.sl)} → (entry − SL) × qty`;
-    return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Opened ${row.stock_symbol}, risked ${fmt(entry.risk)} (${reason})`;
+    return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Opened ${entry.symbol}, risked ${fmt(entry.risk)} (${reason})`;
   }
-  return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Closed ${row.stock_symbol}, released ${fmt(entry.riskBack)} risk `
+  return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Closed ${entry.symbol}, released ${fmt(entry.riskBack)} risk `
        + `${entry.pnl >= 0 ? "+" : "−"} ${fmt(Math.abs(entry.pnl))} P&L`;
+}
+
+// Full path back to the last anchor (a manual value, or the very start of the ledger) for a given
+// row — so expanding one row shows every hop that got it there, not just the immediate one. The
+// ledger Map's insertion order IS chronological order (see capitalLedger above), so this just
+// walks backward from the row until (and including) the most recent manual/anchor entry.
+function capitalChainFor(id, capitalLedger) {
+  if (!capitalLedger) return [];
+  const idx = capitalLedger.order.indexOf(id);
+  if (idx === -1) return [];
+  const chain = [];
+  for (let i = idx; i >= 0; i--) {
+    const entry = capitalLedger.ledger.get(capitalLedger.order[i]);
+    if (!entry || entry.after == null) break;
+    chain.unshift(entry);
+    if (entry.manual) break;
+  }
+  return chain;
 }
 
 // The Swing Capital card: the ledger's current value, plus a lumpsum deposit/withdrawal control.
@@ -1291,7 +1309,7 @@ function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, addi
                 return (
                   <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
                        fontSize: 11, color: "var(--ink-2)" }}
-                       title={entry ? capitalDetailText(entry, {}) : ""}>
+                       title={entry ? capitalDetailText(entry) : ""}>
                     <span>{fmtDate(a.date)} {a.notes ? `· ${a.notes}` : ""}</span>
                     <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
                       <strong style={{ color: a.amount >= 0 ? "var(--good)" : "var(--bad)" }}>
@@ -1383,9 +1401,11 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                  color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
           </div>
           {capExpanded && (
-            <div style={{ padding: "0 22px 11px", fontSize: 11.5, color: "var(--ink-3)",
+            <div style={{ padding: "0 22px 11px", display: "grid", gap: 3,
                           borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
-              {capitalDetailText(capEntry, { stock_symbol: r.stock })}
+              {capitalChainFor(r.id, capitalLedger).map((step, si) => (
+                <div key={si} style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{capitalDetailText(step)}</div>
+              ))}
             </div>
           )}
           </Fragment>
@@ -1734,8 +1754,10 @@ export default function App() {
     const sorted = events.sort((a, b) =>
       String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
     const ledger = new Map();
+    const order = [];
     let running = null;
     for (const { evt, id, row } of sorted) {
+      order.push(id);
       if (evt === "adjustment") {
         running = (running ?? 0) + Number(row.amount);
         ledger.set(id, { before: running - Number(row.amount), after: running, kind: "adjustment", amount: Number(row.amount) });
@@ -1743,7 +1765,7 @@ export default function App() {
       }
       if (row.capital != null) {
         running = Number(row.capital);
-        ledger.set(id, { after: running, manual: true });
+        ledger.set(id, { after: running, manual: true, symbol: row.stock_symbol });
         continue;
       }
       if (running == null) { ledger.set(id, { after: null }); continue; }
@@ -1754,7 +1776,7 @@ export default function App() {
         const oneRule = sl == null || sl >= Number(row.price);
         const risk = oneRule ? before * 0.01 : (Number(row.price) - sl) * row.quantity;
         running = before - risk;
-        ledger.set(id, { before, after: running, kind: "open", risk, sl, oneRule });
+        ledger.set(id, { before, after: running, kind: "open", risk, sl, oneRule, symbol: row.stock_symbol });
       } else {
         const matches = bySell.get(row.id) || [];
         let riskBack = 0, pnl = 0;
@@ -1764,14 +1786,14 @@ export default function App() {
           if (buyEntry?.risk != null && buyRow) riskBack += buyEntry.risk * (m.qty / buyRow.quantity);
         });
         running = before + riskBack + pnl;
-        ledger.set(row.id, { before, after: running, kind: "close", riskBack, pnl });
+        ledger.set(row.id, { before, after: running, kind: "close", riskBack, pnl, symbol: row.stock_symbol });
       }
     }
     // Map insertion order follows the loop above, i.e. chronological — so the last entry set is
     // the newest row's, which is exactly "capital available for the next trade" right now.
     const latest = ledger.size ? [...ledger.values()].pop().after : null;
-    return { ledger, latest };
-  }, [filterClient, portfolio, tradeRows, levelFor]);
+    return { ledger, order, latest };
+  }, [filterClient, portfolio, tradeRows, clientCapitalAdjustments, levelFor]);
   // Trades tab company search: every raw fill for a symbol, within the current client scope —
   // unlike the highlight panels above, this is not capped to a handful of recent/top rows.
   const tradeSearchHits = useMemo(() => {
@@ -3690,8 +3712,12 @@ export default function App() {
                   </tr>
                   {capitalLedger && expanded && entry && (
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #f3f4f6" }}>
-                      <td colSpan={10} style={{ ...td, fontSize: 11.5, color: "#475569", padding: "6px 8px" }}>
-                        {capitalDetailText(entry, t)}
+                      <td colSpan={10} style={{ ...td, padding: "6px 8px" }}>
+                        <div style={{ display: "grid", gap: 3 }}>
+                          {capitalChainFor(t.id, capitalLedger).map((step, si) => (
+                            <div key={si} style={{ fontSize: 11.5, color: "#475569" }}>{capitalDetailText(step)}</div>
+                          ))}
+                        </div>
                       </td>
                     </tr>
                   )}
