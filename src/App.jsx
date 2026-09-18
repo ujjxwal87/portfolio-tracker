@@ -1194,9 +1194,12 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, width: "100%" }}>
       <span onClick={onToggleExpand} title={entry.manual ? "Manually set — click for details" : "Click for the breakdown"}
-            style={{ fontSize: 12.5, fontWeight: entry.manual ? 700 : 600, cursor: "pointer",
+            style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12.5,
+                     fontWeight: entry.manual ? 700 : 600, cursor: "pointer",
                      textDecoration: expanded ? "underline" : "none" }}>
         {fmt(entry.after)}
+        <span style={{ fontSize: 8, color: "var(--ink-3)", transform: expanded ? "rotate(180deg)" : "none",
+                       display: "inline-block", transition: "transform .1s" }}>▾</span>
       </span>
       {isAdmin && (
         <span onClick={onStartEdit} style={{ fontSize: 9, color: "var(--accent)", cursor: "pointer" }}>
@@ -1313,7 +1316,7 @@ function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, addi
 function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride,
                           levelFor, onSaveLevel, isAdmin, levelSaving, capitalLedger,
                           capitalEditingId, onStartCapitalEdit, onCancelCapitalEdit,
-                          onSaveCapitalValue, capitalSavingId }) {
+                          onSaveCapitalValue, capitalSavingId, capitalDetailId, onToggleCapitalDetail }) {
   const showSL = kind === "open" && typeof levelFor === "function";
   const showCapital = kind === "open" && !!capitalLedger;
   const extraCols = (showSL ? 1 : 0) + (showCapital ? 1 : 0);
@@ -1345,9 +1348,13 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                                   color: "var(--ink-3)", textAlign: i >= firstNum ? "right" : "left", whiteSpace: "nowrap" }}>{h}</div>
           ))}
         </div>
-        {rows.map((r, i) => (
-          <div key={i} className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
-               padding: "11px 22px", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+        {rows.map((r, i) => {
+          const capEntry = showCapital ? capitalLedger.ledger.get(r.id) : null;
+          const capExpanded = showCapital && capitalDetailId === r.id && capEntry?.after != null;
+          return (
+          <Fragment key={i}>
+          <div className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
+               padding: "11px 22px", borderBottom: capExpanded || i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
             {showClient && <div style={{ fontSize: 12.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client}</div>}
             <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
               <LogoChip symbol={r.stock} w={54} h={26} />
@@ -1362,17 +1369,24 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                       onSave={onSaveLevel} />
             )}
             {showCapital && (
-              <CapitalCell row={r} entry={capitalLedger.ledger.get(r.id)} isAdmin={isAdmin}
+              <CapitalCell row={r} entry={capEntry} isAdmin={isAdmin}
                 saving={capitalSavingId === r.id} editing={capitalEditingId === r.id}
                 onStartEdit={() => onStartCapitalEdit(r.id)} onCancelEdit={onCancelCapitalEdit}
                 onSave={(value) => onSaveCapitalValue(r.id, value)}
-                expanded={false} onToggleExpand={() => {}} />
+                expanded={capExpanded} onToggleExpand={() => onToggleCapitalDetail(r.id)} />
             )}
             <div className="num" style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
             <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600,
                  color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
           </div>
-        ))}
+          {capExpanded && (
+            <div style={{ padding: "0 22px 11px", fontSize: 11.5, color: "var(--ink-3)",
+                          borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+              {capitalDetailText(capEntry, { stock_symbol: r.stock })}
+            </div>
+          )}
+          </Fragment>
+        );})}
       </>)}
     </div>
   );
@@ -3591,7 +3605,8 @@ export default function App() {
                           onStartCapitalEdit={setCapitalEditingId}
                           onCancelCapitalEdit={() => setCapitalEditingId(null)}
                           onSaveCapitalValue={(id, value) => { setCapitalEditingId(null); saveCapital(id, value); }}
-                          capitalSavingId={capitalSaving} />
+                          capitalSavingId={capitalSaving} capitalDetailId={capitalDetailId}
+                          onToggleCapitalDetail={(id) => setCapitalDetailId(prev => prev === id ? null : id)} />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
                           rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
