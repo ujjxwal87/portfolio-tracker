@@ -1171,7 +1171,7 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
       onSave(value);
     };
     return (
-      <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 4, alignItems: "center", justifyContent: "flex-end", width: "100%" }}>
         <input autoFocus type="number" step="0.01" placeholder="Capital" defaultValue={entry?.after ?? ""}
                onChange={e => setDraft(e.target.value)}
                onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") onCancelEdit(); }}
@@ -1181,18 +1181,18 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
                  border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer" }}>Set</button>
         <button onClick={onCancelEdit} style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5,
                  border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-3)", cursor: "pointer" }}>×</button>
-      </span>
+      </div>
     );
   }
-  if (saving) return <span style={{ fontSize: 11, color: "var(--ink-3)" }}>saving…</span>;
+  if (saving) return <div style={{ fontSize: 11, color: "var(--ink-3)", textAlign: "right", width: "100%" }}>saving…</div>;
   if (!entry || entry.after == null) {
     return isAdmin
-      ? <span onClick={onStartEdit} title="Click to set this trade's capital"
-              style={{ fontSize: 12, color: "var(--ink-3)", cursor: "pointer" }}>+ set</span>
-      : <span style={{ fontSize: 12, color: "var(--ink-3)" }}>—</span>;
+      ? <div onClick={onStartEdit} title="Click to set this trade's capital"
+             style={{ fontSize: 12, color: "var(--ink-3)", cursor: "pointer", textAlign: "right", width: "100%" }}>+ set</div>
+      : <div style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "right", width: "100%" }}>—</div>;
   }
   return (
-    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, width: "100%" }}>
       <span onClick={onToggleExpand} title={entry.manual ? "Manually set — click for details" : "Click for the breakdown"}
             style={{ fontSize: 12.5, fontWeight: entry.manual ? 700 : 600, cursor: "pointer",
                      textDecoration: expanded ? "underline" : "none" }}>
@@ -1203,7 +1203,7 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
           {entry.manual ? "edit" : "override"}
         </span>
       )}
-    </span>
+    </div>
   );
 }
 
