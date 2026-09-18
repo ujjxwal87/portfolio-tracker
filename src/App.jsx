@@ -1196,12 +1196,13 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, width: "100%" }}>
       <span onClick={onToggleExpand} title={entry.manual ? "Manually set — click for details" : "Click for the breakdown"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12.5,
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5,
                      fontWeight: entry.manual ? 700 : 600, cursor: "pointer",
                      textDecoration: expanded ? "underline" : "none" }}>
         {fmt(entry.after)}
-        <span style={{ fontSize: 8, color: "var(--ink-3)", transform: expanded ? "rotate(180deg)" : "none",
-                       display: "inline-block", transition: "transform .1s" }}>▾</span>
+        <span style={{ fontSize: 15, lineHeight: 0, color: "var(--accent)", fontWeight: 900,
+                       transform: expanded ? "rotate(180deg)" : "none",
+                       display: "inline-block", transition: "transform .15s" }}>⌄</span>
       </span>
       {isAdmin && (
         <span onClick={onStartEdit} style={{ fontSize: 9, color: "var(--accent)", cursor: "pointer" }}>
