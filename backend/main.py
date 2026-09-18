@@ -482,6 +482,70 @@ def delete_trade(trade_id: str, user: auth.CurrentUser = Depends(auth.require_ad
                 raise HTTPException(status_code=404, detail="Trade not found")
 
 
+# ── Capital adjustments (lumpsum moves into/out of the risk-capital ledger) ─────────────────────
+
+class CapitalAdjustmentCreate(BaseModel):
+    client_id: str
+    date: date
+    amount: float
+    notes: Optional[str] = None
+
+
+@app.get("/api/capital-adjustments")
+def list_capital_adjustments(user: auth.CurrentUser = Depends(auth.current_user)):
+    if user.is_guest:
+        return []  # a prospect's demo book carries no capital ledger
+    if user.is_admin:
+        where, params = "WHERE c.owner_id = %s ", (user.id,)
+    else:
+        where, params = "WHERE a.client_id = %s ", (user.client_id,)
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT a.id, a.client_id, c.name AS client_name, a.date, a.amount, a.notes, a.created_at
+                FROM portfolio_tracker.capital_adjustments a
+                JOIN portfolio_tracker.clients c ON a.client_id = c.id
+                """ + where + "ORDER BY a.date ASC, a.created_at ASC",
+                params,
+            )
+            return cur.fetchall()
+
+
+@app.post("/api/capital-adjustments", status_code=201)
+def create_capital_adjustment(body: CapitalAdjustmentCreate,
+                              user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, body.client_id)
+    if body.amount == 0:
+        raise HTTPException(400, "Amount can't be zero")
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO portfolio_tracker.capital_adjustments (client_id, date, amount, notes)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, client_id, date, amount, notes, created_at
+                """,
+                (body.client_id, body.date, body.amount, body.notes),
+            )
+            row = cur.fetchone()
+            cur.execute("SELECT name FROM portfolio_tracker.clients WHERE id=%s", (body.client_id,))
+            row["client_name"] = cur.fetchone()["name"]
+            return row
+
+
+@app.delete("/api/capital-adjustments/{adjustment_id}", status_code=204)
+def delete_capital_adjustment(adjustment_id: str, user: auth.CurrentUser = Depends(auth.require_admin)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT client_id FROM portfolio_tracker.capital_adjustments WHERE id=%s", (adjustment_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Adjustment not found")
+            auth.assert_owns_client(user, str(row[0]))
+            cur.execute("DELETE FROM portfolio_tracker.capital_adjustments WHERE id=%s", (adjustment_id,))
+
+
 _YF_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
 

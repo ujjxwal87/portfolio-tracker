@@ -1209,6 +1209,10 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
 
 function capitalDetailText(entry, row) {
   if (entry.manual) return `Set manually to ${fmt(entry.after)}.`;
+  if (entry.kind === "adjustment") {
+    return `${fmt(entry.before)} → ${fmt(entry.after)}  ·  Lumpsum ${entry.amount >= 0 ? "added" : "removed"} `
+         + `${fmt(Math.abs(entry.amount))}`;
+  }
   if (entry.kind === "open") {
     const reason = entry.oneRule ? "no stop-loss set, so 1% of capital"
                                   : `stop-loss ${fmt(entry.sl)} → (entry − SL) × qty`;
@@ -1218,11 +1222,98 @@ function capitalDetailText(entry, row) {
        + `${entry.pnl >= 0 ? "+" : "−"} ${fmt(Math.abs(entry.pnl))} P&L`;
 }
 
+// The Swing Capital card: the ledger's current value, plus a lumpsum deposit/withdrawal control.
+// A lumpsum is its own event in capitalLedger (see the memo's comment) — dated, so it slots into
+// the same chronological chain as trades and shifts everything computed after it.
+function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, adding, saving,
+                            onToggleAdd, onSave, onDelete, showHistory, onToggleHistory }) {
+  const [amount, setAmount] = useState("");
+  const [dateStr, setDateStr] = useState(() => new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState("");
+
+  const commit = () => {
+    const value = Number(amount);
+    if (!amount || !Number.isFinite(value) || value === 0) return;
+    onSave(clientId, value, dateStr, notes);
+    setAmount(""); setNotes("");
+  };
+
+  return (
+    <div className="card-hover" style={{ ...PANEL, borderRadius: 16, padding: "18px 20px 16px", minWidth: 220 }}>
+      <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: "#7C3AED" }} />
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+        <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Swing Capital</div>
+        {isAdmin && !adding && (
+          <button onClick={onToggleAdd} style={{ border: "none", background: "none", color: "var(--accent)",
+                   fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>+ Add lumpsum</button>
+        )}
+      </div>
+      <div className="fig" style={{ fontSize: 29, lineHeight: 1.15, fontWeight: 800, color: "var(--ink)", marginTop: 8, letterSpacing: "-.04em" }}>
+        {latest == null ? "Not set" : fmt(latest)}
+      </div>
+      <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.35 }}>available for the next trade</div>
+
+      {adding && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", display: "grid", gap: 6 }}>
+          <input type="number" step="0.01" placeholder="Amount (negative to withdraw)" autoFocus
+                 value={amount} onChange={e => setAmount(e.target.value)}
+                 style={{ padding: "6px 8px", fontSize: 12.5, border: "1px solid var(--line)", borderRadius: 6 }} />
+          <input type="date" value={dateStr} onChange={e => setDateStr(e.target.value)}
+                 style={{ padding: "6px 8px", fontSize: 12.5, border: "1px solid var(--line)", borderRadius: 6 }} />
+          <input type="text" placeholder="Note (optional)" value={notes} onChange={e => setNotes(e.target.value)}
+                 style={{ padding: "6px 8px", fontSize: 12.5, border: "1px solid var(--line)", borderRadius: 6 }} />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={commit} disabled={saving} style={{ flex: 1, padding: "6px 10px", borderRadius: 6, border: "none",
+                     background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer",
+                     opacity: saving ? .6 : 1 }}>{saving ? "Saving…" : "Save"}</button>
+            <button onClick={onToggleAdd} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid var(--line)",
+                     background: "var(--surface)", color: "var(--ink-2)", fontSize: 12, cursor: "pointer" }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {adjustments.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <button onClick={onToggleHistory} style={{ border: "none", background: "none", color: "var(--ink-3)",
+                   fontSize: 11, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+            {showHistory ? "hide" : `${adjustments.length} lumpsum${adjustments.length === 1 ? "" : "s"}`}
+          </button>
+          {showHistory && (
+            <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+              {[...adjustments].reverse().map(a => {
+                const entry = ledger?.get(a.id);
+                return (
+                  <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
+                       fontSize: 11, color: "var(--ink-2)" }}
+                       title={entry ? capitalDetailText(entry, {}) : ""}>
+                    <span>{fmtDate(a.date)} {a.notes ? `· ${a.notes}` : ""}</span>
+                    <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <strong style={{ color: a.amount >= 0 ? "var(--good)" : "var(--bad)" }}>
+                        {a.amount >= 0 ? "+" : ""}{fmt(a.amount)}
+                      </strong>
+                      {isAdmin && (
+                        <button onClick={() => onDelete(a.id)} title="Delete"
+                                style={{ border: "none", background: "none", color: "var(--bad)", cursor: "pointer", fontSize: 13 }}>×</button>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // One "top 5" panel on the Trades tab. `kind` picks the columns: open lots carry no exit,
 // closed lots carry a sell price and a booked P&L. Open lots additionally carry an SL column when
 // `levelFor` is supplied.
 function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride,
-                          levelFor, onSaveLevel, isAdmin, levelSaving, capitalLedger }) {
+                          levelFor, onSaveLevel, isAdmin, levelSaving, capitalLedger,
+                          capitalEditingId, onStartCapitalEdit, onCancelCapitalEdit,
+                          onSaveCapitalValue, capitalSavingId }) {
   const showSL = kind === "open" && typeof levelFor === "function";
   const showCapital = kind === "open" && !!capitalLedger;
   const extraCols = (showSL ? 1 : 0) + (showCapital ? 1 : 0);
@@ -1270,15 +1361,13 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                       saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
                       onSave={onSaveLevel} />
             )}
-            {showCapital && (() => {
-              const entry = capitalLedger.ledger.get(r.id);
-              return entry?.after == null
-                ? <div style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>—</div>
-                : <div className="num" title={capitalDetailText(entry, { stock_symbol: r.stock })}
-                       style={{ fontSize: 12.5, textAlign: "right", fontWeight: entry.manual ? 700 : 600 }}>
-                    {fmt(entry.after)}
-                  </div>;
-            })()}
+            {showCapital && (
+              <CapitalCell row={r} entry={capitalLedger.ledger.get(r.id)} isAdmin={isAdmin}
+                saving={capitalSavingId === r.id} editing={capitalEditingId === r.id}
+                onStartEdit={() => onStartCapitalEdit(r.id)} onCancelEdit={onCancelCapitalEdit}
+                onSave={(value) => onSaveCapitalValue(r.id, value)}
+                expanded={false} onToggleExpand={() => {}} />
+            )}
             <div className="num" style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
             <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600,
                  color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
@@ -1411,6 +1500,10 @@ export default function App() {
   // through no API (see migrations/006). A row with client_id === null is the SHARED level every
   // client holding that symbol gets; a row with a client_id overrides it for that client alone.
   const [levels, setLevels] = useState([]);
+  const [capitalAdjustments, setCapitalAdjustments] = useState([]);
+  const [addingLumpsum, setAddingLumpsum] = useState(false);
+  const [lumpsumSaving, setLumpsumSaving] = useState(false);
+  const [showLumpsumHistory, setShowLumpsumHistory] = useState(false);
   const [levelSaving, setLevelSaving] = useState("");
   const clientIdByName = useMemo(
     () => Object.fromEntries(clients.map(c => [c.name, c.id])), [clients]);
@@ -1463,15 +1556,17 @@ export default function App() {
       // to be fetched after mount, so the user waited twice — once for data, then again for
       // valuations to stop showing last-trade prices. /prices with no symbols arg prices every
       // traded stock, which is what lets it start without waiting on /trades.
-      const [c, t, live, lv] = await Promise.all([
+      const [c, t, live, lv, ca] = await Promise.all([
         apiFetch("/clients"),
         apiFetch("/trades"),
         apiFetch("/prices").catch(() => ({})),
         apiFetch("/levels").catch(() => []),
+        apiFetch("/capital-adjustments").catch(() => []),
       ]);
       setClients(c);
       setTrades(t);
       setLevels(lv || []);
+      setCapitalAdjustments(ca || []);
       const initCmp = {};
       t.forEach(tr => { if (!initCmp[tr.stock_symbol]) initCmp[tr.stock_symbol] = Number(tr.price); });
       const stocks = [...new Set(t.map(tr => tr.stock_symbol))];
@@ -1596,12 +1691,17 @@ export default function App() {
   const rowIsKind = (t, k) => (rowKinds.get(t.id) || new Set([t.kind || "trade"])).has(k);
   const tradeRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "trade")), [filteredTrades, rowKinds]);
   const investmentRows = useMemo(() => filteredTrades.filter(t => rowIsKind(t, "investment")), [filteredTrades, rowKinds]);
+  const clientCapitalAdjustments = useMemo(
+    () => capitalAdjustments.filter(a => a.client_name === filterClient),
+    [capitalAdjustments, filterClient]);
   // Risk-capital ledger: only makes sense scoped to ONE client's own book, chronologically. A BUY
   // cuts a slice from the capital of the row before it (stop-loss distance × qty if this symbol has
   // a stop set, else a flat 1%); a SELL gives back the slice(s) it closed — via the same FIFO matches
   // resolvePortfolio already computed — plus the realized P&L, so a loss beyond the planned risk comes
-  // straight out of the total and a smaller loss (or a win) hands back the difference. Nothing is
-  // computed before the newest row someone has typed a capital value into; earlier rows read "—".
+  // straight out of the total and a smaller loss (or a win) hands back the difference. A lumpsum
+  // adjustment just adds its (signed) amount, no risk/pnl math — it's a deposit into the float, not
+  // a trade. Nothing is computed before the newest row someone has typed a capital value into (or
+  // the first adjustment, whichever is earliest); earlier rows read "—".
   const capitalLedger = useMemo(() => {
     if (filterClient === "All" || filterClient === "Own") return null;
     const bySell = new Map();
@@ -1610,17 +1710,26 @@ export default function App() {
       bySell.get(m.sellId).push(m);
     }));
     const byId = new Map(tradeRows.map(r => [r.id, r]));
-    const sorted = [...tradeRows].sort((a, b) =>
+    const events = [
+      ...tradeRows.map(r => ({ evt: "trade", id: r.id, date: r.date, created_at: r.created_at, row: r })),
+      ...clientCapitalAdjustments.map(a => ({ evt: "adjustment", id: a.id, date: a.date, created_at: a.created_at, row: a })),
+    ];
+    const sorted = events.sort((a, b) =>
       String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
     const ledger = new Map();
     let running = null;
-    for (const row of sorted) {
-      if (row.capital != null) {
-        running = Number(row.capital);
-        ledger.set(row.id, { after: running, manual: true });
+    for (const { evt, id, row } of sorted) {
+      if (evt === "adjustment") {
+        running = (running ?? 0) + Number(row.amount);
+        ledger.set(id, { before: running - Number(row.amount), after: running, kind: "adjustment", amount: Number(row.amount) });
         continue;
       }
-      if (running == null) { ledger.set(row.id, { after: null }); continue; }
+      if (row.capital != null) {
+        running = Number(row.capital);
+        ledger.set(id, { after: running, manual: true });
+        continue;
+      }
+      if (running == null) { ledger.set(id, { after: null }); continue; }
       const before = running;
       if (row.type === "BUY") {
         const lvl = levelFor(filterClient, row.stock_symbol);
@@ -1628,7 +1737,7 @@ export default function App() {
         const oneRule = sl == null || sl >= Number(row.price);
         const risk = oneRule ? before * 0.01 : (Number(row.price) - sl) * row.quantity;
         running = before - risk;
-        ledger.set(row.id, { before, after: running, kind: "open", risk, sl, oneRule });
+        ledger.set(id, { before, after: running, kind: "open", risk, sl, oneRule });
       } else {
         const matches = bySell.get(row.id) || [];
         let riskBack = 0, pnl = 0;
@@ -1918,6 +2027,27 @@ export default function App() {
       setTrades(prev => prev.map(x => x.id === id ? { ...x, capital } : x));
     } catch (e) { alert(e.message); }
     finally { setCapitalSaving(null); }
+  };
+
+  const addLumpsum = async (clientId, amount, dateStr, notes) => {
+    setLumpsumSaving(true);
+    try {
+      const created = await apiFetch("/capital-adjustments", {
+        method: "POST",
+        body: JSON.stringify({ client_id: clientId, date: dateStr, amount, notes: notes || null }),
+      });
+      setCapitalAdjustments(prev => [...prev, created]);
+      setAddingLumpsum(false);
+    } catch (e) { alert(e.message); }
+    finally { setLumpsumSaving(false); }
+  };
+
+  const deleteLumpsum = async (id) => {
+    if (!window.confirm("Delete this capital adjustment?")) return;
+    try {
+      await apiFetch(`/capital-adjustments/${id}`, { method: "DELETE" });
+      setCapitalAdjustments(prev => prev.filter(a => a.id !== id));
+    } catch (e) { alert(e.message); }
   };
 
   const handleDeleteTrade = async (id) => {
@@ -3391,8 +3521,11 @@ export default function App() {
           <Card title="Unrealized P&L" value={fmt(tradePnl.unrealized)} accent={tradePnl.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
           <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
           {capitalLedger && (
-            <Card title="Swing Capital" value={capitalLedger.latest == null ? "Not set" : fmt(capitalLedger.latest)}
-                  sub="available for the next trade" accent="#7C3AED" />
+            <SwingCapitalCard latest={capitalLedger.latest} isAdmin={isAdmin}
+              clientId={clientIdByName[filterClient]} adjustments={clientCapitalAdjustments}
+              ledger={capitalLedger.ledger} adding={addingLumpsum} saving={lumpsumSaving}
+              onToggleAdd={() => setAddingLumpsum(v => !v)} onSave={addLumpsum} onDelete={deleteLumpsum}
+              showHistory={showLumpsumHistory} onToggleHistory={() => setShowLumpsumHistory(v => !v)} />
           )}
         </div>
 
@@ -3453,7 +3586,12 @@ export default function App() {
           <HighlightPanel title="Recent open trades" note="Newest 10 lots still held"
                           rows={highlights.recentOpen} kind="open" showClient={filterClient === "All" || filterClient === "Own"}
                           levelFor={levelFor} onSaveLevel={saveLevel} isAdmin={isAdmin}
-                          levelSaving={levelSaving} capitalLedger={capitalLedger} />
+                          levelSaving={levelSaving} capitalLedger={capitalLedger}
+                          capitalEditingId={capitalEditingId}
+                          onStartCapitalEdit={setCapitalEditingId}
+                          onCancelCapitalEdit={() => setCapitalEditingId(null)}
+                          onSaveCapitalValue={(id, value) => { setCapitalEditingId(null); saveCapital(id, value); }}
+                          capitalSavingId={capitalSaving} />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
                           rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
           <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"

@@ -35,6 +35,19 @@ ALTER TABLE portfolio_tracker.trades ADD COLUMN IF NOT EXISTS broker TEXT;
 -- See migrations/013_trade_capital.sql
 ALTER TABLE portfolio_tracker.trades ADD COLUMN IF NOT EXISTS capital NUMERIC(14,2);
 
+-- See migrations/014_capital_adjustments.sql
+CREATE TABLE IF NOT EXISTS portfolio_tracker.capital_adjustments (
+    id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+    client_id   UUID          NOT NULL REFERENCES portfolio_tracker.clients(id) ON DELETE CASCADE,
+    date        DATE          NOT NULL,
+    amount      NUMERIC(14,2) NOT NULL CHECK (amount <> 0),
+    notes       TEXT,
+    created_at  TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_capital_adjustments_client_date
+    ON portfolio_tracker.capital_adjustments (client_id, date);
+
 CREATE UNIQUE INDEX IF NOT EXISTS uq_trades_natural_key
     ON portfolio_tracker.trades (client_id, broker, stock_symbol, date, type)
     WHERE broker IS NOT NULL;
