@@ -1228,22 +1228,22 @@ function capitalDetailText(entry) {
        + `${entry.pnl >= 0 ? "+" : "−"} ${fmt(Math.abs(entry.pnl))} P&L`;
 }
 
-// Full path back to the last anchor (a manual value, or the very start of the ledger) for a given
-// row — so expanding one row shows every hop that got it there, not just the immediate one. The
-// ledger Map's insertion order IS chronological order (see capitalLedger above), so this just
-// walks backward from the row until (and including) the most recent manual/anchor entry.
-function capitalChainFor(id, capitalLedger) {
+// Only the hops that take the row BELOW this one in the list up to this row — so the two capital
+// figures a reader can see side by side visibly chain, instead of replaying the whole ledger. The
+// ledger's `order` IS chronological (see capitalLedger below), so this is the slice between the two
+// rows' positions; it collapses to a single line when they are ledger-adjacent, and picks up any
+// closes or lumpsums that happened in between when they are not. With no neighbour (last row), or
+// one that sits later in the ledger than this row, it falls back to this row's own single hop
+// rather than inventing a backwards path.
+function capitalChainBetween(id, prevId, capitalLedger) {
   if (!capitalLedger) return [];
-  const idx = capitalLedger.order.indexOf(id);
-  if (idx === -1) return [];
-  const chain = [];
-  for (let i = idx; i >= 0; i--) {
-    const entry = capitalLedger.ledger.get(capitalLedger.order[i]);
-    if (!entry || entry.after == null) break;
-    chain.unshift(entry);
-    if (entry.manual) break;
-  }
-  return chain;
+  const { order, ledger } = capitalLedger;
+  const usable = (e) => e && e.after != null;
+  const to = order.indexOf(id);
+  if (to === -1) return [];
+  const from = prevId == null ? -1 : order.indexOf(prevId);
+  if (from === -1 || from >= to) return [ledger.get(id)].filter(usable);
+  return order.slice(from + 1, to + 1).map(k => ledger.get(k)).filter(usable);
 }
 
 // The Swing Capital card: the ledger's current value, plus a lumpsum deposit/withdrawal control.
@@ -1403,7 +1403,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
           {capExpanded && (
             <div style={{ padding: "0 22px 11px", display: "grid", gap: 3,
                           borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
-              {capitalChainFor(r.id, capitalLedger).map((step, si) => (
+              {capitalChainBetween(r.id, rows[i + 1]?.id, capitalLedger).map((step, si) => (
                 <div key={si} style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{capitalDetailText(step)}</div>
               ))}
             </div>
@@ -1682,12 +1682,16 @@ export default function App() {
     const openLots = portfolio.filter(p => p.netQty > 0).flatMap(p =>
       p.holdingLots.filter(l => (l.kind || "trade") === "trade").map(l => ({
         id: l.id, client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
-        cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
+        created_at: l.created_at, cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
       })));
     const closed = portfolio.flatMap(p => p.matchDetails.filter(m => m.kind === "trade")
       .map(m => ({ client: p.client, stock: p.stock, ...m })));
     return {
-      recentOpen: [...openLots].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 10),
+      // Same tie-break as capitalLedger (date, then created_at) so two lots bought on one day list
+      // in reverse ledger order — otherwise the row below is not the capital this row started from.
+      recentOpen: [...openLots].sort((a, b) => b.date.localeCompare(a.date)
+        || String(b.created_at || "").localeCompare(String(a.created_at || ""))
+        || String(b.id).localeCompare(String(a.id))).slice(0, 10),
       recentClosed: [...closed].sort((a, b) => b.sellDate.localeCompare(a.sellDate)).slice(0, 10),
       best: [...closed].filter(m => m.pl > 0).sort((a, b) => b.pl - a.pl).slice(0, 5),
       worst: [...closed].filter(m => m.pl < 0).sort((a, b) => a.pl - b.pl).slice(0, 5),
@@ -1752,7 +1756,8 @@ export default function App() {
       ...clientCapitalAdjustments.map(a => ({ evt: "adjustment", id: a.id, date: a.date, created_at: a.created_at, row: a })),
     ];
     const sorted = events.sort((a, b) =>
-      String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+      String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || ""))
+      || String(a.id).localeCompare(String(b.id)));
     const ledger = new Map();
     const order = [];
     let running = null;
@@ -3671,7 +3676,7 @@ export default function App() {
                   const va = val(a), vb = val(b);
                   const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
                   return rawLogSort.dir === "asc" ? c : -c;
-                }).map(t => {
+                }).map((t, ti, sortedRows) => {
                   const isEditing = editingId === t.id;
                   const entry = capitalLedger?.ledger.get(t.id);
                   const expanded = capitalDetailId === t.id;
@@ -3714,7 +3719,7 @@ export default function App() {
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #f3f4f6" }}>
                       <td colSpan={10} style={{ ...td, padding: "6px 8px" }}>
                         <div style={{ display: "grid", gap: 3 }}>
-                          {capitalChainFor(t.id, capitalLedger).map((step, si) => (
+                          {capitalChainBetween(t.id, sortedRows[ti + 1]?.id, capitalLedger).map((step, si) => (
                             <div key={si} style={{ fontSize: 11.5, color: "#475569" }}>{capitalDetailText(step)}</div>
                           ))}
                         </div>
