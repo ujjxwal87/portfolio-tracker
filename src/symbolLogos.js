@@ -74,6 +74,7 @@ export const SYMBOL_LOGOS = {
   "MAXHEALTH": "/logos/MAXHEALTH.webp",
   "MAZDOCK": "/logos/MAZDOCK.webp",
   "MCX": "/logos/MCX.webp",
+  "MOREPENLAB": "/logos/MOREPENLAB.png",
   "NATIONALUM": "/logos/NATIONALUM.webp",
   "NAVINFLUOR": "/logos/NAVINFLUOR.webp",
   "NESCO": "/logos/NESCO.png",
