@@ -14,7 +14,6 @@ get_access_token() below fetches a fresh token every call. Callers needing many 
 across one run should call it once and reuse the result, same as the old env-var token.
 """
 import os
-import pyotp
 import requests
 
 AUTH_URL = "https://auth.dhan.co/app/generateAccessToken"
@@ -28,6 +27,7 @@ def get_access_token():
         raise SystemExit("set DHAN_CLIENT_ID, DHAN_PIN and DHAN_TOTP_SECRET "
                           "(or set DHAN_ACCESS_TOKEN directly to skip auto-refresh)")
 
+    import pyotp  # only needed on this path — DHAN_ACCESS_TOKEN callers shouldn't require it
     totp = pyotp.TOTP(totp_secret).now()
     r = requests.post(AUTH_URL, params={"dhanClientId": client_id, "pin": pin, "totp": totp},
                        timeout=30)

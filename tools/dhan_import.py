@@ -180,7 +180,10 @@ def import_ledger(cur, cid, rows, apply_it):
     what proves the pull is complete rather than merely plausible.
     """
     moves = [r for r in reversed(rows) if r["narration"] not in ("OPENING BALANCE", "CLOSING BALANCE")]
-    bal = 0.0
+    # The chain has to start from whatever the account actually held before this window, not 0 —
+    # a --from date after the account's true opening (the normal case) always carries a balance in.
+    opening = next((r for r in rows if r["narration"] == "OPENING BALANCE"), None)
+    bal = float(opening["credit"]) - float(opening["debit"]) if opening else 0.0
     for r in moves:
         bal += float(r["credit"]) - float(r["debit"])
         if abs(bal - float(r["runbal"])) > 0.01:
