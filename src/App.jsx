@@ -1235,17 +1235,18 @@ function capitalDetailText(entry) {
 // closes or lumpsums that happened in between when they are not. With no neighbour (last row), or
 // one that sits later in the ledger than this row, it falls back to this row's own single hop
 // rather than inventing a backwards path.
-// A row's own ledger entry is frozen at the instant of that trade. If a lumpsum lands right after
-// it with no further trade in between to consume it, that money is still just sitting there — so
-// the index we actually display/chain from is pushed forward through any such trailing adjustment
-// entries, stopping at the next open/close (or the end of the ledger).
+// A row's own ledger entry is frozen at the instant of that trade. Only an OPEN actually deploys
+// the sitting capital into something new — a lumpsum or a close just adds to the pile — so if
+// either lands right after this row with no open in between to spend it, that money is still on
+// the table. The index we actually display/chain from is pushed forward through any such trailing
+// adjustment/close entries, stopping at the next open (or a manual anchor, or the ledger's end).
 function effectiveCapitalIndex(id, capitalLedger) {
   const { order, ledger } = capitalLedger;
   let idx = order.indexOf(id);
   if (idx === -1) return -1;
   while (idx + 1 < order.length) {
     const next = ledger.get(order[idx + 1]);
-    if (!next || next.kind !== "adjustment") break;
+    if (!next || next.after == null || next.manual || next.kind === "open") break;
     idx++;
   }
   return idx;
