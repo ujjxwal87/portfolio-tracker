@@ -57,6 +57,7 @@ export const SYMBOL_LOGOS = {
   "IRCTC": "/logos/IRCTC.webp",
   "JSWSTEEL": "/logos/JSWSTEEL.webp",
   "KALYANKJIL": "/logos/KALYANKJIL.webp",
+  "KANOHAR": "/logos/KANOHAR.png",
   "KANSAINER": "/logos/KANSAINER.webp",
   "KIMS": "/logos/KIMS.webp",
   "KISSHT": "/logos/KISSHT.png",

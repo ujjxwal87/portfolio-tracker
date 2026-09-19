@@ -1235,14 +1235,36 @@ function capitalDetailText(entry) {
 // closes or lumpsums that happened in between when they are not. With no neighbour (last row), or
 // one that sits later in the ledger than this row, it falls back to this row's own single hop
 // rather than inventing a backwards path.
+// A row's own ledger entry is frozen at the instant of that trade. If a lumpsum lands right after
+// it with no further trade in between to consume it, that money is still just sitting there — so
+// the index we actually display/chain from is pushed forward through any such trailing adjustment
+// entries, stopping at the next open/close (or the end of the ledger).
+function effectiveCapitalIndex(id, capitalLedger) {
+  const { order, ledger } = capitalLedger;
+  let idx = order.indexOf(id);
+  if (idx === -1) return -1;
+  while (idx + 1 < order.length) {
+    const next = ledger.get(order[idx + 1]);
+    if (!next || next.kind !== "adjustment") break;
+    idx++;
+  }
+  return idx;
+}
+
+function effectiveCapitalEntry(id, capitalLedger) {
+  if (!capitalLedger) return null;
+  const idx = effectiveCapitalIndex(id, capitalLedger);
+  return idx === -1 ? null : capitalLedger.ledger.get(capitalLedger.order[idx]);
+}
+
 function capitalChainBetween(id, prevId, capitalLedger) {
   if (!capitalLedger) return [];
   const { order, ledger } = capitalLedger;
   const usable = (e) => e && e.after != null;
-  const to = order.indexOf(id);
+  const to = effectiveCapitalIndex(id, capitalLedger);
   if (to === -1) return [];
-  const from = prevId == null ? -1 : order.indexOf(prevId);
-  if (from === -1 || from >= to) return [ledger.get(id)].filter(usable);
+  const from = prevId == null ? -1 : effectiveCapitalIndex(prevId, capitalLedger);
+  if (from === -1 || from >= to) return [ledger.get(order[to])].filter(usable);
   return order.slice(from + 1, to + 1).map(k => ledger.get(k)).filter(usable);
 }
 
@@ -1370,7 +1392,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
           ))}
         </div>
         {rows.map((r, i) => {
-          const capEntry = showCapital ? capitalLedger.ledger.get(r.id) : null;
+          const capEntry = showCapital ? effectiveCapitalEntry(r.id, capitalLedger) : null;
           const capExpanded = showCapital && capitalDetailId === r.id && capEntry?.after != null;
           return (
           <Fragment key={i}>
@@ -3678,7 +3700,7 @@ export default function App() {
                   return rawLogSort.dir === "asc" ? c : -c;
                 }).map((t, ti, sortedRows) => {
                   const isEditing = editingId === t.id;
-                  const entry = capitalLedger?.ledger.get(t.id);
+                  const entry = capitalLedger ? effectiveCapitalEntry(t.id, capitalLedger) : null;
                   const expanded = capitalDetailId === t.id;
                   return (<Fragment key={t.id}>
                   <tr style={{ borderBottom: "1px solid #f3f4f6", background: isEditing ? "#fffbeb" : "transparent" }}>
