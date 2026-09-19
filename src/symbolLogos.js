@@ -102,6 +102,7 @@ export const SYMBOL_LOGOS = {
   "SHYAMMETL": "/logos/SHYAMMETL.webp",
   "SOLARINDS": "/logos/SOLARINDS.webp",
   "SONACOMS": "/logos/SONACOMS.webp",
+  "STEAMHOUSE": "/logos/STEAMHOUSE.png",
   "SUDEEPPHRM": "/logos/SUDEEPPHRM.png",
   "TATACONSUM": "/logos/TATACONSUM.webp",
   "TATATECH": "/logos/TATATECH.webp",
