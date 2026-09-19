@@ -1362,8 +1362,9 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                           capitalEditingId, onStartCapitalEdit, onCancelCapitalEdit,
                           onSaveCapitalValue, capitalSavingId, capitalDetailId, onToggleCapitalDetail }) {
   const showSL = kind === "open" && typeof levelFor === "function";
+  const showRisk = kind === "open" && !!capitalLedger;
   const showCapital = kind === "open" && !!capitalLedger;
-  const extraCols = (showSL ? 1 : 0) + (showCapital ? 1 : 0);
+  const extraCols = (showSL ? 1 : 0) + (showRisk ? 1 : 0) + (showCapital ? 1 : 0);
   const cols = showClient
     ? (kind === "open" ? `1.1fr 1.4fr .6fr .8fr ${"1fr ".repeat(extraCols)}.9fr .9fr`
                        : "1.1fr 1.4fr .6fr .8fr .8fr .9fr .9fr")
@@ -1374,6 +1375,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
     "Stock", "Qty", "Buy",
     ...(kind === "closed" ? ["Sell"] : []),
     ...(showSL ? ["SL"] : []),
+    ...(showRisk ? ["Risk"] : []),
     ...(showCapital ? ["Capital"] : []),
     kind === "open" ? "Bought" : "Exited",
     kind === "open" ? "Unrealized" : "Realized",
@@ -1393,6 +1395,10 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
           ))}
         </div>
         {rows.map((r, i) => {
+          // Risk is what THIS trade itself put on the table when opened — the ledger's raw entry,
+          // never the forward-folded one Capital uses, since a later lumpsum/close didn't change
+          // what was risked at entry.
+          const riskEntry = showRisk ? capitalLedger.ledger.get(r.id) : null;
           const capEntry = showCapital ? effectiveCapitalEntry(r.id, capitalLedger) : null;
           const capExpanded = showCapital && capitalDetailId === r.id && capEntry?.after != null;
           return (
@@ -1411,6 +1417,14 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
               <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
                       saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
                       onSave={onSaveLevel} />
+            )}
+            {showRisk && (
+              <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600, color: "var(--bad)" }}
+                   title={riskEntry?.kind === "open"
+                     ? (riskEntry.oneRule ? "No stop-loss set, so 1% of capital" : `Stop-loss ${fmt(riskEntry.sl)} → (entry − SL) × qty`)
+                     : ""}>
+                {riskEntry?.kind === "open" ? fmt(riskEntry.risk) : "—"}
+              </div>
             )}
             {showCapital && (
               <CapitalCell row={r} entry={capEntry} isAdmin={isAdmin}
