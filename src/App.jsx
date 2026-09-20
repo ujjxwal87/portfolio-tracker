@@ -471,6 +471,70 @@ function resolvePortfolio(trades, cmp) {
   return resolved;
 }
 
+// Risk-capital ledger for ONE client's own book, chronologically. A BUY cuts a slice from the
+// capital of the row before it (stop-loss distance × qty if this symbol has a stop set, else a
+// flat 1%); a SELL gives back the slice(s) it closed — via the same FIFO matches resolvePortfolio
+// already computed — plus the realized P&L. A lumpsum adjustment just adds its (signed) amount.
+// Nothing is computed before the newest row someone has typed a capital value into (or the first
+// adjustment, whichever is earliest); earlier rows read "—". Pulled out as a standalone function
+// (not a hook) so a multi-client search can build one of these per client it needs to show risk
+// for, not just the currently-selected one.
+function buildCapitalLedger(clientName, clientPortfolio, clientTradeRows, clientAdjustments, levelFor) {
+  const bySell = new Map();
+  clientPortfolio.forEach(p => p.matchDetails.forEach(m => {
+    if (!bySell.has(m.sellId)) bySell.set(m.sellId, []);
+    bySell.get(m.sellId).push(m);
+  }));
+  const byId = new Map(clientTradeRows.map(r => [r.id, r]));
+  const events = [
+    ...clientTradeRows.map(r => ({ evt: "trade", id: r.id, date: r.date, created_at: r.created_at, row: r })),
+    ...clientAdjustments.map(a => ({ evt: "adjustment", id: a.id, date: a.date, created_at: a.created_at, row: a })),
+  ];
+  const sorted = events.sort((a, b) =>
+    String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || ""))
+    || String(a.id).localeCompare(String(b.id)));
+  const ledger = new Map();
+  const order = [];
+  let running = null;
+  for (const { evt, id, row } of sorted) {
+    order.push(id);
+    if (evt === "adjustment") {
+      running = (running ?? 0) + Number(row.amount);
+      ledger.set(id, { before: running - Number(row.amount), after: running, kind: "adjustment", amount: Number(row.amount) });
+      continue;
+    }
+    if (row.capital != null) {
+      running = Number(row.capital);
+      ledger.set(id, { after: running, manual: true, symbol: row.stock_symbol });
+      continue;
+    }
+    if (running == null) { ledger.set(id, { after: null }); continue; }
+    const before = running;
+    if (row.type === "BUY") {
+      const lvl = levelFor(clientName, row.stock_symbol);
+      const sl = lvl?.stop_loss ?? null;
+      const oneRule = sl == null || sl >= Number(row.price);
+      const risk = oneRule ? before * 0.01 : (Number(row.price) - sl) * row.quantity;
+      running = before - risk;
+      ledger.set(id, { before, after: running, kind: "open", risk, sl, oneRule, symbol: row.stock_symbol });
+    } else {
+      const matches = bySell.get(row.id) || [];
+      let riskBack = 0, pnl = 0;
+      matches.forEach(m => {
+        pnl += m.pl;
+        const buyEntry = ledger.get(m.buyId), buyRow = byId.get(m.buyId);
+        if (buyEntry?.risk != null && buyRow) riskBack += buyEntry.risk * (m.qty / buyRow.quantity);
+      });
+      running = before + riskBack + pnl;
+      ledger.set(row.id, { before, after: running, kind: "close", riskBack, pnl, symbol: row.stock_symbol });
+    }
+  }
+  // Map insertion order follows the loop above, i.e. chronological — so the last entry set is
+  // the newest row's, which is exactly "capital available for the next trade" right now.
+  const latest = ledger.size ? [...ledger.values()].pop().after : null;
+  return { ledger, order, latest };
+}
+
 // ── P&L-over-time helpers (realized bars + unrealized line) ────────────────────
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 const isoOf = (y, m, d) => `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -1362,7 +1426,10 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                           capitalEditingId, onStartCapitalEdit, onCancelCapitalEdit,
                           onSaveCapitalValue, capitalSavingId, capitalDetailId, onToggleCapitalDetail }) {
   const showSL = kind === "open" && typeof levelFor === "function";
-  const showRisk = kind === "open" && !!capitalLedger;
+  // A row can carry its own precomputed `.risk` (a cross-client search builds one ledger per
+  // client behind the scenes and flattens the answer onto each row) instead of a single shared
+  // capitalLedger — Capital has no cross-client equivalent, so it stays tied to capitalLedger alone.
+  const showRisk = kind === "open" && (!!capitalLedger || rows.some(r => r.risk !== undefined));
   const showCapital = kind === "open" && !!capitalLedger;
   const extraCols = (showSL ? 1 : 0) + (showRisk ? 1 : 0) + (showCapital ? 1 : 0);
   const cols = showClient
@@ -1397,8 +1464,11 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
         {rows.map((r, i) => {
           // Risk is what THIS trade itself put on the table when opened — the ledger's raw entry,
           // never the forward-folded one Capital uses, since a later lumpsum/close didn't change
-          // what was risked at entry.
-          const riskEntry = showRisk ? capitalLedger.ledger.get(r.id) : null;
+          // what was risked at entry. Prefer a value the row already carries (cross-client search)
+          // over looking it up in a shared ledger.
+          const riskEntry = !showRisk ? null
+            : r.risk !== undefined ? { kind: r.risk != null ? "open" : null, risk: r.risk }
+            : capitalLedger.ledger.get(r.id);
           const capEntry = showCapital ? effectiveCapitalEntry(r.id, capitalLedger) : null;
           const capExpanded = showCapital && capitalDetailId === r.id && capEntry?.after != null;
           return (
@@ -1420,7 +1490,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
             )}
             {showRisk && (
               <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600, color: "var(--bad)" }}
-                   title={riskEntry?.kind === "open"
+                   title={riskEntry?.kind === "open" && riskEntry.sl !== undefined
                      ? (riskEntry.oneRule ? "No stop-loss set, so 1% of capital" : `Stop-loss ${fmt(riskEntry.sl)} → (entry − SL) × qty`)
                      : ""}>
                 {riskEntry?.kind === "open" ? fmt(riskEntry.risk) : "—"}
@@ -1772,70 +1842,51 @@ export default function App() {
   const clientCapitalAdjustments = useMemo(
     () => capitalAdjustments.filter(a => a.client_name === filterClient),
     [capitalAdjustments, filterClient]);
-  // Risk-capital ledger: only makes sense scoped to ONE client's own book, chronologically. A BUY
-  // cuts a slice from the capital of the row before it (stop-loss distance × qty if this symbol has
-  // a stop set, else a flat 1%); a SELL gives back the slice(s) it closed — via the same FIFO matches
-  // resolvePortfolio already computed — plus the realized P&L, so a loss beyond the planned risk comes
-  // straight out of the total and a smaller loss (or a win) hands back the difference. A lumpsum
-  // adjustment just adds its (signed) amount, no risk/pnl math — it's a deposit into the float, not
-  // a trade. Nothing is computed before the newest row someone has typed a capital value into (or
-  // the first adjustment, whichever is earliest); earlier rows read "—".
+  // Risk-capital ledger: only makes sense scoped to ONE client's own book (see buildCapitalLedger).
   const capitalLedger = useMemo(() => {
     if (filterClient === "All" || filterClient === "Own") return null;
-    const bySell = new Map();
-    portfolio.forEach(p => p.matchDetails.forEach(m => {
-      if (!bySell.has(m.sellId)) bySell.set(m.sellId, []);
-      bySell.get(m.sellId).push(m);
-    }));
-    const byId = new Map(tradeRows.map(r => [r.id, r]));
-    const events = [
-      ...tradeRows.map(r => ({ evt: "trade", id: r.id, date: r.date, created_at: r.created_at, row: r })),
-      ...clientCapitalAdjustments.map(a => ({ evt: "adjustment", id: a.id, date: a.date, created_at: a.created_at, row: a })),
-    ];
-    const sorted = events.sort((a, b) =>
-      String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || ""))
-      || String(a.id).localeCompare(String(b.id)));
-    const ledger = new Map();
-    const order = [];
-    let running = null;
-    for (const { evt, id, row } of sorted) {
-      order.push(id);
-      if (evt === "adjustment") {
-        running = (running ?? 0) + Number(row.amount);
-        ledger.set(id, { before: running - Number(row.amount), after: running, kind: "adjustment", amount: Number(row.amount) });
-        continue;
-      }
-      if (row.capital != null) {
-        running = Number(row.capital);
-        ledger.set(id, { after: running, manual: true, symbol: row.stock_symbol });
-        continue;
-      }
-      if (running == null) { ledger.set(id, { after: null }); continue; }
-      const before = running;
-      if (row.type === "BUY") {
-        const lvl = levelFor(filterClient, row.stock_symbol);
-        const sl = lvl?.stop_loss ?? null;
-        const oneRule = sl == null || sl >= Number(row.price);
-        const risk = oneRule ? before * 0.01 : (Number(row.price) - sl) * row.quantity;
-        running = before - risk;
-        ledger.set(id, { before, after: running, kind: "open", risk, sl, oneRule, symbol: row.stock_symbol });
-      } else {
-        const matches = bySell.get(row.id) || [];
-        let riskBack = 0, pnl = 0;
-        matches.forEach(m => {
-          pnl += m.pl;
-          const buyEntry = ledger.get(m.buyId), buyRow = byId.get(m.buyId);
-          if (buyEntry?.risk != null && buyRow) riskBack += buyEntry.risk * (m.qty / buyRow.quantity);
-        });
-        running = before + riskBack + pnl;
-        ledger.set(row.id, { before, after: running, kind: "close", riskBack, pnl, symbol: row.stock_symbol });
-      }
-    }
-    // Map insertion order follows the loop above, i.e. chronological — so the last entry set is
-    // the newest row's, which is exactly "capital available for the next trade" right now.
-    const latest = ledger.size ? [...ledger.values()].pop().after : null;
-    return { ledger, order, latest };
+    return buildCapitalLedger(filterClient, portfolio, tradeRows, clientCapitalAdjustments, levelFor);
   }, [filterClient, portfolio, tradeRows, clientCapitalAdjustments, levelFor]);
+  // rowKindIndex/tradeRows are scoped to whichever single client is selected — a multi-client
+  // search needs the same "trade, not investment" filter but across everyone, so it gets its own
+  // index built over portfolioAll instead of reusing rowKinds.
+  const rowKindIndexAll = useMemo(() => rowKindIndex(portfolioAll), [portfolioAll]);
+  const tradeRowsAll = useMemo(
+    () => trades.filter(t => (rowKindIndexAll.get(t.id) || new Set([t.kind || "trade"])).has("trade")),
+    [trades, rowKindIndexAll]);
+  // Trades tab company search, "All"/"Own" scope: open positions only, across every client that
+  // holds it — a cross-client list can't show a running Capital float (that's inherently one
+  // client's own book), but Risk is still meaningful per row, so build each involved client's own
+  // ledger on demand (cached per client name, since several matching lots often share one client).
+  const openPositionSearchHits = useMemo(() => {
+    if (!(filterClient === "All" || filterClient === "Own")) return null;
+    const q = tradeSearch.trim().toUpperCase();
+    if (!q) return null;
+    const inScope = (name) => filterClient === "All" || ownNames.has(name);
+    const ledgerCache = new Map();
+    const rows = [];
+    portfolioAll.forEach(p => {
+      if (p.netQty <= 0 || !p.stock.toUpperCase().includes(q) || !inScope(p.client)) return;
+      const lots = p.holdingLots.filter(l => (l.kind || "trade") === "trade");
+      if (!lots.length) return;
+      if (!ledgerCache.has(p.client)) {
+        const clientTradeRows = tradeRowsAll.filter(t => t.client_name === p.client);
+        const clientAdjustments = capitalAdjustments.filter(a => a.client_name === p.client);
+        const clientPortfolio = portfolioAll.filter(pp => pp.client === p.client);
+        ledgerCache.set(p.client, buildCapitalLedger(p.client, clientPortfolio, clientTradeRows, clientAdjustments, levelFor));
+      }
+      const ledger = ledgerCache.get(p.client);
+      lots.forEach(l => {
+        const entry = ledger.ledger.get(l.id);
+        rows.push({
+          id: l.id, client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
+          cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
+          risk: entry?.kind === "open" ? entry.risk : null,
+        });
+      });
+    });
+    return rows.sort((a, b) => b.date.localeCompare(a.date));
+  }, [filterClient, tradeSearch, portfolioAll, tradeRowsAll, capitalAdjustments, ownNames, levelFor]);
   // Trades tab company search: every raw fill for a symbol, within the current client scope —
   // unlike the highlight panels above, this is not capped to a handful of recent/top rows.
   const tradeSearchHits = useMemo(() => {
@@ -3610,7 +3661,15 @@ export default function App() {
           )}
         </div>
 
-        {tradeSearchHits !== null ? (
+        {openPositionSearchHits !== null ? (
+          // "All"/"Own" scope: a raw fill-by-fill history mixes 700+ clients' closed history
+          // together, which answers nothing useful — what a search here is actually asking is
+          // "who currently holds this", so show open lots only, styled like Recent open trades.
+          <HighlightPanel title="Search results"
+                          note={`${openPositionSearchHits.length} open lot${openPositionSearchHits.length === 1 ? "" : "s"} matching "${tradeSearch.trim()}"`}
+                          rows={openPositionSearchHits} kind="open" showClient
+                          levelFor={levelFor} isAdmin={false} />
+        ) : tradeSearchHits !== null ? (
           <div style={{ ...PANEL, overflow: "hidden" }}>
             <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
               {tradeSearchHits.length} trade{tradeSearchHits.length === 1 ? "" : "s"} matching "{tradeSearch.trim()}"
