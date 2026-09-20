@@ -3648,10 +3648,13 @@ export default function App() {
         )}
 
         {/* Company-grouped positions: one row per company → Realised / Unrealised P&L, expand for lots */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
-          <Card title="Realized P&L" value={fmt(tradePnl.realized)} accent={tradePnl.realized >= 0 ? "#16a34a" : "#dc2626"} />
-          <Card title="Unrealized P&L" value={fmt(tradePnl.unrealized)} accent={tradePnl.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
-          <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 14 }}>
+          <Card title="Realized P&L" value={fmt(tradePnl.realized)}
+                tone={tradePnl.realized >= 0 ? "var(--good)" : "var(--bad)"} accent={tradePnl.realized >= 0 ? "#16a34a" : "#dc2626"} />
+          <Card title="Unrealized P&L" value={fmt(tradePnl.unrealized)}
+                tone={tradePnl.unrealized >= 0 ? "var(--good)" : "var(--bad)"} accent={tradePnl.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
+          <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)}
+                tone={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "var(--good)" : "var(--bad)"} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
           {capitalLedger && (
             <SwingCapitalCard latest={capitalLedger.latest} isAdmin={isAdmin}
               clientId={clientIdByName[filterClient]} adjustments={clientCapitalAdjustments}
