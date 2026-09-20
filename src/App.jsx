@@ -434,11 +434,15 @@ function resolvePortfolio(trades, cmp) {
     let realizedPL = 0, totalSoldQty = 0;
     const matchDetails = [];
     const sellRemain = g.sells.map(s => ({ ...s, remaining: s.quantity }));
-    const consume = (sell, sameDayOnly) => {
+    // Pure FIFO against the oldest remaining lot — no same-day-first pass. This book never day
+    // trades: a same-day BUY+SELL is always "sell the whole existing lot, then re-enter fresh at
+    // a new price," never a genuine intraday flip. Matching same-day pairs first used to book the
+    // sale against that day's brand-new re-entry instead of the lot actually being exited —
+    // flipping which lot reads as "still open" and moving realized P&L by thousands of rupees.
+    const consume = (sell) => {
       for (let buy of g.buys) {
         if (sell.remaining <= 0) break;
         if (buy.remainQty <= 0) continue;
-        if (sameDayOnly && buy.date !== sell.date) continue;
         const matched = Math.min(buy.remainQty, sell.remaining);
         buy.remainQty -= matched;
         sell.remaining -= matched;
@@ -446,14 +450,10 @@ function resolvePortfolio(trades, cmp) {
         realizedPL += pl;
         totalSoldQty += matched;
         matchDetails.push({ buyId: buy.id, sellId: sell.id, kind: buy.kind || "trade",
-                            buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl, intraday: sameDayOnly });
+                            buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl });
       }
     };
-    // Pass 1: match same-day (intraday) buy↔sell pairs first, so an intraday
-    // round-trip is booked against that day's buy, not older delivery holdings.
-    sellRemain.forEach(sell => consume(sell, true));
-    // Pass 2: FIFO the remaining sells against oldest remaining buys.
-    sellRemain.forEach(sell => consume(sell, false));
+    sellRemain.forEach(sell => consume(sell));
     const holdingLots = g.buys.filter(b => b.remainQty > 0);
     const netQty = holdingLots.reduce((s, b) => s + b.remainQty, 0);
     const totalBuys = g.buys.reduce((s, b) => s + b.quantity, 0);
