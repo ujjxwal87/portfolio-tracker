@@ -219,7 +219,7 @@ class TradeKindBulk(BaseModel):
 @app.get("/api/clients")
 def list_clients(user: auth.CurrentUser = Depends(auth.current_user)):
     cols = ("SELECT id, name, phone, email, joining_date, cash_balance, benchmark_keys, "
-            "is_own_money, created_at, updated_at FROM portfolio_tracker.clients ")
+            "is_own_money, created_at, updated_at, trades_synced_at FROM portfolio_tracker.clients ")
     if user.is_guest:
         labels = guest_client_map()
         with get_db() as conn:

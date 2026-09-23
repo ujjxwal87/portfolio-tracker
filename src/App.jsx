@@ -11,6 +11,15 @@ const pct = (n) => (n >= 0 ? "+" : "") + n.toFixed(2) + "%";
 const fmtDateLong = (d) => { if (!d) return null; const dt = new Date(d);
   return `${String(dt.getUTCDate()).padStart(2,"0")} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][dt.getUTCMonth()]} ${dt.getUTCFullYear()}`; };
 const fmtDate = (d) => { if (!d) return "—"; const dt = new Date(d); const dd = String(dt.getUTCDate()).padStart(2,"0"); const mm = String(dt.getUTCMonth()+1).padStart(2,"0"); return `${dd}/${mm}/${dt.getUTCFullYear()}`; };
+// Unlike fmtDate above (a plain DATE column, read as UTC to dodge a timezone shift), this is a
+// real TIMESTAMPTZ with a time-of-day that actually needs converting — India has one timezone,
+// UTC+5:30, no DST, so the offset is fixed rather than pulled from Intl.
+const fmtDateTimeIST = (d) => { if (!d) return "—";
+  const dt = new Date(new Date(d).getTime() + 5.5 * 3600 * 1000);
+  const dd = String(dt.getUTCDate()).padStart(2, "0"), mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  let h = dt.getUTCHours(); const ampm = h >= 12 ? "pm" : "am"; h = h % 12 || 12;
+  const mi = String(dt.getUTCMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${dt.getUTCFullYear()}, ${h}:${mi} ${ampm} IST`; };
 
 // Catmull-Rom → cubic bezier: every line chart's points, drawn as one smooth curve instead of
 // straight polyline segments. Control points sit at ±(next − prev)/6 either side of each point.
@@ -2566,6 +2575,7 @@ export default function App() {
                   <div style={{ ...MFOOTER, alignItems: "center", gap: 14 }}>
                     <MStat label="PHONE" value={c.phone || "—"} />
                     <MStat label="JOINED" value={c.joining_date ? fmtDate(c.joining_date) : "—"} />
+                    <MStat label="LAST TRADE UPDATE" value={fmtDateTimeIST(c.trades_synced_at)} />
                     <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
                       <button onClick={() => handleClientLogin(c)} style={{ minWidth: 44, padding: "10px 12px", borderRadius: 9,
                               border: "none", background: "#F4F6F9", color: "var(--ink-2)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Login</button>
@@ -3125,7 +3135,7 @@ export default function App() {
       {/* ── CLIENTS TAB ─────────────────────────────────────────────────────── */}
       {view === "clients" && (() => {
         const combined = portfolioAll.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
-        const FCOLS = "1.6fr 1.5fr 1fr .9fr .6fr 1fr";
+        const FCOLS = "1.6fr 1.5fr 1fr .9fr .6fr 1.5fr 1fr";
         const field = (label, key, type) => (
           <div>
             <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</label>
@@ -3239,7 +3249,7 @@ export default function App() {
             <div style={{ ...PANEL, overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: FCOLS, gap: 12, padding: "12px 22px",
                             background: "var(--table-head)", borderBottom: "1px solid var(--line)" }}>
-                {["Name","Email","Phone","Joining Date","Trades",""].map((h, i) => (
+                {["Name","Email","Phone","Joining Date","Trades","Last Trade Update",""].map((h, i) => (
                   <div key={h || i} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
                                              color: "var(--ink-3)", textAlign: i === 4 ? "right" : "left" }}>{h}</div>
                 ))}
@@ -3260,6 +3270,10 @@ export default function App() {
                     <div className="num" style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{c.phone || "—"}</div>
                     <div className="num" style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{c.joining_date ? fmtDate(c.joining_date) : "—"}</div>
                     <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: "right" }}>{n}</div>
+                    <div className="num" style={{ fontSize: 12, color: "var(--ink-2)" }}
+                         title={c.trades_synced_at ? "Last time this client's trades were pulled/reconciled from a broker" : "Never synced from a broker"}>
+                      {fmtDateTimeIST(c.trades_synced_at)}
+                    </div>
                     <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
                       <button onClick={() => handleClientLogin(c)} style={{ border: "none", background: "none", color: "var(--ink-2)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Login</button>
                       <button onClick={() => openEditClient(c)} style={{ border: "none", background: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Edit</button>
