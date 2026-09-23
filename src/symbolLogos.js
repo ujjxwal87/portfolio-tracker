@@ -53,6 +53,7 @@ export const SYMBOL_LOGOS = {
   "ICICIAMC": "/logos/ICICIAMC.png",
   "IFCI": "/logos/IFCI.webp",
   "IGL": "/logos/IGL.webp",
+  "INDSWFTLAB": "/logos/INDSWFTLAB.png",
   "IOLCP": "/logos/IOLCP.png",
   "IRCTC": "/logos/IRCTC.webp",
   "JSWSTEEL": "/logos/JSWSTEEL.webp",
