@@ -84,6 +84,7 @@ export const SYMBOL_LOGOS = {
   "NESCO": "/logos/NESCO.png",
   "NETWEB": "/logos/NETWEB.webp",
   "NEULANDLAB": "/logos/NEULANDLAB.webp",
+  "NSE": "/logos/NSE.png",
   "NTPC": "/logos/NTPC.webp",
   "NYKAA": "/logos/NYKAA.webp",
   "ONGC": "/logos/ONGC.webp",

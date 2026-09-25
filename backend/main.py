@@ -552,18 +552,28 @@ _YF_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Ap
 def _fetch_one_price(sym: str, retries: int = 2):
     # Yahoo throttles bursts of 30+ concurrent unauthenticated requests (exactly what a
     # full-book page load sends), so a lone failed attempt does not mean the symbol is bad.
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}.NS"
+    # A 404 is the exception: that symbol is not on the NSE, so retrying is pointless and the
+    # BSE suffix earns one shot — NSE India itself is BSE-only, it cannot list on itself.
     last_err = None
-    for attempt in range(retries + 1):
-        try:
-            r = requests.get(url, headers=_YF_HEADERS, timeout=8)
-            r.raise_for_status()
-            price = r.json()["chart"]["result"][0]["meta"]["regularMarketPrice"]
-            return sym, round(float(price), 2)
-        except Exception as e:
-            last_err = e
-            if attempt < retries:
-                time.sleep(0.4 * (attempt + 1))
+    for suffix in (".NS", ".BO"):
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}{suffix}"
+        wrong_exchange = False
+        for attempt in range(retries + 1):
+            try:
+                r = requests.get(url, headers=_YF_HEADERS, timeout=8)
+                if r.status_code == 404:
+                    wrong_exchange = True
+                    last_err = requests.HTTPError(f"404 for {sym}{suffix}")
+                    break
+                r.raise_for_status()
+                price = r.json()["chart"]["result"][0]["meta"]["regularMarketPrice"]
+                return sym, round(float(price), 2)
+            except Exception as e:
+                last_err = e
+                if attempt < retries:
+                    time.sleep(0.4 * (attempt + 1))
+        if not wrong_exchange:
+            break
     raise last_err
 
 
