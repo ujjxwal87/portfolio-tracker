@@ -499,8 +499,15 @@ function buildCapitalLedger(clientName, clientPortfolio, clientTradeRows, client
     ...clientTradeRows.map(r => ({ evt: "trade", id: r.id, date: r.date, created_at: r.created_at, row: r })),
     ...clientAdjustments.map(a => ({ evt: "adjustment", id: a.id, date: a.date, created_at: a.created_at, row: a })),
   ];
+  // Within one date, money coming in is settled before money going out: a sell frees capital and
+  // a lumpsum adds it, and both are what fund that day's buys. created_at cannot stand in for this
+  // — a sell and the re-entry that followed it are usually typed in together, so they share a
+  // timestamp and the tiebreak falls to the UUID, which is random. That let a sell's profit land
+  // on top of a manual capital value entered for the same day, double-counting it.
+  const dayRank = (e) => e.evt === "adjustment" ? 1 : e.row.type === "SELL" ? 0 : 2;
   const sorted = events.sort((a, b) =>
-    String(a.date).localeCompare(String(b.date)) || String(a.created_at || "").localeCompare(String(b.created_at || ""))
+    String(a.date).localeCompare(String(b.date)) || dayRank(a) - dayRank(b)
+    || String(a.created_at || "").localeCompare(String(b.created_at || ""))
     || String(a.id).localeCompare(String(b.id)));
   const ledger = new Map();
   const order = [];
