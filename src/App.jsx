@@ -1747,6 +1747,17 @@ export default function App() {
 
   useEffect(() => { if (session) { setAppLoading(true); loadData(); } }, [loadData, session]);
 
+  // Trades can land straight in the DB (broker-sync scripts, manual SQL) with no client push to
+  // tell an already-open tab. Poll quietly (no setAppLoading, so no loading-screen flash) and also
+  // refetch the moment the tab regains focus, so those show up without a manual page refresh.
+  useEffect(() => {
+    if (!session) return;
+    const interval = setInterval(loadData, 30000);
+    const onVisible = () => { if (document.visibilityState === "visible") loadData(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
+  }, [loadData, session]);
+
   // Accounts flagged as our own money. Their profit is not advisory performance, so the dashboard's
   // all-clients view leaves them out; every other tab counts them like any other book.
   const ownNames = useMemo(
