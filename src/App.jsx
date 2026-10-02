@@ -1747,16 +1747,31 @@ export default function App() {
 
   useEffect(() => { if (session) { setAppLoading(true); loadData(); } }, [loadData, session]);
 
-  // Trades can land straight in the DB (broker-sync scripts, manual SQL) with no client push to
-  // tell an already-open tab. Poll quietly (no setAppLoading, so no loading-screen flash) and also
-  // refetch the moment the tab regains focus, so those show up without a manual page refresh.
+  // Picks up rows written straight to the DB; light fetches only, and a failed poll is ignored.
+  const refreshTrades = useCallback(async () => {
+    if (document.visibilityState !== "visible") return;
+    try {
+      const [c, t, ca] = await Promise.all([
+        apiFetch("/clients"), apiFetch("/trades"), apiFetch("/capital-adjustments").catch(() => null),
+      ]);
+      setClients(c);
+      setTrades(t);
+      if (ca) setCapitalAdjustments(ca);
+      setCmp(prev => {
+        const seed = {};
+        t.forEach(tr => { if (prev[tr.stock_symbol] == null && seed[tr.stock_symbol] == null) seed[tr.stock_symbol] = Number(tr.price); });
+        return Object.keys(seed).length ? { ...seed, ...prev } : prev;
+      });
+    } catch { /* next poll retries */ }
+  }, []);
+
   useEffect(() => {
     if (!session) return;
-    const interval = setInterval(loadData, 30000);
-    const onVisible = () => { if (document.visibilityState === "visible") loadData(); };
+    const interval = setInterval(refreshTrades, 30000);
+    const onVisible = () => { if (document.visibilityState === "visible") refreshTrades(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
-  }, [loadData, session]);
+  }, [refreshTrades, session]);
 
   // Accounts flagged as our own money. Their profit is not advisory performance, so the dashboard's
   // all-clients view leaves them out; every other tab counts them like any other book.
