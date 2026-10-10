@@ -443,11 +443,34 @@ function resolvePortfolio(trades, cmp) {
     let realizedPL = 0, totalSoldQty = 0;
     const matchDetails = [];
     const sellRemain = g.sells.map(s => ({ ...s, remaining: s.quantity }));
-    // Pure FIFO against the oldest remaining lot — no same-day-first pass. This book never day
-    // trades: a same-day BUY+SELL is always "sell the whole existing lot, then re-enter fresh at
-    // a new price," never a genuine intraday flip. Matching same-day pairs first used to book the
-    // sale against that day's brand-new re-entry instead of the lot actually being exited —
-    // flipping which lot reads as "still open" and moving realized P&L by thousands of rupees.
+    const isIntraday = (t) => /intraday/i.test(t.notes || "");
+    // Pure FIFO against the oldest remaining lot — no blanket same-day-first pass. This book
+    // doesn't assume every same-day BUY+SELL is a round trip: most of the time it's "sell the
+    // whole existing lot, then re-enter fresh at a new price," never a genuine intraday flip.
+    // Matching ALL same-day pairs first used to book the sale against that day's brand-new
+    // re-entry instead of the lot actually being exited — flipping which lot reads as "still
+    // open" and moving realized P&L by thousands of rupees.
+    //
+    // The one case that genuinely needs same-day-first: a trade explicitly tagged "Intraday" in
+    // its notes, which is the broker's own ground truth that this specific buy and sell settled
+    // against each other same-day, not against whatever older lot happens to be sitting in FIFO
+    // order. Scoping the same-day pass to only these tagged rows gets both cases right instead of
+    // trading one bug for the other.
+    const consumeIntradayFirst = (sell) => {
+      if (sell.remaining <= 0 || !isIntraday(sell)) return;
+      for (let buy of g.buys) {
+        if (sell.remaining <= 0) break;
+        if (buy.remainQty <= 0 || buy.date !== sell.date || !isIntraday(buy)) continue;
+        const matched = Math.min(buy.remainQty, sell.remaining);
+        buy.remainQty -= matched;
+        sell.remaining -= matched;
+        const pl = (sell.price - buy.price) * matched;
+        realizedPL += pl;
+        totalSoldQty += matched;
+        matchDetails.push({ buyId: buy.id, sellId: sell.id, kind: "intraday",
+                            buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl });
+      }
+    };
     const consume = (sell) => {
       for (let buy of g.buys) {
         if (sell.remaining <= 0) break;
@@ -462,6 +485,7 @@ function resolvePortfolio(trades, cmp) {
                             buyDate: buy.date, buyPrice: buy.price, sellDate: sell.date, sellPrice: sell.price, qty: matched, pl });
       }
     };
+    sellRemain.forEach(sell => consumeIntradayFirst(sell));
     sellRemain.forEach(sell => consume(sell));
     const holdingLots = g.buys.filter(b => b.remainQty > 0);
     const netQty = holdingLots.reduce((s, b) => s + b.remainQty, 0);
