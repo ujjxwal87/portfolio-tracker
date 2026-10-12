@@ -2089,6 +2089,65 @@ export default function App() {
     });
   }, [portfolio]);
 
+  // Per-trade momentum-at-entry and "how much of the move did I keep" (MFE capture), built from
+  // the same `dailyPrices` history the P&L chart already loads — no extra fetch. Momentum is the
+  // user's own swing-trading definition: % move in the ~3 months BEFORE entry. MFE capture is
+  // (exit - entry) / (highest price touched while held - entry): it separates "bad pick" (price
+  // never moved favorably) from "good pick, gave back too much before exiting" (trailing-stop-style
+  // exits can look the same in a monthly P&L total but mean very different things to fix).
+  const tradeAnalytics = useMemo(() => {
+    const priceAsOf = makePriceAsOf(dailyPrices, cmp);
+    const out = [];
+    portfolio.forEach(p => {
+      const series = dailyPrices[p.stock] || {};
+      p.matchDetails.forEach(m => {
+        if (m.kind !== "trade") return;
+        const lookback = shiftDays(m.buyDate, -91);
+        const pxEntry = priceAsOf(p.stock, m.buyDate);
+        const px3mo = priceAsOf(p.stock, lookback);
+        const momentum = (pxEntry != null && px3mo != null && px3mo > 0) ? (pxEntry / px3mo - 1) * 100 : null;
+        let peak = null, hadPriceData = false;
+        Object.entries(series).forEach(([d, v]) => {
+          if (d >= m.buyDate && d <= m.sellDate) { hadPriceData = true; if (peak == null || v > peak) peak = v; }
+        });
+        const hadFavorable = hadPriceData && peak > m.buyPrice;
+        const capture = hadFavorable ? (m.sellPrice - m.buyPrice) / (peak - m.buyPrice) * 100 : null;
+        out.push({ client: p.client, stock: p.stock, buyDate: m.buyDate, sellDate: m.sellDate,
+                   qty: m.qty, buyPrice: m.buyPrice, sellPrice: m.sellPrice, pl: m.pl,
+                   momentum, hadPriceData, hadFavorable, capture });
+      });
+    });
+    return out;
+  }, [portfolio, dailyPrices, cmp]);
+
+  const momentumBuckets = useMemo(() => {
+    const BANDS = [["<0%", x => x < 0], ["0-25%", x => x >= 0 && x < 25], ["25-50%", x => x >= 25 && x < 50],
+                   ["50-70%", x => x >= 50 && x < 70], ["70-100%", x => x >= 70 && x < 100], ["100%+", x => x >= 100]];
+    return BANDS.map(([label, f]) => {
+      const grp = tradeAnalytics.filter(t => t.momentum != null && f(t.momentum));
+      const wins = grp.filter(t => t.pl > 1).length, losses = grp.filter(t => t.pl < -1).length;
+      const totalPl = grp.reduce((s, t) => s + t.pl, 0);
+      return { label, n: grp.length, winRate: (wins + losses) ? (wins / (wins + losses)) * 100 : null,
+               totalPl, avgPl: grp.length ? totalPl / grp.length : 0 };
+    });
+  }, [tradeAnalytics]);
+
+  const captureSummary = useMemo(() => {
+    const withData = tradeAnalytics.filter(t => t.hadPriceData);
+    const neverFavorable = withData.filter(t => !t.hadFavorable);
+    const low = withData.filter(t => t.hadFavorable && t.capture < 30);
+    const mid = withData.filter(t => t.hadFavorable && t.capture >= 30 && t.capture < 70);
+    const high = withData.filter(t => t.hadFavorable && t.capture >= 70);
+    const sum = (arr) => arr.reduce((s, t) => s + t.pl, 0);
+    return {
+      neverFavorable: { n: neverFavorable.length, pl: sum(neverFavorable) },
+      low: { n: low.length, pl: sum(low) },
+      mid: { n: mid.length, pl: sum(mid) },
+      high: { n: high.length, pl: sum(high) },
+      worst: [...low].sort((a, b) => a.capture - b.capture).slice(0, 10),
+    };
+  }, [tradeAnalytics]);
+
   // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
   const [benchIndex, setBenchIndex] = useState("nifty50");
   const [benchmark, setBenchmark] = useState(null);
@@ -4184,6 +4243,97 @@ export default function App() {
                   })}
                 </tbody>
               </table>
+            )}
+          </div>
+
+          {/* Momentum at entry — the user's own swing-trading criterion (3-month pre-entry move) */}
+          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px" }}>
+            <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>
+              Outcome by 3-month momentum at entry
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 5 }}>
+              % move in the stock over the ~3 months before you entered · needs price history, so a few recent or thinly-priced names may show no data
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 14 }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                  {["Prior 3-month move", "Trades", "Win rate", "Total P&L", "Avg P&L"].map((h, i) => (
+                    <th key={h} style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px",
+                                         fontSize: 11, color: "var(--ink-3)", fontWeight: 700,
+                                         textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {momentumBuckets.map(b => (
+                  <tr key={b.label} style={{ borderBottom: "1px solid var(--line)" }}>
+                    <td className="fig" style={{ padding: "10px 16px", fontWeight: 600 }}>{b.label}</td>
+                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>{b.n}</td>
+                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right",
+                                                 color: b.winRate == null ? "var(--ink-3)" : b.winRate >= 50 ? "var(--good)" : "var(--bad)" }}>
+                      {b.winRate == null ? "—" : `${b.winRate.toFixed(0)}%`}
+                    </td>
+                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right", fontWeight: 700, color: tone(b.totalPl) }}>
+                      {b.n ? fmt(b.totalPl) : "—"}
+                    </td>
+                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: tone(b.n ? b.avgPl : null) }}>
+                      {b.n ? fmt(b.avgPl) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* MFE capture — separates "bad pick" from "good pick, gave back too much before exit" */}
+          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px" }}>
+            <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>
+              How much of the move did you keep (MFE capture)
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 5 }}>
+              Capture = (exit − entry) ÷ (highest price touched while held − entry). Low capture on a trade that moved well first means the exit gave back the gain, not that the pick was wrong.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 14 }}>
+              {[["Never moved favorably", captureSummary.neverFavorable, "A bad pick — the stop/exit wasn't the problem"],
+                ["Kept under 30% of the move", captureSummary.low, "Exit gave back most of a real move"],
+                ["Kept 70%+ of the move", captureSummary.high, "Exit worked as intended"]].map(([label, b, note]) => (
+                <div key={label} style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid var(--line)" }}>
+                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
+                  <div className="fig" style={{ fontSize: 20, fontWeight: 700, marginTop: 6, color: tone(b.n ? b.pl : null) }}>
+                    {b.n ? fmt(b.pl) : "—"}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>{b.n} trade{b.n === 1 ? "" : "s"} · {note}</div>
+                </div>
+              ))}
+            </div>
+            {captureSummary.worst.length > 0 && (
+              <div style={{ marginTop: 18 }}>
+                <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
+                  Worst give-backs (real move, lowest capture)
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                      {["Stock", "Entry", "Exit", "Capture", "P&L"].map((h, i) => (
+                        <th key={h} style={{ textAlign: i === 0 ? "left" : "right", padding: "8px 14px",
+                                             fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700,
+                                             textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {captureSummary.worst.map((t, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid var(--line)" }}>
+                        <td className="fig" style={{ padding: "8px 14px", fontWeight: 600 }}>{t.stock}</td>
+                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", color: "var(--ink-2)" }}>{fmtDate(t.buyDate)}</td>
+                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", color: "var(--ink-2)" }}>{fmtDate(t.sellDate)}</td>
+                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", color: "var(--bad)" }}>{t.capture.toFixed(0)}%</td>
+                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", fontWeight: 700, color: tone(t.pl) }}>{fmt(t.pl)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </>);
