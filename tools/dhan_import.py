@@ -330,7 +330,8 @@ def main():
             (client_id, stock_symbol, type, quantity, price, date, broker, notes)
             VALUES (%s,%s,%s,%s,%s,%s,'Dhan','from Dhan API')
             ON CONFLICT (client_id, broker, stock_symbol, date, type)
-            WHERE broker IS NOT NULL DO NOTHING""",
+            WHERE broker IS NOT NULL DO UPDATE SET
+                quantity = EXCLUDED.quantity, price = EXCLUDED.price, notes = EXCLUDED.notes""",
             (cid, sym, side, v["qty"], v["price"], day))
         n += cur.rowcount
     c.commit()

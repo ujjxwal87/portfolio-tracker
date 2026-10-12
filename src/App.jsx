@@ -513,6 +513,13 @@ function resolvePortfolio(trades, cmp) {
 // (not a hook) so a multi-client search can build one of these per client it needs to show risk
 // for, not just the currently-selected one.
 function buildCapitalLedger(clientName, clientPortfolio, clientTradeRows, clientAdjustments, levelFor) {
+  const buyRiskOf = (buyRow, before) => {
+    const lvl = levelFor(clientName, buyRow.stock_symbol);
+    const sl = lvl?.stop_loss ?? null;
+    const oneRule = sl == null || sl >= Number(buyRow.price);
+    const risk = oneRule ? before * 0.01 : (Number(buyRow.price) - sl) * buyRow.quantity;
+    return { risk, sl, oneRule };
+  };
   const bySell = new Map();
   clientPortfolio.forEach(p => p.matchDetails.forEach(m => {
     if (!bySell.has(m.sellId)) bySell.set(m.sellId, []);
@@ -551,10 +558,7 @@ function buildCapitalLedger(clientName, clientPortfolio, clientTradeRows, client
     if (running == null) { ledger.set(id, { after: null }); continue; }
     const before = running;
     if (row.type === "BUY") {
-      const lvl = levelFor(clientName, row.stock_symbol);
-      const sl = lvl?.stop_loss ?? null;
-      const oneRule = sl == null || sl >= Number(row.price);
-      const risk = oneRule ? before * 0.01 : (Number(row.price) - sl) * row.quantity;
+      const { risk, sl, oneRule } = buyRiskOf(row, before);
       running = before - risk;
       ledger.set(id, { before, after: running, kind: "open", risk, sl, oneRule, symbol: row.stock_symbol });
     } else {
@@ -562,8 +566,16 @@ function buildCapitalLedger(clientName, clientPortfolio, clientTradeRows, client
       let riskBack = 0, pnl = 0;
       matches.forEach(m => {
         pnl += m.pl;
-        const buyEntry = ledger.get(m.buyId), buyRow = byId.get(m.buyId);
-        if (buyEntry?.risk != null && buyRow) riskBack += buyEntry.risk * (m.qty / buyRow.quantity);
+        const buyRow = byId.get(m.buyId);
+        if (!buyRow) return;
+        // Same-day buys rank AFTER sells (settlement order above), so a sell can close a buy
+        // that isn't in the ledger yet — that buy is always the last event of the day, so
+        // nothing has moved `before` between them; recomputing its risk off `before` here
+        // matches exactly what it will record once its own turn comes. Without this, that
+        // leg's risk silently came back as 0 and never got credited to the running total.
+        const buyRisk = ledger.has(m.buyId) ? ledger.get(m.buyId).risk
+          : (buyRow.date === row.date && buyRow.capital == null) ? buyRiskOf(buyRow, before).risk : null;
+        if (buyRisk != null) riskBack += buyRisk * (m.qty / buyRow.quantity);
       });
       running = before + riskBack + pnl;
       ledger.set(row.id, { before, after: running, kind: "close", riskBack, pnl, symbol: row.stock_symbol });
@@ -605,23 +617,28 @@ function makePriceAsOf(dailyPrices, cmp) {
 
 // Remaining holding lots per symbol as of a date (FIFO, intraday-first), using only trades on/before that date
 function holdingsAsOf(trades, dateIso) {
+  const isIntraday = (t) => /intraday/i.test(t.notes || "");
   const groups = {};
   trades.forEach(t => {
     const d = String(t.date).slice(0, 10);
     if (d > dateIso) return;
     if (!groups[t.stock_symbol]) groups[t.stock_symbol] = { buys: [], sells: [] };
-    if (t.type === "BUY") groups[t.stock_symbol].buys.push({ price: Number(t.price), date: d, remainQty: t.quantity });
-    else groups[t.stock_symbol].sells.push({ date: d, quantity: t.quantity });
+    if (t.type === "BUY") groups[t.stock_symbol].buys.push({ price: Number(t.price), date: d, remainQty: t.quantity, notes: t.notes });
+    else groups[t.stock_symbol].sells.push({ date: d, quantity: t.quantity, notes: t.notes });
   });
   const held = {};
   Object.entries(groups).forEach(([sym, g]) => {
     g.buys.sort((a, b) => a.date.localeCompare(b.date));
     const sells = g.sells.map(s => ({ ...s, remaining: s.quantity })).sort((a, b) => a.date.localeCompare(b.date));
+    // Same-day pass only applies to trades explicitly tagged "Intraday" in notes, matching
+    // resolvePortfolio's consumeIntradayFirst exactly — otherwise this duplicated FIFO logic
+    // drifts from the main one (the bug that produced the SHILPAMED mismatch).
     const consume = (sell, sameDay) => {
+      if (sameDay && !isIntraday(sell)) return;
       for (const b of g.buys) {
         if (sell.remaining <= 0) break;
         if (b.remainQty <= 0) continue;
-        if (sameDay && b.date !== sell.date) continue;
+        if (sameDay && (b.date !== sell.date || !isIntraday(b))) continue;
         const m = Math.min(b.remainQty, sell.remaining);
         b.remainQty -= m; sell.remaining -= m;
       }
@@ -2047,6 +2064,31 @@ export default function App() {
     return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, openInvested, totalReturn, winRate, avgWin, avgLoss, riskReward, maxDD, currentVal };
   }, [portfolio, holdings, filteredTrades]);
 
+  // Admin-only month-by-month trading record for whichever client is selected in the sidebar —
+  // same "trade" kind / decisive win-loss definitions as `stats` above, just bucketed by the exit
+  // month instead of collapsed into one all-time number, so a client's open-ended "how am I doing"
+  // has somewhere besides this chat to look.
+  const monthlyPerf = useMemo(() => {
+    const byMonth = {};
+    portfolio.forEach(p => p.matchDetails.forEach(m => {
+      if (m.kind !== "trade") return;
+      const ym = String(m.sellDate).slice(0, 7);
+      if (!byMonth[ym]) byMonth[ym] = { pl: 0, count: 0, wins: 0, losses: 0, winSum: 0, lossSum: 0 };
+      const b = byMonth[ym];
+      b.pl += m.pl; b.count += 1;
+      if (isDecisiveWin(m)) { b.wins += 1; b.winSum += m.pl; }
+      else if (isDecisiveLoss(m)) { b.losses += 1; b.lossSum += m.pl; }
+    }));
+    return Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0])).map(([ym, b]) => {
+      const decisive = b.wins + b.losses;
+      const winRate = decisive ? (b.wins / decisive) * 100 : null;
+      const avgWin = b.wins ? b.winSum / b.wins : 0;
+      const avgLoss = b.losses ? Math.abs(b.lossSum / b.losses) : 0;
+      const riskReward = avgLoss > 0 ? avgWin / avgLoss : null;
+      return { ym, ...b, winRate, avgWin, avgLoss, riskReward };
+    });
+  }, [portfolio]);
+
   // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
   const [benchIndex, setBenchIndex] = useState("nifty50");
   const [benchmark, setBenchmark] = useState(null);
@@ -2346,8 +2388,9 @@ export default function App() {
   // The Clients tab is the book of business \u2014 admin only.
   const NAV = [["dashboard","Dashboard","\u25c7"],["clients","Clients","\u25c9"],
                ["portfolio","Portfolio","\u25a4"],["trades","Trades","\u21c4"],
-               ["investments","Investments","\u25c6"],["benchmark","Custom Benchmark","\u25c8"]]
-              .filter(([v]) => isAdmin || v !== "clients");
+               ["investments","Investments","\u25c6"],["benchmark","Custom Benchmark","\u25c8"],
+               ["performance","Performance","\u25c9"]]
+              .filter(([v]) => isAdmin || (v !== "clients" && v !== "performance"));
   const tradeCountFor = (name) => name === "All" ? trades.length
     : name === "Own" ? trades.filter(t => ownNames.has(t.client_name)).length
     : trades.filter(t => t.client_name === name).length;
@@ -2360,7 +2403,8 @@ export default function App() {
     const MNAV = [["dashboard", "Home", "◇"], ["clients", "Clients", "◉"],
                   ["portfolio", "Holdings", "▤"], ["trades", "Trades", "⇄"],
                   ["investments", "Invest", "◆"],
-                  ["benchmark", "Bench", "◈"]].filter(([v]) => isAdmin || v !== "clients");
+                  ["benchmark", "Bench", "◈"],
+                  ["performance", "Perf", "◉"]].filter(([v]) => isAdmin || (v !== "clients" && v !== "performance"));
     const scopeText = scopeLabel(filterClient);
     const holdingsValue = holdings.reduce((s, h) => s + h.currentVal, 0);
     // Same admin-only cross-client search as desktop; null when the box is empty.
@@ -2474,7 +2518,7 @@ export default function App() {
                   {returnReady && (returnPct >= 0 ? "▲" : "▼")} <span className="fig">{returnText}</span> {returnReady ? (bmk0 ? "return" : "deployed") : ""}
                 </span>
                 <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)" }}>
-                  {bmk ? "Invested" : "Invested (open)"} <span className="fig" style={{ color: "#fff" }}>{compactINR(bmk ? bmk.net_invested : stats.openInvested)}</span>
+                  Invested (open) <span className="fig" style={{ color: "#fff" }}>{compactINR(stats.openInvested)}</span>
                 </span>
                 {joinedOn && (
                   <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)" }}>
@@ -3370,7 +3414,7 @@ export default function App() {
             </span>
           </div>
           <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginTop: 14, fontSize: 13.5, color: "rgba(255,255,255,.72)" }}>
-            <span style={{ whiteSpace: "nowrap" }}>{bmk0 ? "Invested" : "Invested (open)"} <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(bmk0 ? bmk0.net_invested : stats.openInvested)}</strong></span>
+            <span style={{ whiteSpace: "nowrap" }}>Invested (open) <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(stats.openInvested)}</strong></span>
             <span style={{ whiteSpace: "nowrap" }}>Current <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(stats.currentVal)}</strong></span>
             {selectedCash > 0 && <span style={{ whiteSpace: "nowrap" }}>Idle cash <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(selectedCash)}</strong></span>}
             {bmk0 && <span style={{ whiteSpace: "nowrap" }}>Nifty 50 · same timing <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{pct(bmk0.benchmark_return_pct)}</strong></span>}
@@ -4074,6 +4118,74 @@ export default function App() {
               </div>
             </div>
           )}
+        </>);
+      })()}
+
+      {/* ── PERFORMANCE TAB (admin only) ────────────────────────────────────── */}
+      {view === "performance" && isAdmin && (() => {
+        const rows = monthlyPerf;
+        const allTimePl = rows.reduce((s, r) => s + r.pl, 0);
+        const tone = (v) => v == null ? "var(--ink-3)" : v >= 0 ? "var(--good)" : "var(--bad)";
+        return (<>
+          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px" }}>
+            <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>
+              Monthly trading record · {scopeLabel(filterClient)}
+            </div>
+            <div className="fig" style={{ fontSize: 30, fontWeight: 600, letterSpacing: "-.02em", marginTop: 8, color: tone(allTimePl) }}>
+              {fmt(allTimePl)}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 5 }}>
+              {rows.length} month{rows.length === 1 ? "" : "s"} with closed trades · investment-kind holds excluded, same as the Dashboard's win rate
+            </div>
+          </div>
+
+          <div style={{ ...PANEL, borderRadius: 16, overflow: "auto" }}>
+            {rows.length === 0 ? (
+              <div style={{ padding: 24, fontSize: 13, color: "var(--ink-3)" }}>No closed trades yet for this scope.</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ borderBottom: "1px solid var(--line)" }}>
+                    {["Month", "P&L", "Trades", "Win rate", "Avg win", "Avg loss", "Risk:Reward"].map((h, i) => (
+                      <th key={h} style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px",
+                                           fontSize: 11, color: "var(--ink-3)", fontWeight: 700,
+                                           textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...rows].reverse().map(r => {
+                    // Flag the months worth a second look: losing overall, a weak win rate, or
+                    // losses running bigger than wins — the exact pattern that made July/October
+                    // stand out when this was first checked by hand.
+                    const weak = r.pl < 0 || (r.winRate != null && r.winRate < 50) || (r.riskReward != null && r.riskReward < 1);
+                    return (
+                      <tr key={r.ym} style={{ borderBottom: "1px solid var(--line)",
+                                              background: weak ? "rgba(220,38,38,.05)" : "transparent" }}>
+                        <td className="fig" style={{ padding: "10px 16px", fontWeight: 600 }}>{r.ym}</td>
+                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", fontWeight: 700, color: tone(r.pl) }}>{fmt(r.pl)}</td>
+                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>{r.count}</td>
+                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right",
+                                                     color: r.winRate == null ? "var(--ink-3)" : r.winRate >= 50 ? "var(--good)" : "var(--bad)" }}>
+                          {r.winRate == null ? "—" : `${r.winRate.toFixed(0)}%`}
+                        </td>
+                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>
+                          {r.avgWin ? fmt(r.avgWin) : "—"}
+                        </td>
+                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>
+                          {r.avgLoss ? `-${fmt(r.avgLoss)}` : "—"}
+                        </td>
+                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right",
+                                                     color: r.riskReward == null ? "var(--ink-3)" : r.riskReward >= 1 ? "var(--good)" : "var(--bad)" }}>
+                          {r.riskReward == null ? "—" : r.riskReward.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
         </>);
       })()}
 
