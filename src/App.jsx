@@ -1481,7 +1481,8 @@ function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, addi
 function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride,
                           levelFor, onSaveLevel, isAdmin, levelSaving, capitalLedger,
                           capitalEditingId, onStartCapitalEdit, onCancelCapitalEdit,
-                          onSaveCapitalValue, capitalSavingId, capitalDetailId, onToggleCapitalDetail }) {
+                          onSaveCapitalValue, capitalSavingId, capitalDetailId, onToggleCapitalDetail,
+                          layout = "table" }) {
   const showSL = kind === "open" && typeof levelFor === "function";
   // A row can carry its own precomputed `.risk` (a cross-client search builds one ledger per
   // client behind the scenes and flattens the answer onto each row) instead of a single shared
@@ -1505,6 +1506,90 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
     kind === "open" ? "Unrealized" : "Realized",
   ];
   const firstNum = showClient ? 2 : 1;
+
+  // One card per trade, same fields and the same editable SL/Capital cells as the table layout —
+  // just more room per trade, so later metrics (momentum, MFE capture) have somewhere to go
+  // without cramming another column into an already-wide table.
+  if (layout === "cards") {
+    const fieldLabel = { fontSize: 10, fontWeight: 700, letterSpacing: ".05em",
+                          textTransform: "uppercase", color: "var(--ink-3)", marginBottom: 4 };
+    return (
+      <div style={{ ...PANEL, overflow: "hidden" }}>
+        <PanelTitle right={note ? <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{note}</span> : null}>{title}</PanelTitle>
+        {rows.length === 0 ? (
+          <div style={{ padding: "22px 22px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))", gap: 14, padding: 20 }}>
+            {rows.map((r, i) => {
+              const riskEntry = !showRisk ? null
+                : r.risk !== undefined ? { kind: r.risk != null ? "open" : null, risk: r.risk }
+                : capitalLedger.ledger.get(r.id);
+              const capEntry = showCapital ? effectiveCapitalEntry(r.id, capitalLedger) : null;
+              const capExpanded = showCapital && capitalDetailId === r.id && capEntry?.after != null;
+              return (
+                <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 14, padding: "16px 18px", background: "var(--surface)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <LogoChip symbol={r.stock} size={40} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.stock}</div>
+                      {showClient && <div style={{ fontSize: 11, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client}</div>}
+                    </div>
+                    <div style={{ textAlign: "right", flex: "none" }}>
+                      <div className="fig" style={{ fontSize: 15, fontWeight: 700,
+                           color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
+                      <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 14px",
+                                marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--row-rule)" }}>
+                    <div><div style={fieldLabel}>Qty</div><div className="num" style={{ fontSize: 13 }}>{r.qty}</div></div>
+                    <div><div style={fieldLabel}>Buy</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div></div>
+                    {kind === "closed" && (
+                      <div><div style={fieldLabel}>Sell</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.sellPrice)}</div></div>
+                    )}
+                    {showSL && (
+                      <div><div style={fieldLabel}>SL</div>
+                        <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
+                                saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
+                                onSave={onSaveLevel} />
+                      </div>
+                    )}
+                    {showRisk && (
+                      <div><div style={fieldLabel}>Risk</div>
+                        <div className="num" style={{ fontSize: 13, fontWeight: 600, color: "var(--bad)" }}
+                             title={riskEntry?.kind === "open" && riskEntry.sl !== undefined
+                               ? (riskEntry.oneRule ? "No stop-loss set, so 1% of capital" : `Stop-loss ${fmt(riskEntry.sl)} → (entry − SL) × qty`)
+                               : ""}>
+                          {riskEntry?.kind === "open" ? fmt(riskEntry.risk) : "—"}
+                        </div>
+                      </div>
+                    )}
+                    {showCapital && (
+                      <div><div style={fieldLabel}>Capital</div>
+                        <CapitalCell row={r} entry={capEntry} isAdmin={isAdmin}
+                          saving={capitalSavingId === r.id} editing={capitalEditingId === r.id}
+                          onStartEdit={() => onStartCapitalEdit(r.id)} onCancelEdit={onCancelCapitalEdit}
+                          onSave={(value) => onSaveCapitalValue(r.id, value)}
+                          expanded={capExpanded} onToggleExpand={() => onToggleCapitalDetail(r.id)} />
+                      </div>
+                    )}
+                  </div>
+                  {capExpanded && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--row-rule)", display: "grid", gap: 3 }}>
+                      {capitalChainBetween(r.id, rows[i + 1]?.id, capitalLedger).map((step, si) => (
+                        <div key={si} style={{ fontSize: 11, color: "var(--ink-3)" }}>{capitalDetailText(step)}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ ...PANEL, overflow: "hidden" }}>
       <PanelTitle right={note ? <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{note}</span> : null}>{title}</PanelTitle>
@@ -3845,7 +3930,7 @@ export default function App() {
           <HighlightPanel title="Search results"
                           note={`${openPositionSearchHits.length} open lot${openPositionSearchHits.length === 1 ? "" : "s"} matching "${tradeSearch.trim()}"`}
                           rows={openPositionSearchHits} kind="open" showClient
-                          levelFor={levelFor} isAdmin={false} />
+                          levelFor={levelFor} isAdmin={false} layout="cards" />
         ) : tradeSearchHits !== null ? (
           <div style={{ ...PANEL, overflow: "hidden" }}>
             <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
@@ -3909,14 +3994,18 @@ export default function App() {
                           onCancelCapitalEdit={() => setCapitalEditingId(null)}
                           onSaveCapitalValue={(id, value) => { setCapitalEditingId(null); saveCapital(id, value); }}
                           capitalSavingId={capitalSaving} capitalDetailId={capitalDetailId}
-                          onToggleCapitalDetail={(id) => setCapitalDetailId(prev => prev === id ? null : id)} />
+                          onToggleCapitalDetail={(id) => setCapitalDetailId(prev => prev === id ? null : id)}
+                          layout="cards" />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
-                          rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
+                          rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
+                          layout="cards" />
           <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
-                          rows={highlights.best} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
+                          rows={highlights.best} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
+                          layout="cards" />
           {isAdmin && (
             <HighlightPanel title="Top 5 losing trades" note="Admin only · hidden from client logins"
-                            rows={highlights.worst} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
+                            rows={highlights.worst} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
+                            layout="cards" />
           )}
         </div>
         )}
