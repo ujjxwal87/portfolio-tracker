@@ -1249,3 +1249,81 @@ def search_stocks(q: str = "", _: auth.CurrentUser = Depends(auth.current_user))
     except Exception as e:
         logger.error(f"Stock search error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Trade reviews (Performance tab retrospect journal) ──────────────────────────
+# Admin-only. One row per closed FIFO match, keyed by (buy_trade_id, sell_trade_id).
+# Reviews aren't date-scoped themselves — the frontend already has every closed match's
+# dates from `trades`/`matchDetails`, so this just returns every review and lets the
+# client filter client-side by whichever month/client is selected.
+
+class TradeReviewBody(BaseModel):
+    buy_trade_id: str
+    sell_trade_id: str
+    strategy: Optional[str] = None
+    planned_entry: Optional[float] = None
+    planned_sl: Optional[float] = None
+    planned_target: Optional[float] = None
+    followed_plan: Optional[bool] = None
+    entry_reason: Optional[str] = None
+    exit_reason: Optional[str] = None
+    emotion: Optional[str] = None
+    discipline: Optional[int] = None
+    mistakes: Optional[List[str]] = None
+    # A base64 data: URI, not a file path/object-storage URL — see migrations/015_trade_reviews.sql
+    # for why (the backend's own filesystem doesn't survive a redeploy on the free Render tier).
+    chart_url: Optional[str] = None
+    reviewed: Optional[bool] = None
+
+
+@app.get("/api/trade-reviews")
+def list_trade_reviews(user: auth.CurrentUser = Depends(auth.require_admin)):
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM portfolio_tracker.trade_reviews")
+            return cur.fetchall()
+
+
+@app.put("/api/trade-reviews")
+def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(auth.require_admin)):
+    # Only fields the client actually sent get written — an omitted field leaves whatever is
+    # already stored untouched (COALESCE against the existing row), so autosaving one field at a
+    # time never clobbers the rest of the journal entry.
+    fields = body.model_dump(exclude_unset=True, exclude={"buy_trade_id", "sell_trade_id"})
+    if body.discipline is not None and not (1 <= body.discipline <= 5):
+        raise HTTPException(400, "discipline must be between 1 and 5")
+    cols = ["strategy", "planned_entry", "planned_sl", "planned_target", "followed_plan",
+            "entry_reason", "exit_reason", "emotion", "discipline", "mistakes", "chart_url", "reviewed"]
+    values = {c: fields.get(c) for c in cols}
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                INSERT INTO portfolio_tracker.trade_reviews
+                    (buy_trade_id, sell_trade_id, strategy, planned_entry, planned_sl, planned_target,
+                     followed_plan, entry_reason, exit_reason, emotion, discipline, mistakes,
+                     chart_url, reviewed, updated_at)
+                VALUES (%(buy_trade_id)s, %(sell_trade_id)s, %(strategy)s, %(planned_entry)s, %(planned_sl)s,
+                        %(planned_target)s, %(followed_plan)s, %(entry_reason)s, %(exit_reason)s,
+                        %(emotion)s, %(discipline)s, COALESCE(%(mistakes)s, '{}'), %(chart_url)s,
+                        COALESCE(%(reviewed)s, FALSE), NOW())
+                ON CONFLICT (buy_trade_id, sell_trade_id) DO UPDATE SET
+                    strategy       = COALESCE(EXCLUDED.strategy, trade_reviews.strategy),
+                    planned_entry  = COALESCE(EXCLUDED.planned_entry, trade_reviews.planned_entry),
+                    planned_sl     = COALESCE(EXCLUDED.planned_sl, trade_reviews.planned_sl),
+                    planned_target = COALESCE(EXCLUDED.planned_target, trade_reviews.planned_target),
+                    followed_plan  = COALESCE(%(followed_plan)s, trade_reviews.followed_plan),
+                    entry_reason   = COALESCE(EXCLUDED.entry_reason, trade_reviews.entry_reason),
+                    exit_reason    = COALESCE(EXCLUDED.exit_reason, trade_reviews.exit_reason),
+                    emotion        = COALESCE(EXCLUDED.emotion, trade_reviews.emotion),
+                    discipline     = COALESCE(EXCLUDED.discipline, trade_reviews.discipline),
+                    mistakes       = COALESCE(%(mistakes)s, trade_reviews.mistakes),
+                    chart_url      = COALESCE(EXCLUDED.chart_url, trade_reviews.chart_url),
+                    reviewed       = COALESCE(%(reviewed)s, trade_reviews.reviewed),
+                    updated_at     = NOW()
+                RETURNING *
+                """,
+                {"buy_trade_id": body.buy_trade_id, "sell_trade_id": body.sell_trade_id, **values},
+            )
+            conn.commit()
+            return cur.fetchone()

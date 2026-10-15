@@ -93,6 +93,8 @@ const VIEW_ART = {
   benchmark: { R: "8,145,178",  G: "34,211,238,.22", tint: "#E2F5FD",
     tex: "linear-gradient(rgba(8,145,178,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(8,145,178,.06) 1px,transparent 1px)",
     rep: "repeat,repeat", size: "58px 58px,58px 58px" },
+  performance: { R: "79,70,229", G: "129,140,248,.22", tint: "#ECEBFF",
+    tex: "radial-gradient(rgba(79,70,229,.13) 1.6px,transparent 1.7px)", rep: "repeat", size: "36px 36px" },
 };
 
 const viewArtStyle = (view) => {
@@ -119,6 +121,7 @@ const HERO_GRADIENT = {
   trades:    "linear-gradient(135deg,#241203 0%,#7C3E06 55%,#D97706 100%)",
   benchmark: "linear-gradient(135deg,#04121F 0%,#0B4A63 52%,#0891B2 100%)",
   investments: "linear-gradient(135deg,#1A0B24 0%,#5B1D63 52%,#C026D3 100%)",
+  performance: "linear-gradient(135deg,#0E0B2A 0%,#312E81 52%,#4F46E5 100%)",
 };
 
 // Cumulative total P&L over the plotted periods, drawn white-on-gradient inside the hero.
@@ -966,6 +969,393 @@ function InvestmentPositions({ groups, showClient }) {
   );
 }
 
+// Mon–Fri grid of exit-day P&L for the Performance tab, plus a weekly-total rail.
+function PerfCalendar({ weeks, maxAbsDay, selectedDay, onSelectDay }) {
+  const dayBg = (d) => {
+    if (!d.count) return "#fff";
+    const frac = 0.30 * Math.min(1, Math.abs(d.pl) / maxAbsDay);
+    return d.pl >= 0 ? `rgba(21,128,61,${(0.07 + frac).toFixed(3)})` : `rgba(220,38,38,${(0.07 + frac).toFixed(3)})`;
+  };
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr)) 66px", gap: 6, marginBottom: 6 }}>
+        {["MON", "TUE", "WED", "THU", "FRI", "WEEK"].map(h => (
+          <div key={h} style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", color: "var(--ink-3)", textAlign: h === "WEEK" ? "right" : "left" }}>{h}</div>
+        ))}
+      </div>
+      {weeks.map((week, wi) => {
+        const weekPl = week.reduce((s, d) => s + d.pl, 0);
+        const weekCount = week.reduce((s, d) => s + d.count, 0);
+        return (
+          <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr)) 66px", gap: 6, marginBottom: 6 }}>
+            {week.map(d => (
+              <div key={d.iso} onClick={d.count ? () => onSelectDay(selectedDay === d.iso ? null : d.iso) : undefined}
+                   style={{ height: 64, borderRadius: 10, border: selectedDay === d.iso ? "2px solid #0f172a" : "1px solid #eef1f6",
+                            padding: 7, background: dayBg(d), cursor: d.count ? "pointer" : "default", overflow: "hidden" }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: "#64748B" }}>{d.dom}</div>
+                {d.count > 0 && (<>
+                  <div className="fig" style={{ fontSize: 12, fontWeight: 700, marginTop: 10, whiteSpace: "nowrap", overflow: "hidden",
+                       textOverflow: "ellipsis", color: d.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmtCompact(d.pl)}</div>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{d.count} tr</div>
+                </>)}
+              </div>
+            ))}
+            <div style={{ background: "#fafbfd", border: "1px dashed #e1e6ee", borderRadius: 10, height: 64,
+                          padding: 7, textAlign: "right" }}>
+              <div className="fig" style={{ fontSize: 12, fontWeight: 700, color: weekPl >= 0 ? "var(--good)" : "var(--bad)" }}>
+                {weekCount ? fmtCompact(weekPl) : "—"}
+              </div>
+              {weekCount > 0 && <div style={{ fontSize: 10, color: "var(--ink-3)" }}>{weekCount} trades</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Cumulative net P&L through the month, one point per closed trade's exit date.
+function PerfEquityCurve({ points, peak, maxDD, monthEnd }) {
+  const W = 600, H = 200;
+  const vals = points.map(p => p.cum);
+  const vmax = Math.max(0, ...vals), vmin = Math.min(0, ...vals);
+  const span = vmax - vmin || 1;
+  const xOf = (i) => (i / Math.max(1, points.length - 1)) * W;
+  const yOf = (v) => H - ((v - vmin) / span) * H;
+  const d = points.map((p, i) => `${i === 0 ? "M" : "L"} ${xOf(i).toFixed(1)} ${yOf(p.cum).toFixed(1)}`).join(" ");
+  const good = monthEnd >= 0;
+  const color = good ? "#16a34a" : "#dc2626";
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 24, marginBottom: 10 }}>
+        <div><div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-3)" }}>PEAK</div>
+          <div className="fig" style={{ fontSize: 15, fontWeight: 700 }}>{fmt(peak)}</div></div>
+        <div><div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-3)" }}>MAX DRAWDOWN</div>
+          <div className="fig" style={{ fontSize: 15, fontWeight: 700, color: "var(--bad)" }}>{fmt(maxDD)}</div></div>
+        <div><div style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-3)" }}>MONTH END</div>
+          <div className="fig" style={{ fontSize: 15, fontWeight: 700, color: color }}>{fmt(monthEnd)}</div></div>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: "100%", minHeight: 200, display: "block" }}>
+        <line x1="0" y1={yOf(0)} x2={W} y2={yOf(0)} stroke="#CBD5E1" strokeDasharray="4 4" strokeWidth="1" />
+        <path d={`${d} L ${W} ${yOf(0)} L 0 ${yOf(0)} Z`} fill={color} opacity="0.1" />
+        <path d={d} fill="none" stroke={color} strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--ink-3)", marginTop: 4 }}>
+        <span>{points[1] ? fmtDate(points[1].date) : "—"}</span>
+        <span>{points[points.length - 1]?.date ? fmtDate(points[points.length - 1].date) : "—"}</span>
+      </div>
+    </div>
+  );
+}
+
+// One closed trade, with a plan-bar (SL -> target, entry/exit marked) when a planned SL exists.
+function PerfTradeCard({ t, onOpen }) {
+  const reviewed = !!t.review?.reviewed;
+  const edge = reviewed ? (t.net >= 0 ? "var(--good)" : "var(--bad)") : "#F59E0B";
+  const hasPlan = t.plannedSL != null && t.plannedTarget != null;
+  let entryPct = null, exitPct = null;
+  if (hasPlan) {
+    const span = t.plannedTarget - t.plannedSL || 1;
+    entryPct = Math.max(0, Math.min(100, ((t.plannedEntry - t.plannedSL) / span) * 100));
+    exitPct = Math.max(0, Math.min(100, ((t.sellPrice - t.plannedSL) / span) * 100));
+  }
+  const statusPill = !reviewed ? { label: "Needs review", bg: "#FFF7ED", fg: "#C2410C" }
+    : t.review?.followed_plan === false ? { label: "Broke plan", bg: "#FEF2F2", fg: "#B91C1C" }
+    : t.review?.followed_plan === true ? { label: "Plan followed", bg: "#ECFDF3", fg: "#15803d" }
+    : null;
+  return (
+    <button onClick={onOpen} className="card-hover" style={{
+      textAlign: "left", cursor: "pointer", border: "1px solid var(--line)", borderRadius: 14,
+      borderLeft: `3px solid ${edge}`, background: "var(--surface)", padding: "16px 18px", display: "block", width: "100%",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <LogoChip symbol={t.stock} size={40} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.stock}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {t.client} · {t.review?.strategy || "Unspecified"}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", flex: "none" }}>
+          <div className="fig" style={{ fontSize: 15, fontWeight: 700, color: t.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(t.net)}</div>
+          <div style={{ fontSize: 11, color: "var(--ink-3)" }}>{t.returnPct.toFixed(1)}%</div>
+        </div>
+      </div>
+      {hasPlan && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ position: "relative", height: 6, borderRadius: 3, background: "#F2F4F8" }}>
+            <div style={{ position: "absolute", top: 0, bottom: 0, left: `${Math.min(entryPct, exitPct)}%`,
+                          width: `${Math.abs(exitPct - entryPct)}%`, borderRadius: 3,
+                          background: t.net >= 0 ? "var(--good)" : "var(--bad)", opacity: 0.55 }} />
+            <div style={{ position: "absolute", top: -4, left: `${entryPct}%`, width: 2, height: 14, background: "var(--ink)" }} />
+            <div style={{ position: "absolute", top: -3, left: `calc(${exitPct}% - 6px)`, width: 12, height: 12, borderRadius: "50%",
+                          background: t.net >= 0 ? "var(--good)" : "var(--bad)", border: "2px solid #fff", boxShadow: "0 0 0 1px var(--line)" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10.5, color: "var(--ink-3)", marginTop: 4, whiteSpace: "nowrap" }}>
+            <span>SL {fmt(t.plannedSL)}</span><span>Entry {fmt(t.plannedEntry)}</span><span>Target {fmt(t.plannedTarget)}</span>
+          </div>
+        </div>
+      )}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, paddingTop: 10, borderTop: "1px solid #f2f4f8" }}>
+        <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+          {fmtDate(t.buyDate)} → {fmtDate(t.sellDate)} · {t.holdDays}d{t.rMultiple != null ? ` · ${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : ""}
+        </span>
+        {statusPill && (
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: statusPill.bg, color: statusPill.fg }}>
+            {statusPill.label}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+}
+
+const SECTION = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 16, padding: "16px 18px" };
+const SECTION_LABEL = { fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "#64748B", marginBottom: 10 };
+const TEXTAREA = { width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #E1E6EE", fontSize: 12.5, lineHeight: 1.45, fontFamily: "inherit", resize: "vertical" };
+const pill = (on, onBg, onFg) => ({
+  padding: "6px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid",
+  borderColor: on ? onFg : "var(--line)", background: on ? onBg : "var(--surface)", color: on ? onFg : "var(--ink-2)",
+});
+
+// Right-side panel: plan vs actual, charges, setup/strategy, emotion + discipline, mistakes
+// checklist, chart screenshot, lesson learned. Autosaves every field on change via `onSave`.
+function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
+  const r = t.review || {};
+  const [lesson, setLesson] = useState(r.lesson || "");
+  const [entryReason, setEntryReason] = useState(r.entry_reason || "");
+  const [exitReason, setExitReason] = useState(r.exit_reason || "");
+  useEffect(() => { setLesson(r.lesson || ""); setEntryReason(r.entry_reason || ""); setExitReason(r.exit_reason || ""); }, [t.key]);
+  useEffect(() => {
+    const id = setTimeout(() => { if (lesson !== (r.lesson || "")) onSave(t.buyId, t.sellId, { lesson }); }, 600);
+    return () => clearTimeout(id);
+  }, [lesson]);
+  useEffect(() => {
+    const id = setTimeout(() => { if (entryReason !== (r.entry_reason || "")) onSave(t.buyId, t.sellId, { entry_reason: entryReason }); }, 600);
+    return () => clearTimeout(id);
+  }, [entryReason]);
+  useEffect(() => {
+    const id = setTimeout(() => { if (exitReason !== (r.exit_reason || "")) onSave(t.buyId, t.sellId, { exit_reason: exitReason }); }, 600);
+    return () => clearTimeout(id);
+  }, [exitReason]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const save = (patch) => onSave(t.buyId, t.sellId, patch);
+  const mistakes = r.mistakes || [];
+  const toggleMistake = (m) => save({ mistakes: mistakes.includes(m) ? mistakes.filter(x => x !== m) : [...mistakes, m] });
+
+  const chargeRows = [
+    ["Brokerage", t.charges.brokerage], ["STT", t.charges.stt], ["Exchange txn charges", t.charges.exchangeTxn],
+    ["SEBI fee", t.charges.sebiFee], ["Stamp duty", t.charges.stampDuty], ["GST", t.charges.gst], ["DP charges", t.charges.dpCharges],
+  ];
+
+  const hasPlan = t.plannedSL != null && t.plannedTarget != null;
+  const ladderMin = hasPlan ? Math.min(t.plannedSL, t.sellPrice) : null;
+  const ladderMax = hasPlan ? Math.max(t.plannedTarget, t.sellPrice) : null;
+  const ladderPos = (v) => ladderMax > ladderMin ? 4 + ((v - ladderMin) / (ladderMax - ladderMin)) * 92 : 50;
+
+  const onChartFile = (file) => {
+    if (!file || !file.type.startsWith("image/")) return;
+    if (file.size > 4 * 1024 * 1024) { alert("Image too large (max 4MB)"); return; }
+    const reader = new FileReader();
+    reader.onload = () => save({ chart_url: reader.result });
+    reader.readAsDataURL(file);
+  };
+
+  return (<>
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.38)", zIndex: 40 }} />
+    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(620px,100%)", background: "var(--canvas)",
+                  boxShadow: "-20px 0 50px -20px rgba(15,23,42,.35)", zIndex: 41, display: "flex", flexDirection: "column" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid var(--line)", padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <LogoChip symbol={t.stock} size={46} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 18, fontWeight: 800 }}>{t.stock}</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{t.client} · {t.qty} shares · {fmtDate(t.buyDate)} → {fmtDate(t.sellDate)}</div>
+          </div>
+          <button onClick={onPrev} style={{ ...btnIcon }}>‹</button>
+          <button onClick={onNext} style={{ ...btnIcon }}>›</button>
+          <button onClick={onClose} style={{ ...btnIcon }}>×</button>
+        </div>
+        <div className="fig" style={{ fontSize: 32, fontWeight: 700, marginTop: 10, color: t.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(t.net)}</div>
+        <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 2 }}>
+          {t.returnPct >= 0 ? "+" : ""}{t.returnPct.toFixed(2)}%{t.rMultiple != null ? ` · ${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : ""} · net of charges · held {t.holdDays} days
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px 24px", display: "grid", gap: 14 }}>
+        <div style={SECTION}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={SECTION_LABEL}>Plan vs actual</div>
+            <div style={{ display: "flex", gap: 2, background: "#F1F4F8", padding: 3, borderRadius: 10 }}>
+              {[["Yes", true, "#15803d"], ["No", false, "#dc2626"]].map(([label, val, color]) => (
+                <button key={label} onClick={() => save({ followed_plan: val })}
+                        style={{ padding: "5px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, border: "none", cursor: "pointer",
+                                 background: r.followed_plan === val ? color : "transparent", color: r.followed_plan === val ? "#fff" : "var(--ink-2)" }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {hasPlan ? (
+            <div style={{ position: "relative", height: 56, marginTop: 14 }}>
+              <div style={{ position: "absolute", left: "4%", right: "4%", top: 24, height: 4, borderRadius: 2, background: "#F2F4F8" }} />
+              <div style={{ position: "absolute", top: 24, height: 4, borderRadius: 2, background: "#FCA5A5",
+                            left: `${ladderPos(Math.min(t.plannedSL, t.plannedEntry))}%`,
+                            width: `${Math.abs(ladderPos(t.plannedEntry) - ladderPos(t.plannedSL))}%` }} />
+              <div style={{ position: "absolute", top: 24, height: 4, borderRadius: 2, background: "#86EFAC",
+                            left: `${ladderPos(Math.min(t.plannedEntry, t.plannedTarget))}%`,
+                            width: `${Math.abs(ladderPos(t.plannedTarget) - ladderPos(t.plannedEntry))}%` }} />
+              {[["SL", t.plannedSL, "var(--bad)"], ["ENTRY", t.plannedEntry, "var(--ink)"], ["TARGET", t.plannedTarget, "var(--good)"]].map(([lbl, v, c]) => (
+                <div key={lbl} style={{ position: "absolute", left: `${ladderPos(v)}%`, top: 0, transform: "translateX(-50%)", textAlign: "center" }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: c, margin: "18px auto 0" }} />
+                  <div style={{ fontSize: 9.5, color: "var(--ink-3)", marginTop: 2, whiteSpace: "nowrap" }}>{lbl}</div>
+                </div>
+              ))}
+              <div style={{ position: "absolute", left: `${ladderPos(t.sellPrice)}%`, top: 14, transform: "translateX(-50%)" }}>
+                <div style={{ width: 16, height: 16, borderRadius: "50%", background: t.net >= 0 ? "var(--good)" : "var(--bad)", border: "2px solid #fff", boxShadow: "0 0 0 1px var(--line)" }} />
+              </div>
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 8 }}>Add a stop-loss and target to see the plan bar and R-multiple.</div>
+          )}
+          <table style={{ width: "100%", fontSize: 12.5, marginTop: 14, borderCollapse: "collapse" }}>
+            <thead><tr style={{ color: "var(--ink-3)", fontSize: 10.5, textTransform: "uppercase" }}>
+              <td></td><td style={{ textAlign: "right", paddingBottom: 6 }}>Planned</td><td style={{ textAlign: "right", paddingBottom: 6 }}>Actual</td>
+            </tr></thead>
+            <tbody>
+              <tr><td style={{ color: "var(--ink-3)" }}>Entry</td><td style={{ textAlign: "right" }}>{fmt(t.plannedEntry)}</td>
+                <td style={{ textAlign: "right", color: Math.abs(t.buyPrice - t.plannedEntry) / t.plannedEntry > 0.003 ? "var(--bad)" : "var(--ink)" }}>{fmt(t.buyPrice)}</td></tr>
+              <tr><td style={{ color: "var(--ink-3)" }}>Exit</td><td style={{ textAlign: "right" }}>{hasPlan ? `${fmt(t.plannedSL)} – ${fmt(t.plannedTarget)}` : "—"}</td>
+                <td style={{ textAlign: "right" }}>{fmt(t.sellPrice)}</td></tr>
+              <tr><td style={{ color: "var(--ink-3)" }}>Risk / share</td><td style={{ textAlign: "right" }}>{t.riskPerShare != null ? fmt(t.riskPerShare) : "—"}</td>
+                <td style={{ textAlign: "right" }}>{fmt(Math.abs(t.sellPrice - t.buyPrice))}</td></tr>
+              <tr><td style={{ color: "var(--ink-3)" }}>Capital at risk</td><td style={{ textAlign: "right" }}>{t.riskPerShare != null ? fmt(t.riskPerShare * t.qty) : "—"}</td>
+                <td style={{ textAlign: "right" }}>{fmt(Math.abs(t.gross))}</td></tr>
+              <tr><td style={{ color: "var(--ink-3)" }}>Reward : risk</td>
+                <td style={{ textAlign: "right" }}>{(t.riskPerShare > 0 && t.plannedTarget != null) ? `1 : ${((t.plannedTarget - t.plannedEntry) / t.riskPerShare).toFixed(2)}` : "—"}</td>
+                <td style={{ textAlign: "right" }}>{t.rMultiple != null ? `${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : "—"}</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style={SECTION}>
+          <div style={SECTION_LABEL}>Charges & net P&L</div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+            <span>Gross P&L</span><span className="fig" style={{ fontWeight: 700 }}>{fmt(t.gross)}</span>
+          </div>
+          <div style={{ borderTop: "1px dashed var(--line)", paddingTop: 6, display: "grid", gap: 4 }}>
+            {chargeRows.map(([label, v]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: "var(--ink-3)" }}>
+                <span>{label}</span><span className="fig">−{fmt(v)}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--ink-3)", marginTop: 8 }}>
+            <span>Total charges</span><span>{((t.charges.total / Math.max(1, Math.abs(t.gross))) * 100).toFixed(1)}% of gross</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, fontWeight: 800, marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
+            <span>Net P&L</span><span className="fig" style={{ color: t.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(t.net)}</span>
+          </div>
+        </div>
+
+        <div style={SECTION}>
+          <div style={SECTION_LABEL}>Setup / strategy</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {STRATEGIES.map(s => (
+              <span key={s} onClick={() => save({ strategy: r.strategy === s ? null : s })}
+                    style={pill(r.strategy === s, "#EEF2FF", "#3730A3")}>{s}</span>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+            <div><div style={{ fontSize: 10.5, color: "var(--ink-3)", marginBottom: 4 }}>Why I entered</div>
+              <textarea rows={3} style={TEXTAREA} value={entryReason} onChange={e => setEntryReason(e.target.value)} /></div>
+            <div><div style={{ fontSize: 10.5, color: "var(--ink-3)", marginBottom: 4 }}>Why I exited</div>
+              <textarea rows={3} style={TEXTAREA} value={exitReason} onChange={e => setExitReason(e.target.value)} /></div>
+          </div>
+        </div>
+
+        <div style={SECTION}>
+          <div style={SECTION_LABEL}>Emotion at entry</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {[...EMOTIONS_GOOD, ...EMOTIONS_BAD].map(e => (
+              <span key={e} onClick={() => save({ emotion: r.emotion === e ? null : e })}
+                    style={pill(r.emotion === e, EMOTIONS_GOOD.includes(e) ? "#ECFDF3" : "#FEF2F2", EMOTIONS_GOOD.includes(e) ? "#15803d" : "#B91C1C")}>{e}</span>
+            ))}
+          </div>
+          <div style={{ ...SECTION_LABEL, marginTop: 14 }}>Discipline score</div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} onClick={() => save({ discipline: n })} style={{
+                flex: 1, height: 38, borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer",
+                border: "1px solid var(--line)",
+                background: r.discipline === n ? (n >= 4 ? "#15803d" : n === 3 ? "#D97706" : "#dc2626") : "var(--surface)",
+                color: r.discipline === n ? "#fff" : "var(--ink-2)",
+              }}>{n}</button>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>{r.discipline ? DISCIPLINE_CAPTIONS[r.discipline] : "Pick a score"}</div>
+        </div>
+
+        <div style={SECTION}>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <div style={SECTION_LABEL}>Mistakes checklist</div>
+            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{mistakes.length} flagged</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {MISTAKES.map(m => (
+              <label key={m} onClick={() => toggleMistake(m)} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12.5 }}>
+                <span style={{ width: 18, height: 18, borderRadius: 5, flex: "none", display: "grid", placeItems: "center",
+                              border: "1px solid var(--line)", background: mistakes.includes(m) ? "var(--bad)" : "transparent", color: "#fff", fontSize: 12 }}>
+                  {mistakes.includes(m) ? "✓" : ""}
+                </span>
+                {m}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div style={SECTION}>
+          <div style={SECTION_LABEL}>Chart screenshot</div>
+          {r.chart_url ? (<>
+            <img src={r.chart_url} alt="" style={{ width: "100%", borderRadius: 10, display: "block" }} />
+            <span onClick={() => save({ chart_url: null })} style={{ fontSize: 11.5, color: "var(--bad)", cursor: "pointer" }}>Remove</span>
+          </>) : (
+            <label style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 120, borderRadius: 10,
+                            border: "1px dashed var(--line)", fontSize: 11.5, color: "var(--ink-3)", cursor: "pointer", textAlign: "center", padding: 10 }}>
+              Upload the entry/exit chart · PNG or JPG · mark entry, SL, target and exit on it
+              <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => onChartFile(e.target.files?.[0])} />
+            </label>
+          )}
+        </div>
+
+        <div style={SECTION}>
+          <div style={SECTION_LABEL}>Lesson learned</div>
+          <textarea rows={2} style={TEXTAREA} placeholder="One rule to keep or change next time" value={lesson} onChange={e => setLesson(e.target.value)} />
+        </div>
+      </div>
+
+      <div style={{ background: "#fff", borderTop: "1px solid var(--line)", padding: "12px 20px",
+                    display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Changes save automatically · mark reviewed when done</span>
+        {r.reviewed ? (
+          <span style={{ fontSize: 12, fontWeight: 700, padding: "8px 14px", borderRadius: 10, background: "#ECFDF3", color: "#15803d" }}>✓ Reviewed</span>
+        ) : (
+          <button onClick={() => save({ reviewed: true })} style={{ fontSize: 12, fontWeight: 700, padding: "8px 14px", borderRadius: 10,
+                   border: "none", background: "var(--ink)", color: "#fff", cursor: "pointer" }}>Mark as reviewed</button>
+        )}
+      </div>
+    </div>
+  </>);
+}
+const btnIcon = { width: 32, height: 32, borderRadius: 9, border: "1px solid var(--line)", background: "var(--surface)",
+                   color: "var(--ink-2)", fontSize: 16, cursor: "pointer", flex: "none" };
+
 function PnlTotalBarChart({ points }) {
   const [hover, setHover] = useState(-1);
   const W = 760, H = 300, ML = 58, MR = 16, MT = 18, MB = 40;
@@ -1031,14 +1421,41 @@ function PnlTotalBarChart({ points }) {
   );
 }
 
-// Win rate counts only decisive exits: a gain of at least 10% is a win, a loss worse than 1.5%
-// is a loss at 1.5% or worse. Anything between the two is noise, left out of both sides.
-const WIN_PCT = 10, LOSS_PCT = -1.5;
+// Win rate counts only decisive exits: a gain of at least 5% is a "successful" trade, a loss
+// worse than 1.5% is a loss. Anything between the two (including a small green trade under 5%)
+// is neutral — a real outcome, not noise, but not decisive either way. Neutral trades still carry
+// their actual rupee P&L into the Total profit / Total loss figures: that classification is for
+// counting wins vs losses, never for deciding which rupees "count."
+const WIN_PCT = 5, LOSS_PCT = -1.5;
 const lotPct = m => { const cost = m.buyPrice * m.qty; return cost > 0 ? (m.pl / cost) * 100 : 0; };
 const isDecisiveWin = m => lotPct(m) >= WIN_PCT;
 const isDecisiveLoss = m => lotPct(m) <= LOSS_PCT;
+const isNeutralTrade = m => !isDecisiveWin(m) && !isDecisiveLoss(m);
 // Risk first, reward second: the average loss is the 1 that the average profit is measured against.
 const rrText = rr => rr == null ? "—" : `1 : ${rr.toFixed(2)}`;
+
+// ── Performance tab (admin-only trade retrospect) ───────────────────────────────
+const STRATEGIES = ["Breakout", "Pullback to 20 EMA", "Base breakout", "Earnings gap", "52-week high", "Reversal"];
+const EMOTIONS_GOOD = ["Calm", "Confident"], EMOTIONS_BAD = ["Impatient", "FOMO", "Fearful", "Revenge"];
+const MISTAKES = ["Entered before confirmation", "Chased the entry", "No stop-loss set", "Moved stop-loss",
+                  "Exited too early", "Held past stop-loss", "Oversized position", "Averaged down", "Ignored market trend"];
+const DISCIPLINE_CAPTIONS = { 1: "Broke every rule", 2: "Mostly off-plan", 3: "Mixed", 4: "Minor slips", 5: "Textbook execution" };
+
+// Delivery-equity charges, Indian NSE cash market. Brokerage defaults to 0 — Zerodha/Groww/Dhan
+// all charge ₹0 brokerage on equity delivery, which is every broker actually used in this book.
+const BROKERAGE_PER_ORDER = 0;
+function computeCharges(qty, buyPrice, sellPrice) {
+  const turnover = qty * buyPrice + qty * sellPrice;
+  const brokerage = BROKERAGE_PER_ORDER * 2;
+  const stt = Math.round(turnover * 0.001);
+  const exchangeTxn = turnover * 0.0000297;
+  const sebiFee = turnover * 0.000001;
+  const stampDuty = Math.round(qty * buyPrice * 0.00015);
+  const gst = (brokerage + exchangeTxn + sebiFee) * 0.18;
+  const dpCharges = 15.34;
+  const total = brokerage + stt + exchangeTxn + sebiFee + stampDuty + gst + dpCharges;
+  return { brokerage, stt, exchangeTxn, sebiFee, stampDuty, gst, dpCharges, total };
+}
 
 // Mobile twin of HighlightPanel: same four lists, redrawn as stacked cards instead of a grid.
 // Mobile twin of InvestmentPositions: one card per company, tap to unfold its lots.
@@ -2155,89 +2572,185 @@ export default function App() {
     return { totalRealizedPL, totalUnrealizedPL, totalPL, totalInvested, openInvested, totalReturn, winRate, avgWin, avgLoss, riskReward, maxDD, currentVal };
   }, [portfolio, holdings, filteredTrades]);
 
-  // Admin-only month-by-month trading record for whichever client is selected in the sidebar —
-  // same "trade" kind / decisive win-loss definitions as `stats` above, just bucketed by the exit
-  // month instead of collapsed into one all-time number, so a client's open-ended "how am I doing"
-  // has somewhere besides this chat to look.
-  const monthlyPerf = useMemo(() => {
-    const byMonth = {};
+  // ── Performance tab: closed-trade retrospect, admin only ──────────────────────
+  const [reviews, setReviews] = useState({});   // `${buyId}|${sellId}` -> review row
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiFetch("/trade-reviews").then(rows => {
+      const map = {};
+      rows.forEach(r => { map[`${r.buy_trade_id}|${r.sell_trade_id}`] = r; });
+      setReviews(map);
+    }).catch(() => {});
+  }, [isAdmin]);
+
+  const saveReview = useCallback((buyId, sellId, patch) => {
+    const key = `${buyId}|${sellId}`;
+    setReviews(prev => ({ ...prev, [key]: { ...(prev[key] || {}), buy_trade_id: buyId, sell_trade_id: sellId, ...patch } }));
+    apiFetch("/trade-reviews", { method: "PUT", body: JSON.stringify({ buy_trade_id: buyId, sell_trade_id: sellId, ...patch }) })
+      .then(row => setReviews(prev => ({ ...prev, [key]: row })))
+      .catch(() => {});
+  }, []);
+
+  // One row per closed FIFO match (kind==="trade" only — an investment isn't a trade that was
+  // won or lost), joined with its review (if any) and its delivery-equity charges. Follows the
+  // sidebar's client filter, same as every other Trades-tab view.
+  const closedTrades = useMemo(() => {
+    if (!isAdmin) return [];
+    const out = [];
     portfolio.forEach(p => p.matchDetails.forEach(m => {
       if (m.kind !== "trade") return;
-      const ym = String(m.sellDate).slice(0, 7);
-      if (!byMonth[ym]) byMonth[ym] = { pl: 0, count: 0, wins: 0, losses: 0, winSum: 0, lossSum: 0 };
-      const b = byMonth[ym];
-      b.pl += m.pl; b.count += 1;
-      if (isDecisiveWin(m)) { b.wins += 1; b.winSum += m.pl; }
-      else if (isDecisiveLoss(m)) { b.losses += 1; b.lossSum += m.pl; }
-    }));
-    return Object.entries(byMonth).sort((a, b) => a[0].localeCompare(b[0])).map(([ym, b]) => {
-      const decisive = b.wins + b.losses;
-      const winRate = decisive ? (b.wins / decisive) * 100 : null;
-      const avgWin = b.wins ? b.winSum / b.wins : 0;
-      const avgLoss = b.losses ? Math.abs(b.lossSum / b.losses) : 0;
-      const riskReward = avgLoss > 0 ? avgWin / avgLoss : null;
-      return { ym, ...b, winRate, avgWin, avgLoss, riskReward };
-    });
-  }, [portfolio]);
-
-  // Per-trade momentum-at-entry and "how much of the move did I keep" (MFE capture), built from
-  // the same `dailyPrices` history the P&L chart already loads — no extra fetch. Momentum is the
-  // user's own swing-trading definition: % move in the ~3 months BEFORE entry. MFE capture is
-  // (exit - entry) / (highest price touched while held - entry): it separates "bad pick" (price
-  // never moved favorably) from "good pick, gave back too much before exiting" (trailing-stop-style
-  // exits can look the same in a monthly P&L total but mean very different things to fix).
-  const tradeAnalytics = useMemo(() => {
-    const priceAsOf = makePriceAsOf(dailyPrices, cmp);
-    const out = [];
-    portfolio.forEach(p => {
-      const series = dailyPrices[p.stock] || {};
-      p.matchDetails.forEach(m => {
-        if (m.kind !== "trade") return;
-        const lookback = shiftDays(m.buyDate, -91);
-        const pxEntry = priceAsOf(p.stock, m.buyDate);
-        const px3mo = priceAsOf(p.stock, lookback);
-        const momentum = (pxEntry != null && px3mo != null && px3mo > 0) ? (pxEntry / px3mo - 1) * 100 : null;
-        let peak = null, hadPriceData = false;
-        Object.entries(series).forEach(([d, v]) => {
-          if (d >= m.buyDate && d <= m.sellDate) { hadPriceData = true; if (peak == null || v > peak) peak = v; }
-        });
-        const hadFavorable = hadPriceData && peak > m.buyPrice;
-        const capture = hadFavorable ? (m.sellPrice - m.buyPrice) / (peak - m.buyPrice) * 100 : null;
-        out.push({ client: p.client, stock: p.stock, buyDate: m.buyDate, sellDate: m.sellDate,
-                   qty: m.qty, buyPrice: m.buyPrice, sellPrice: m.sellPrice, pl: m.pl,
-                   momentum, hadPriceData, hadFavorable, capture });
+      const key = `${m.buyId}|${m.sellId}`;
+      const review = reviews[key] || null;
+      const charges = computeCharges(m.qty, m.buyPrice, m.sellPrice);
+      const net = m.pl - charges.total;
+      const holdDays = Math.max(0, Math.round((new Date(m.sellDate) - new Date(m.buyDate)) / 86400000));
+      const lvl = levelFor(p.client, p.stock);
+      const plannedSL = review?.planned_sl ?? lvl?.stop_loss ?? null;
+      const plannedEntry = review?.planned_entry ?? m.buyPrice;
+      const plannedTarget = review?.planned_target ?? null;
+      const riskPerShare = plannedSL != null ? plannedEntry - plannedSL : null;
+      const rMultiple = (riskPerShare && riskPerShare > 0) ? (m.sellPrice - m.buyPrice) / riskPerShare : null;
+      out.push({
+        key, buyId: m.buyId, sellId: m.sellId, client: p.client, stock: p.stock, qty: m.qty,
+        buyPrice: m.buyPrice, sellPrice: m.sellPrice, buyDate: m.buyDate, sellDate: m.sellDate,
+        gross: m.pl, charges, net, holdDays, returnPct: lotPct(m), review,
+        plannedSL, plannedEntry, plannedTarget, riskPerShare, rMultiple,
+        win: isDecisiveWin(m), loss: isDecisiveLoss(m), neutral: isNeutralTrade(m),
       });
-    });
+    }));
     return out;
-  }, [portfolio, dailyPrices, cmp]);
+  }, [portfolio, reviews, isAdmin, levelFor]);
 
-  const momentumBuckets = useMemo(() => {
-    const BANDS = [["<0%", x => x < 0], ["0-25%", x => x >= 0 && x < 25], ["25-50%", x => x >= 25 && x < 50],
-                   ["50-70%", x => x >= 50 && x < 70], ["70-100%", x => x >= 70 && x < 100], ["100%+", x => x >= 100]];
-    return BANDS.map(([label, f]) => {
-      const grp = tradeAnalytics.filter(t => t.momentum != null && f(t.momentum));
-      const wins = grp.filter(t => t.pl > 1).length, losses = grp.filter(t => t.pl < -1).length;
-      const totalPl = grp.reduce((s, t) => s + t.pl, 0);
-      return { label, n: grp.length, winRate: (wins + losses) ? (wins / (wins + losses)) * 100 : null,
-               totalPl, avgPl: grp.length ? totalPl / grp.length : 0 };
+  const [perfMonth, setPerfMonth] = useState(null);
+  const [perfOutcome, setPerfOutcome] = useState("all");       // all | win | loss
+  const [perfDay, setPerfDay] = useState(null);
+  const [perfStrategy, setPerfStrategy] = useState("All");
+  const [perfSort, setPerfSort] = useState("latest");          // latest | biggestWin | biggestLoss
+  const [perfNeedsReview, setPerfNeedsReview] = useState(false);
+  const [openReviewKey, setOpenReviewKey] = useState(null);
+
+  const perfMonths = useMemo(
+    () => [...new Set(closedTrades.map(t => t.sellDate.slice(0, 7)))].sort(),
+    [closedTrades]
+  );
+  useEffect(() => {
+    if (perfMonths.length && !perfMonths.includes(perfMonth)) setPerfMonth(perfMonths[perfMonths.length - 1]);
+  }, [perfMonths, perfMonth]);
+  useEffect(() => { setPerfDay(null); }, [perfMonth, filterClient]);
+
+  const perfMonthTrades = useMemo(
+    () => closedTrades.filter(t => t.sellDate.slice(0, 7) === perfMonth),
+    [closedTrades, perfMonth]
+  );
+
+  const perfKPIs = useMemo(() => {
+    const t = perfMonthTrades;
+    const profitTrades = t.filter(x => x.net > 0), lossTrades = t.filter(x => x.net < 0);
+    const wins = t.filter(x => x.win), losses = t.filter(x => x.loss), neutral = t.filter(x => x.neutral);
+    const totalProfit = profitTrades.reduce((s, x) => s + x.net, 0);
+    const totalLoss = lossTrades.reduce((s, x) => s + x.net, 0);
+    const grossProfit = t.filter(x => x.net > 0).reduce((s, x) => s + x.net, 0);
+    const grossLoss = Math.abs(t.filter(x => x.net < 0).reduce((s, x) => s + x.net, 0));
+    const decisive = wins.length + losses.length;
+    const winRate = decisive ? (wins.length / decisive) * 100 : null;
+    const avgWin = profitTrades.length ? totalProfit / profitTrades.length : 0;
+    const avgLoss = lossTrades.length ? Math.abs(totalLoss) / lossTrades.length : 0;
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : null;
+    const best = t.length ? t.reduce((a, b) => (b.net > a.net ? b : a)) : null;
+    const worst = t.length ? t.reduce((a, b) => (b.net < a.net ? b : a)) : null;
+    const charges = t.reduce((s, x) => s + x.charges.total, 0);
+    const net = t.reduce((s, x) => s + x.net, 0);
+    const neutralNet = neutral.reduce((s, x) => s + x.net, 0);
+    return { count: t.length, wins: wins.length, losses: losses.length, neutral: neutral.length, neutralNet,
+             totalProfit, totalLoss, winRate, profitFactor, avgWin, avgLoss, best, worst, charges, net,
+             riskReward: avgLoss > 0 ? avgWin / avgLoss : null };
+  }, [perfMonthTrades]);
+
+  // Monday–Friday calendar of the selected month, one bucket per trading day.
+  const perfCalendar = useMemo(() => {
+    if (!perfMonth) return { weeks: [], maxAbsDay: 1 };
+    const [y, m] = perfMonth.split("-").map(Number);
+    const first = new Date(Date.UTC(y, m - 1, 1)), last = new Date(Date.UTC(y, m, 0));
+    const byDay = {};
+    perfMonthTrades.forEach(t => {
+      const d = t.sellDate;
+      if (!byDay[d]) byDay[d] = { pl: 0, count: 0 };
+      byDay[d].pl += t.net; byDay[d].count += 1;
     });
-  }, [tradeAnalytics]);
+    const maxAbsDay = Math.max(1, ...Object.values(byDay).map(d => Math.abs(d.pl)));
+    const days = [];
+    for (let d = new Date(first); d <= last; d.setUTCDate(d.getUTCDate() + 1)) {
+      const dow = d.getUTCDay();
+      if (dow === 0 || dow === 6) continue;
+      const iso = d.toISOString().slice(0, 10);
+      days.push({ iso, dom: d.getUTCDate(), ...(byDay[iso] || { pl: 0, count: 0 }) });
+    }
+    const weeks = [];
+    for (let i = 0; i < days.length; i += 5) weeks.push(days.slice(i, i + 5));
+    return { weeks, maxAbsDay };
+  }, [perfMonth, perfMonthTrades]);
 
-  const captureSummary = useMemo(() => {
-    const withData = tradeAnalytics.filter(t => t.hadPriceData);
-    const neverFavorable = withData.filter(t => !t.hadFavorable);
-    const low = withData.filter(t => t.hadFavorable && t.capture < 30);
-    const mid = withData.filter(t => t.hadFavorable && t.capture >= 30 && t.capture < 70);
-    const high = withData.filter(t => t.hadFavorable && t.capture >= 70);
-    const sum = (arr) => arr.reduce((s, t) => s + t.pl, 0);
+  const perfEquity = useMemo(() => {
+    const sorted = [...perfMonthTrades].sort((a, b) => a.sellDate.localeCompare(b.sellDate));
+    let running = 0, peak = 0, maxDD = 0;
+    const points = [{ cum: 0 }];
+    sorted.forEach(t => {
+      running += t.net;
+      if (running > peak) peak = running;
+      maxDD = Math.max(maxDD, peak - running);
+      points.push({ cum: running, date: t.sellDate });
+    });
+    return { points, peak, maxDD, monthEnd: running };
+  }, [perfMonthTrades]);
+
+  const perfByStrategy = useMemo(() => {
+    const by = {};
+    perfMonthTrades.forEach(t => {
+      const s = t.review?.strategy || "Unspecified";
+      if (!by[s]) by[s] = { strategy: s, trades: 0, wins: 0, losses: 0, net: 0 };
+      by[s].trades += 1; by[s].net += t.net;
+      if (t.win) by[s].wins += 1; else if (t.loss) by[s].losses += 1;
+    });
+    const rows = Object.values(by);
+    const maxAbs = Math.max(1, ...rows.map(r => Math.abs(r.net)));
+    return rows.map(r => ({ ...r, winRate: (r.wins + r.losses) ? (r.wins / (r.wins + r.losses)) * 100 : null, maxAbs }))
+               .sort((a, b) => b.net - a.net);
+  }, [perfMonthTrades]);
+
+  const perfMistakes = useMemo(() => {
+    const reviewed = perfMonthTrades.filter(t => t.review?.reviewed);
+    const by = {};
+    reviewed.forEach(t => (t.review.mistakes || []).forEach(m => {
+      if (!by[m]) by[m] = { mistake: m, count: 0, cost: 0 };
+      by[m].count += 1; by[m].cost += t.net;
+    }));
+    const followed = reviewed.filter(t => t.review.followed_plan === true).length;
+    const discRows = reviewed.filter(t => t.review.discipline != null);
+    const avgDiscipline = discRows.length ? discRows.reduce((s, t) => s + t.review.discipline, 0) / discRows.length : null;
     return {
-      neverFavorable: { n: neverFavorable.length, pl: sum(neverFavorable) },
-      low: { n: low.length, pl: sum(low) },
-      mid: { n: mid.length, pl: sum(mid) },
-      high: { n: high.length, pl: sum(high) },
-      worst: [...low].sort((a, b) => a.capture - b.capture).slice(0, 10),
+      reviewedCount: reviewed.length, total: perfMonthTrades.length,
+      planFollowedPct: reviewed.length ? (followed / reviewed.length) * 100 : null,
+      avgDiscipline,
+      top: Object.values(by).sort((a, b) => b.count - a.count).slice(0, 5),
+      maxCount: Math.max(1, ...Object.values(by).map(m => m.count)),
     };
-  }, [tradeAnalytics]);
+  }, [perfMonthTrades]);
+
+  const perfStrategies = useMemo(() => ["All", ...new Set(perfMonthTrades.map(t => t.review?.strategy || "Unspecified"))], [perfMonthTrades]);
+
+  const perfFilteredTrades = useMemo(() => {
+    let rows = perfMonthTrades;
+    if (perfDay) rows = rows.filter(t => t.sellDate === perfDay);
+    if (perfStrategy !== "All") rows = rows.filter(t => (t.review?.strategy || "Unspecified") === perfStrategy);
+    if (perfOutcome === "win") rows = rows.filter(t => t.net > 0);
+    else if (perfOutcome === "loss") rows = rows.filter(t => t.net < 0);
+    if (perfNeedsReview) rows = rows.filter(t => !t.review?.reviewed);
+    const sorted = [...rows];
+    if (perfSort === "biggestWin") sorted.sort((a, b) => b.net - a.net);
+    else if (perfSort === "biggestLoss") sorted.sort((a, b) => a.net - b.net);
+    else sorted.sort((a, b) => b.sellDate.localeCompare(a.sellDate));
+    return sorted;
+  }, [perfMonthTrades, perfDay, perfStrategy, perfOutcome, perfNeedsReview, perfSort]);
 
   // Money-weighted Nifty benchmark: each deposit priced at the Nifty close on its own date.
   const [benchIndex, setBenchIndex] = useState("nifty50");
@@ -4277,160 +4790,209 @@ export default function App() {
 
       {/* ── PERFORMANCE TAB (admin only) ────────────────────────────────────── */}
       {view === "performance" && isAdmin && (() => {
-        const rows = monthlyPerf;
-        const allTimePl = rows.reduce((s, r) => s + r.pl, 0);
         const tone = (v) => v == null ? "var(--ink-3)" : v >= 0 ? "var(--good)" : "var(--bad)";
+        const monthIdx = perfMonths.indexOf(perfMonth);
+        const monthLabel = (ym) => { if (!ym) return "—"; const [y, m] = ym.split("-"); return `${MONTHS[Number(m) - 1]} ${y}`; };
+        const k = perfKPIs;
+        const openTrade = openReviewKey ? perfFilteredTrades.find(t => t.key === openReviewKey)
+          || closedTrades.find(t => t.key === openReviewKey) : null;
+        const navReview = (dir) => {
+          const list = perfFilteredTrades;
+          const i = list.findIndex(t => t.key === openReviewKey);
+          if (i === -1 || list.length === 0) return;
+          setOpenReviewKey(list[(i + dir + list.length) % list.length].key);
+        };
         return (<>
-          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px" }}>
-            <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>
-              Monthly trading record · {scopeLabel(filterClient)}
+          <Hero view="performance" eyebrow={`PERFORMANCE · ${scopeLabel(filterClient)} · ${monthLabel(perfMonth)}`}
+            right={
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => monthIdx > 0 && setPerfMonth(perfMonths[monthIdx - 1])} disabled={monthIdx <= 0}
+                        style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.25)",
+                                 background: "rgba(255,255,255,.1)", color: "#fff", fontSize: 16, cursor: monthIdx > 0 ? "pointer" : "default",
+                                 opacity: monthIdx > 0 ? 1 : 0.4 }}>‹</button>
+                <div style={{ minWidth: 120, textAlign: "center", fontSize: 14, fontWeight: 700, color: "#fff", alignSelf: "center" }}>
+                  {monthLabel(perfMonth)}
+                </div>
+                <button onClick={() => monthIdx < perfMonths.length - 1 && setPerfMonth(perfMonths[monthIdx + 1])}
+                        disabled={monthIdx >= perfMonths.length - 1}
+                        style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.25)",
+                                 background: "rgba(255,255,255,.1)", color: "#fff", fontSize: 16,
+                                 cursor: monthIdx < perfMonths.length - 1 ? "pointer" : "default",
+                                 opacity: monthIdx < perfMonths.length - 1 ? 1 : 0.4 }}>›</button>
+              </div>
+            }>
+            <div className="fig" style={{ fontSize: 46, fontWeight: 600, letterSpacing: "-.03em", marginTop: 6 }}>
+              {k.net >= 0 ? "+" : ""}{fmt(k.net)}
             </div>
-            <div className="fig" style={{ fontSize: 30, fontWeight: 600, letterSpacing: "-.02em", marginTop: 8, color: tone(allTimePl) }}>
-              {fmt(allTimePl)}
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 8, fontSize: 13.5, color: "rgba(255,255,255,.78)" }}>
+              <span style={{ whiteSpace: "nowrap" }}>{k.count} closed trades</span>
+              <span style={{ whiteSpace: "nowrap" }}>{k.wins} profit · {k.losses} loss</span>
+              <span style={{ whiteSpace: "nowrap" }}>{fmt(k.charges)} in charges deducted</span>
             </div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 5 }}>
-              {rows.length} month{rows.length === 1 ? "" : "s"} with closed trades · investment-kind holds excluded, same as the Dashboard's win rate
+          </Hero>
+
+          {perfMonths.length === 0 ? (
+            <div style={{ ...PANEL, padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>
+              No closed trades yet for this scope.
+            </div>
+          ) : (<>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
+            <Card title="Total profit" value={fmt(k.totalProfit)} accent="var(--good)" tone="var(--good)"
+                  sub={`${perfMonthTrades.filter(x => x.net > 0).length} profit-making trades`} />
+            <Card title="Total loss" value={fmt(k.totalLoss)} accent="var(--bad)" tone="var(--bad)"
+                  sub={`${perfMonthTrades.filter(x => x.net < 0).length} loss-making trades`} />
+            <Card title="Win rate" value={k.winRate == null ? "—" : `${k.winRate.toFixed(0)}%`}
+                  accent="var(--accent)" tone={k.winRate == null ? "var(--ink-3)" : k.winRate >= 50 ? "var(--good)" : "var(--bad)"}
+                  sub={`${k.wins} of ${k.count} closed trades · >${WIN_PCT}% move to count as a win`} />
+            <Card title="Neutral trades" value={String(k.neutral)} accent="var(--ink-3)" tone="var(--ink-3)"
+                  sub={`Between ${LOSS_PCT}% and ${WIN_PCT}% move · ${fmt(k.neutralNet)} net (still counted above)`} />
+            <Card title="Profit factor" value={k.profitFactor == null ? "—" : k.profitFactor.toFixed(2)} accent="var(--accent)"
+                  sub="Gross profit ÷ gross loss · above 1.5 is healthy" />
+            <Card title="Avg win" value={fmt(k.avgWin)} accent="var(--good)" tone="var(--good)" sub="Per profit-making trade" />
+            <Card title="Avg loss" value={fmt(k.avgLoss)} accent="var(--bad)" tone="var(--bad)" sub={`Win/loss ratio ${rrText(k.riskReward)}`} />
+            <Card title="Best trade" value={k.best ? fmt(k.best.net) : "—"} accent="var(--ink-3)" tone="var(--good)"
+                  sub={k.best ? `${k.best.stock} · ${k.best.client} · ${fmtDate(k.best.sellDate)}` : "—"} />
+            <Card title="Worst trade" value={k.worst ? fmt(k.worst.net) : "—"} accent="var(--ink-3)" tone="var(--bad)"
+                  sub={k.worst ? `${k.worst.stock} · ${k.worst.client} · ${fmtDate(k.worst.sellDate)}` : "—"} />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,460px),1fr))", gap: 20 }}>
+            <div style={{ ...PANEL, borderRadius: 18, padding: "16px 20px 20px" }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Daily P&L</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12 }}>By exit date · click a day to filter trades</div>
+              <PerfCalendar weeks={perfCalendar.weeks} maxAbsDay={perfCalendar.maxAbsDay} selectedDay={perfDay} onSelectDay={setPerfDay} />
+            </div>
+            <div style={{ ...PANEL, borderRadius: 18, padding: "16px 20px 20px" }}>
+              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Equity curve</div>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12 }}>Cumulative net P&L through the month</div>
+              <PerfEquityCurve points={perfEquity.points} peak={perfEquity.peak} maxDD={perfEquity.maxDD} monthEnd={perfEquity.monthEnd} />
             </div>
           </div>
 
-          <div style={{ ...PANEL, borderRadius: 16, overflow: "auto" }}>
-            {rows.length === 0 ? (
-              <div style={{ padding: 24, fontSize: 13, color: "var(--ink-3)" }}>No closed trades yet for this scope.</div>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                    {["Month", "P&L", "Trades", "Win rate", "Avg win", "Avg loss", "Risk:Reward"].map((h, i) => (
-                      <th key={h} style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px",
-                                           fontSize: 11, color: "var(--ink-3)", fontWeight: 700,
-                                           textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...rows].reverse().map(r => {
-                    // Flag the months worth a second look: losing overall, a weak win rate, or
-                    // losses running bigger than wins — the exact pattern that made July/October
-                    // stand out when this was first checked by hand.
-                    const weak = r.pl < 0 || (r.winRate != null && r.winRate < 50) || (r.riskReward != null && r.riskReward < 1);
-                    return (
-                      <tr key={r.ym} style={{ borderBottom: "1px solid var(--line)",
-                                              background: weak ? "rgba(220,38,38,.05)" : "transparent" }}>
-                        <td className="fig" style={{ padding: "10px 16px", fontWeight: 600 }}>{r.ym}</td>
-                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", fontWeight: 700, color: tone(r.pl) }}>{fmt(r.pl)}</td>
-                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>{r.count}</td>
-                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right",
-                                                     color: r.winRate == null ? "var(--ink-3)" : r.winRate >= 50 ? "var(--good)" : "var(--bad)" }}>
-                          {r.winRate == null ? "—" : `${r.winRate.toFixed(0)}%`}
-                        </td>
-                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>
-                          {r.avgWin ? fmt(r.avgWin) : "—"}
-                        </td>
-                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>
-                          {r.avgLoss ? `-${fmt(r.avgLoss)}` : "—"}
-                        </td>
-                        <td className="fig" style={{ padding: "10px 16px", textAlign: "right",
-                                                     color: r.riskReward == null ? "var(--ink-3)" : r.riskReward >= 1 ? "var(--good)" : "var(--bad)" }}>
-                          {r.riskReward == null ? "—" : r.riskReward.toFixed(2)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-          </div>
-
-          {/* Momentum at entry — the user's own swing-trading criterion (3-month pre-entry move) */}
-          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px" }}>
-            <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>
-              Outcome by 3-month momentum at entry
-            </div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 5 }}>
-              % move in the stock over the ~3 months before you entered · needs price history, so a few recent or thinly-priced names may show no data
-            </div>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, marginTop: 14 }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                  {["Prior 3-month move", "Trades", "Win rate", "Total P&L", "Avg P&L"].map((h, i) => (
-                    <th key={h} style={{ textAlign: i === 0 ? "left" : "right", padding: "10px 16px",
-                                         fontSize: 11, color: "var(--ink-3)", fontWeight: 700,
-                                         textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {momentumBuckets.map(b => (
-                  <tr key={b.label} style={{ borderBottom: "1px solid var(--line)" }}>
-                    <td className="fig" style={{ padding: "10px 16px", fontWeight: 600 }}>{b.label}</td>
-                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: "var(--ink-2)" }}>{b.n}</td>
-                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right",
-                                                 color: b.winRate == null ? "var(--ink-3)" : b.winRate >= 50 ? "var(--good)" : "var(--bad)" }}>
-                      {b.winRate == null ? "—" : `${b.winRate.toFixed(0)}%`}
-                    </td>
-                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right", fontWeight: 700, color: tone(b.totalPl) }}>
-                      {b.n ? fmt(b.totalPl) : "—"}
-                    </td>
-                    <td className="fig" style={{ padding: "10px 16px", textAlign: "right", color: tone(b.n ? b.avgPl : null) }}>
-                      {b.n ? fmt(b.avgPl) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* MFE capture — separates "bad pick" from "good pick, gave back too much before exit" */}
-          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px" }}>
-            <div style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>
-              How much of the move did you keep (MFE capture)
-            </div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 5 }}>
-              Capture = (exit − entry) ÷ (highest price touched while held − entry). Low capture on a trade that moved well first means the exit gave back the gain, not that the pick was wrong.
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginTop: 14 }}>
-              {[["Never moved favorably", captureSummary.neverFavorable, "A bad pick — the stop/exit wasn't the problem"],
-                ["Kept under 30% of the move", captureSummary.low, "Exit gave back most of a real move"],
-                ["Kept 70%+ of the move", captureSummary.high, "Exit worked as intended"]].map(([label, b, note]) => (
-                <div key={label} style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid var(--line)" }}>
-                  <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em" }}>{label}</div>
-                  <div className="fig" style={{ fontSize: 20, fontWeight: 700, marginTop: 6, color: tone(b.n ? b.pl : null) }}>
-                    {b.n ? fmt(b.pl) : "—"}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,460px),1fr))", gap: 20 }}>
+            <div style={{ ...PANEL, overflow: "hidden" }}>
+              <PanelTitle>By strategy</PanelTitle>
+              <div style={{ display: "grid", gridTemplateColumns: "1.5fr .5fr .7fr 1fr .6fr 1.1fr", gap: 10,
+                            padding: "10px 22px", background: "#fafbfd", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)",
+                            fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-3)", marginTop: 12 }}>
+                <div>Setup</div><div style={{ textAlign: "right" }}>Trades</div><div style={{ textAlign: "right" }}>Win rate</div>
+                <div style={{ textAlign: "right" }}>Net P&L</div><div style={{ textAlign: "right" }}>PF</div><div />
+              </div>
+              {perfByStrategy.map(row => {
+                const barWidth = Math.min(50, (Math.abs(row.net) / row.maxAbs) * 50);
+                return (
+                  <div key={row.strategy} onClick={() => setPerfStrategy(perfStrategy === row.strategy ? "All" : row.strategy)}
+                       style={{ display: "grid", gridTemplateColumns: "1.5fr .5fr .7fr 1fr .6fr 1.1fr", gap: 10, padding: "11px 22px",
+                                borderBottom: "1px solid #f2f4f8", cursor: "pointer", fontSize: 12.5,
+                                background: perfStrategy === row.strategy ? "#EEF2FF" : "transparent",
+                                fontWeight: perfStrategy === row.strategy ? 800 : 400 }}>
+                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.strategy}</div>
+                    <div className="num" style={{ textAlign: "right" }}>{row.trades}</div>
+                    <div className="num" style={{ textAlign: "right" }}>{row.winRate == null ? "—" : `${row.winRate.toFixed(0)}%`}</div>
+                    <div className="fig" style={{ textAlign: "right", fontWeight: 700, color: tone(row.net) }}>{fmt(row.net)}</div>
+                    <div className="num" style={{ textAlign: "right", color: "var(--ink-3)" }}>—</div>
+                    <div style={{ position: "relative", height: 6, background: "#EEF1F6", borderRadius: 3, alignSelf: "center" }}>
+                      <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "var(--ink-3)" }} />
+                      <div style={{ position: "absolute", top: 0, bottom: 0, borderRadius: 3,
+                                    left: row.net >= 0 ? "50%" : `${50 - barWidth}%`, width: `${barWidth}%`,
+                                    background: row.net >= 0 ? "var(--good)" : "var(--bad)" }} />
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 }}>{b.n} trade{b.n === 1 ? "" : "s"} · {note}</div>
+                );
+              })}
+            </div>
+
+            <div style={SECTION}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={SECTION_LABEL}>Retrospect</div>
+                <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{perfMistakes.reviewedCount} of {perfMistakes.total} trades reviewed</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: "#EEF1F6", marginBottom: 14 }}>
+                <div style={{ height: 6, borderRadius: 3, background: "#4F46E5",
+                              width: `${perfMistakes.total ? (perfMistakes.reviewedCount / perfMistakes.total) * 100 : 0}%` }} />
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 700 }}>PLAN FOLLOWED</div>
+                  <div className="fig" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
+                    {perfMistakes.planFollowedPct == null ? "—" : `${perfMistakes.planFollowedPct.toFixed(0)}%`}
+                  </div>
+                </div>
+                <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px" }}>
+                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 700 }}>AVG DISCIPLINE</div>
+                  <div className="fig" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
+                    {perfMistakes.avgDiscipline == null ? "—" : `${perfMistakes.avgDiscipline.toFixed(1)} / 5`}
+                  </div>
+                </div>
+              </div>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 8 }}>Recurring mistakes</div>
+              {perfMistakes.top.length === 0 ? (
+                <div style={{ fontSize: 12, color: "var(--ink-3)" }}>No mistakes tagged on reviewed trades yet.</div>
+              ) : perfMistakes.top.map(m => (
+                <div key={m.mistake} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.mistake}</span>
+                  <div style={{ width: 60, height: 4, background: "#F1F4F8", borderRadius: 2 }}>
+                    <div style={{ width: `${(m.count / perfMistakes.maxCount) * 100}%`, height: 4, background: "#F87171", borderRadius: 2 }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: "var(--ink-3)" }}>×{m.count}</span>
+                  <span className="fig" style={{ fontSize: 11, fontWeight: 700, color: tone(m.cost) }}>{fmt(m.cost)}</span>
                 </div>
               ))}
             </div>
-            {captureSummary.worst.length > 0 && (
-              <div style={{ marginTop: 18 }}>
-                <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 8 }}>
-                  Worst give-backs (real move, lowest capture)
-                </div>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid var(--line)" }}>
-                      {["Stock", "Entry", "Exit", "Capture", "P&L"].map((h, i) => (
-                        <th key={h} style={{ textAlign: i === 0 ? "left" : "right", padding: "8px 14px",
-                                             fontSize: 10.5, color: "var(--ink-3)", fontWeight: 700,
-                                             textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {captureSummary.worst.map((t, i) => (
-                      <tr key={i} style={{ borderBottom: "1px solid var(--line)" }}>
-                        <td className="fig" style={{ padding: "8px 14px", fontWeight: 600 }}>{t.stock}</td>
-                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", color: "var(--ink-2)" }}>{fmtDate(t.buyDate)}</td>
-                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", color: "var(--ink-2)" }}>{fmtDate(t.sellDate)}</td>
-                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", color: "var(--bad)" }}>{t.capture.toFixed(0)}%</td>
-                        <td className="fig" style={{ padding: "8px 14px", textAlign: "right", fontWeight: 700, color: tone(t.pl) }}>{fmt(t.pl)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          </div>
+
+          <div style={{ ...PANEL, overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+                          padding: "14px 22px", borderBottom: "1px solid var(--line)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>Trades · {monthLabel(perfMonth)}</h3>
+                {perfDay && (
+                  <span onClick={() => setPerfDay(null)} style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
+                        background: "#EEF2FF", border: "1px solid #C7D2FE", color: "#3730A3", cursor: "pointer" }}>
+                    {fmtDate(perfDay)} ×
+                  </span>
+                )}
+                {perfStrategy !== "All" && (
+                  <span onClick={() => setPerfStrategy("All")} style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
+                        background: "#EEF2FF", border: "1px solid #C7D2FE", color: "#3730A3", cursor: "pointer" }}>
+                    {perfStrategy} ×
+                  </span>
+                )}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <Segmented value={perfOutcome} onChange={setPerfOutcome} options={[
+                  { value: "all", label: `All · ${perfMonthTrades.length}` },
+                  { value: "win", label: `Profit · ${perfMonthTrades.filter(x => x.net > 0).length}` },
+                  { value: "loss", label: `Loss · ${perfMonthTrades.filter(x => x.net < 0).length}` },
+                ]} />
+                <button onClick={() => setPerfNeedsReview(v => !v)} style={{
+                  fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+                  border: perfNeedsReview ? "1px solid #FDBA74" : "1px solid var(--line)",
+                  background: perfNeedsReview ? "#FFF7ED" : "var(--surface)", color: perfNeedsReview ? "#C2410C" : "var(--ink-2)" }}>
+                  Needs review · {perfMonthTrades.filter(x => !x.review?.reviewed).length}
+                </button>
+                <select value={perfSort} onChange={e => setPerfSort(e.target.value)}
+                        style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)" }}>
+                  <option value="latest">Latest exit</option>
+                  <option value="biggestWin">Biggest profit</option>
+                  <option value="biggestLoss">Biggest loss</option>
+                </select>
+              </div>
+            </div>
+            {perfFilteredTrades.length === 0 ? (
+              <div style={{ padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>No closed trades match these filters.</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14, padding: 20 }}>
+                {perfFilteredTrades.map(t => <PerfTradeCard key={t.key} t={t} onOpen={() => setOpenReviewKey(t.key)} />)}
               </div>
             )}
           </div>
+          </>)}
+
+          {openTrade && (
+            <TradeReviewDrawer t={openTrade} onClose={() => setOpenReviewKey(null)} onSave={saveReview}
+                                onPrev={() => navReview(-1)} onNext={() => navReview(1)} />
+          )}
         </>);
       })()}
 
