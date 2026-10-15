@@ -1544,8 +1544,8 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                     </div>
                   </div>
                   <div style={{ display: "grid",
-                                gridTemplateColumns: `repeat(${kind === "closed" ? 3 : 2}, 1fr)`, gap: "12px 14px",
-                                marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--row-rule)" }}>
+                                gridTemplateColumns: `repeat(${2 + (kind === "closed" ? 1 : 0) + (showSL ? 1 : 0) + (showRisk ? 1 : 0)}, 1fr)`,
+                                gap: "12px 14px", marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--row-rule)" }}>
                     <div style={{ textAlign: "right" }}><div style={fieldLabel}>Qty</div><div className="num" style={{ fontSize: 13 }}>{r.qty}</div></div>
                     <div style={{ textAlign: "right" }}><div style={fieldLabel}>Buy</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div></div>
                     {kind === "closed" && (
