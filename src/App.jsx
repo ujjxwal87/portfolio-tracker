@@ -1540,7 +1540,8 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                       <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
                     </div>
                   </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 14px",
+                  <div style={{ display: "grid",
+                                gridTemplateColumns: `repeat(${kind === "closed" ? 3 : 2}, 1fr)`, gap: "12px 14px",
                                 marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--row-rule)" }}>
                     <div><div style={fieldLabel}>Qty</div><div className="num" style={{ fontSize: 13 }}>{r.qty}</div></div>
                     <div><div style={fieldLabel}>Buy</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div></div>
@@ -1564,16 +1565,18 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                         </div>
                       </div>
                     )}
-                    {showCapital && (
-                      <div><div style={fieldLabel}>Capital</div>
-                        <CapitalCell row={r} entry={capEntry} isAdmin={isAdmin}
-                          saving={capitalSavingId === r.id} editing={capitalEditingId === r.id}
-                          onStartEdit={() => onStartCapitalEdit(r.id)} onCancelEdit={onCancelCapitalEdit}
-                          onSave={(value) => onSaveCapitalValue(r.id, value)}
-                          expanded={capExpanded} onToggleExpand={() => onToggleCapitalDetail(r.id)} />
-                      </div>
-                    )}
                   </div>
+                  {showCapital && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--row-rule)",
+                                  display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={fieldLabel}>Capital</div>
+                      <CapitalCell row={r} entry={capEntry} isAdmin={isAdmin}
+                        saving={capitalSavingId === r.id} editing={capitalEditingId === r.id}
+                        onStartEdit={() => onStartCapitalEdit(r.id)} onCancelEdit={onCancelCapitalEdit}
+                        onSave={(value) => onSaveCapitalValue(r.id, value)}
+                        expanded={capExpanded} onToggleExpand={() => onToggleCapitalDetail(r.id)} />
+                    </div>
+                  )}
                   {capExpanded && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--row-rule)", display: "grid", gap: 3 }}>
                       {capitalChainBetween(r.id, rows[i + 1]?.id, capitalLedger).map((step, si) => (
