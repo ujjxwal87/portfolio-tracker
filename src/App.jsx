@@ -1528,7 +1528,10 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
               const capExpanded = showCapital && capitalDetailId === r.id && capEntry?.after != null;
               return (
                 <div key={i} style={{ border: "1px solid var(--line)", borderRadius: 14, padding: "16px 18px", background: "var(--surface)" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10,
+                                cursor: showCapital ? "pointer" : "default" }}
+                       onClick={showCapital ? () => onToggleCapitalDetail(r.id) : undefined}
+                       title={showCapital ? "Click for this trade's capital breakdown" : undefined}>
                     <LogoChip symbol={r.stock} size={40} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.stock}</div>
@@ -1543,20 +1546,20 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                   <div style={{ display: "grid",
                                 gridTemplateColumns: `repeat(${kind === "closed" ? 3 : 2}, 1fr)`, gap: "12px 14px",
                                 marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--row-rule)" }}>
-                    <div><div style={fieldLabel}>Qty</div><div className="num" style={{ fontSize: 13 }}>{r.qty}</div></div>
-                    <div><div style={fieldLabel}>Buy</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div></div>
+                    <div style={{ textAlign: "right" }}><div style={fieldLabel}>Qty</div><div className="num" style={{ fontSize: 13 }}>{r.qty}</div></div>
+                    <div style={{ textAlign: "right" }}><div style={fieldLabel}>Buy</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div></div>
                     {kind === "closed" && (
-                      <div><div style={fieldLabel}>Sell</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.sellPrice)}</div></div>
+                      <div style={{ textAlign: "right" }}><div style={fieldLabel}>Sell</div><div className="num" style={{ fontSize: 13, color: "var(--ink-2)" }}>{fmt(r.sellPrice)}</div></div>
                     )}
                     {showSL && (
-                      <div><div style={fieldLabel}>SL</div>
+                      <div style={{ textAlign: "right" }}><div style={fieldLabel}>SL</div>
                         <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
                                 saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
                                 onSave={onSaveLevel} />
                       </div>
                     )}
                     {showRisk && (
-                      <div><div style={fieldLabel}>Risk</div>
+                      <div style={{ textAlign: "right" }}><div style={fieldLabel}>Risk</div>
                         <div className="num" style={{ fontSize: 13, fontWeight: 600, color: "var(--bad)" }}
                              title={riskEntry?.kind === "open" && riskEntry.sl !== undefined
                                ? (riskEntry.oneRule ? "No stop-loss set, so 1% of capital" : `Stop-loss ${fmt(riskEntry.sl)} → (entry − SL) × qty`)
