@@ -984,11 +984,13 @@ function PerfCalendar({ weeks, maxAbsDay, selectedDay, onSelectDay }) {
         ))}
       </div>
       {weeks.map((week, wi) => {
-        const weekPl = week.reduce((s, d) => s + d.pl, 0);
-        const weekCount = week.reduce((s, d) => s + d.count, 0);
+        const weekPl = week.reduce((s, d) => s + (d ? d.pl : 0), 0);
+        const weekCount = week.reduce((s, d) => s + (d ? d.count : 0), 0);
         return (
           <div key={wi} style={{ display: "grid", gridTemplateColumns: "repeat(5,minmax(0,1fr)) 66px", gap: 6, marginBottom: 6 }}>
-            {week.map(d => (
+            {week.map((d, di) => d == null ? (
+              <div key={di} style={{ height: 64 }} />
+            ) : (
               <div key={d.iso} onClick={d.count ? () => onSelectDay(selectedDay === d.iso ? null : d.iso) : undefined}
                    style={{ height: 64, borderRadius: 10, border: selectedDay === d.iso ? "2px solid #0f172a" : "1px solid #eef1f6",
                             padding: 7, background: dayBg(d), cursor: d.count ? "pointer" : "default", overflow: "hidden" }}>
@@ -2678,15 +2680,20 @@ export default function App() {
       byDay[d].pl += t.net; byDay[d].count += 1;
     });
     const maxAbsDay = Math.max(1, ...Object.values(byDay).map(d => Math.abs(d.pl)));
-    const days = [];
+    // Place each day in its REAL weekday column (Mon=0..Fri=4), not just the next slot in
+    // sequence — the 1st of the month isn't always a Monday. A new row starts whenever a
+    // Monday is reached; empty leading/trailing cells in the first/last row stay null.
+    const weeks = [];
+    let week = new Array(5).fill(null);
     for (let d = new Date(first); d <= last; d.setUTCDate(d.getUTCDate() + 1)) {
       const dow = d.getUTCDay();
       if (dow === 0 || dow === 6) continue;
+      const col = dow - 1;
+      if (col === 0 && week.some(x => x !== null)) { weeks.push(week); week = new Array(5).fill(null); }
       const iso = d.toISOString().slice(0, 10);
-      days.push({ iso, dom: d.getUTCDate(), ...(byDay[iso] || { pl: 0, count: 0 }) });
+      week[col] = { iso, dom: d.getUTCDate(), ...(byDay[iso] || { pl: 0, count: 0 }) };
     }
-    const weeks = [];
-    for (let i = 0; i < days.length; i += 5) weeks.push(days.slice(i, i + 5));
+    weeks.push(week);
     return { weeks, maxAbsDay };
   }, [perfMonth, perfMonthTrades]);
 
