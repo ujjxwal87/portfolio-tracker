@@ -722,5 +722,11 @@
   "symbol": "KTKBANK",
   "yahoo_name": "KARNATAKA BANK LIMITED",
   "price": null
+ },
+ "IOL CHEM AND PHARMA LTD": {
+  "isin": null,
+  "symbol": "IOLCP",
+  "yahoo_name": "IOL CHEM AND PHARMA LTD",
+  "price": null
  }
 }

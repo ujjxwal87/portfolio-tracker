@@ -14,3 +14,6 @@ scratch/
 # Broker exports contain client trade data — never commit them
 tradebook-*.csv
 pnl-*.csv
+
+# Saved Claude session notes
+chats/

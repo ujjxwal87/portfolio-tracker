@@ -7,12 +7,12 @@ export const SYMBOL_LOGOS = {
   "ADANIPOWER": "/logos/ADANIPOWER.webp",
   "AETHER": "/logos/AETHER.webp",
   "AIIL": "/logos/AIIL.webp",
-  "ARDEE": "/logos/ARDEE.png",
   "ANANDRATHI": "/logos/ANANDRATHI.png",
   "ANANTRAJ": "/logos/ANANTRAJ.png",
   "ANGELONE": "/logos/ANGELONE.webp",
   "APOLLO": "/logos/APOLLO.webp",
   "APOLLOHOSP": "/logos/APOLLOHOSP.webp",
+  "ARDEE": "/logos/ARDEE.png",
   "ASHAPURMIN": "/logos/ASHAPURMIN.png",
   "ASHOKLEY": "/logos/ASHOKLEY.webp",
   "ASTERDM": "/logos/ASTERDM.webp",
@@ -36,8 +36,8 @@ export const SYMBOL_LOGOS = {
   "CUMMINSIND": "/logos/CUMMINSIND.webp",
   "CUPID": "/logos/CUPID.png",
   "DATAPATTNS": "/logos/DATAPATTNS.webp",
-  "DIVISLAB": "/logos/DIVISLAB.webp",
   "DHOOTTRANS": "/logos/DHOOTTRANS.png",
+  "DIVISLAB": "/logos/DIVISLAB.webp",
   "EMMVEE": "/logos/EMMVEE.png",
   "EXIDEIND": "/logos/EXIDEIND.webp",
   "FEDERALBNK": "/logos/FEDERALBNK.webp",
@@ -68,6 +68,7 @@ export const SYMBOL_LOGOS = {
   "KPITTECH": "/logos/KPITTECH.webp",
   "KRISHANA": "/logos/KRISHANA.png",
   "KRISHNADEF": "/logos/KRISHNADEF.webp",
+  "KTKBANK": "/logos/KTKBANK.webp",
   "LAURUSLABS": "/logos/LAURUSLABS.webp",
   "LENSKART": "/logos/LENSKART.png",
   "LLOYDSME": "/logos/LLOYDSME.webp",
@@ -96,6 +97,7 @@ export const SYMBOL_LOGOS = {
   "PIRAMALFIN": "/logos/PIRAMALFIN.png",
   "PSUBNKIETF": "/logos/PSUBNKIETF.png",
   "RADICO": "/logos/RADICO.webp",
+  "RAYMOND": "/logos/RAYMOND.webp",
   "RPTECH": "/logos/RPTECH.png",
   "RUBICON": "/logos/RUBICON.png",
   "SAIL": "/logos/SAIL.webp",
@@ -123,6 +125,3 @@ export const SYMBOL_LOGOS = {
   "XPROINDIA": "/logos/XPROINDIA.png",
   "YATHARTH": "/logos/YATHARTH.webp"
 };
-
-
-

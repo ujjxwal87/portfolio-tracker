@@ -1,229 +1,172 @@
-"""Reconcile a Groww "Stocks P&L Report" .xlsx into portfolio_tracker.
+"""Pull TODAY's trades from the Groww trading API and reconcile them into portfolio_tracker.
 
-  python tools/groww_import.py --client "Om Gunjal" --file <report.xlsx>
-  ... then add --apply to write.
+    export GROWW_ACCESS_TOKEN=...
+    python tools/groww_import.py --client "Om Gunjal"
+    ... then add --apply to write.
 
-Groww has no historical trade API — its /v1/order/list is today-only and its trade endpoint needs an
-order id from that same day — so the P&L report is the only way to get past fills. Hence a file
-importer rather than an API puller like dhan_import.py.
+IMPORTANT — this API cannot backfill. /v1/order/list returns "the history of orders executed
+for the day" with no date parameters, and trades are only reachable per order id. So this is a
+DAILY capture job: whatever it does not collect on the day is not retrievable later, and that
+date has to come from the Groww P&L xlsx instead (see scratch/diff_groww.py).
 
-The report is LOT-level: the "Realised trades" section carries a buy leg AND a sell leg per matched
-lot; "Unrealised trades" carries buy legs only. Lots are merged to one row per (symbol, date,
-direction) at a weighted-average price — the convention the rest of this DB uses — then diffed
-against what is already stored. Only genuinely new rows are inserted: this NEVER deletes, unlike the
-original scratch/insert_om_trades.py, because Om's book carries hand-verified corrections that a
-delete-and-reload would silently discard.
+Tokens expire daily at 06:00. Groww also gates API keys on whitelisted static IPs, so this must
+run from the whitelisted host — a dynamic-IP machine fails every endpoint once the address
+rotates (the same trap Upstox's UDAPI1221 sets).
 
-Groww names stocks, it does not ticker them, so names resolve through scratch/symbol_map.json. An
-unmapped name that survives the join cutoff is a hard error — guessing a ticker would file a trade
-against the wrong company.
+Trades are merged per (symbol, date, direction) at a weighted-average price, the convention the
+rest of this DB uses.
 """
-import argparse, collections, datetime, json, os, sys
-import openpyxl, psycopg2
+import argparse, collections, json, os, sys, datetime
+import requests, psycopg2
 from dotenv import load_dotenv
 
+BASE = "https://api.groww.in/v1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
+DUMP = os.path.join(ROOT, "scratch")
+os.makedirs(DUMP, exist_ok=True)
 load_dotenv(os.path.join(ROOT, "backend", ".env"))
-# Tracked alongside this file: the importer is useless without it, and scratch/ is git-ignored.
-# Public reference data only — company name, ISIN, NSE ticker. Falls back to the older scratch copy
-# so the pre-existing one-off scripts that read it keep working.
-SYMBOL_MAP = next(p for p in (os.path.join(HERE, "symbol_map.json"),
-                              os.path.join(ROOT, "scratch", "symbol_map.json"))
-                  if os.path.exists(p))
-
-# Lots bought before a client joined are untracked, so their disposals must be too — importing a
-# sell whose buy we never held drives the position negative. Same rule the first Om load used
-# (scratch/insert_om_trades.py): a hard cutoff, plus the few positions that were taken over.
-# Only a client whose rule differs from "cutoff = their joining_date" needs an entry here. Everyone
-# else has theirs derived from clients.joining_date — see rules_for.
-JOIN_RULES = {
-    "Om Gunjal": {
-        # Later than his joining_date (2026-02-03): the book was taken over in March, apart from the
-        # three positions below.
-        "cutoff": datetime.date(2026, 3, 9),
-        # Bought before the cutoff but managed from the start, so they ARE tracked.
-        "carried_over": {"ANANT RAJ LIMITED", "BHARAT ELECTRONICS LTD", "KRISHANA PHOSCHEM LIMITED"},
-        "carried_over_from": datetime.date(2026, 2, 3),
-    },
-}
 
 
-def rules_for(client, joining_date):
-    """The join rule to filter lots by: an explicit JOIN_RULES entry, else the client's joining_date.
-
-    Defaulting to joining_date is safe because it is what every client's first load already used in
-    effect — each one's earliest tracked trade sits on or just after it. With no date at all we
-    would import lots bought before the client existed here and drive their positions negative."""
-    if client in JOIN_RULES:
-        return JOIN_RULES[client]
-    if joining_date:
-        return {"cutoff": joining_date, "carried_over": set(), "carried_over_from": joining_date}
-    return None
-
-
-def _date(s):
-    d, m, y = s.split("-")
-    return datetime.date(int(y), int(m), int(d))
+def api(path, token, **params):
+    r = requests.get(f"{BASE}{path}", timeout=30, params=params,
+                     headers={"Authorization": f"Bearer {token}",
+                              "Accept": "application/json"})
+    if r.status_code == 401:
+        sys.exit("401 from Groww — token expired (they die at 06:00) or wrong account.")
+    if r.status_code == 403:
+        sys.exit("403 from Groww — this host's IP is probably not whitelisted on the API key.")
+    if not r.ok:
+        sys.exit(f"{r.status_code} from {path}: {r.text[:300]}")
+    return r.json()
 
 
-def parse_report(path):
-    """(realised, unrealised) lot rows from the Trade Level sheet, as raw tuples."""
-    ws = openpyxl.load_workbook(path, data_only=True)["Trade Level"]
-    mode, realised, unrealised = None, [], []
-    for row in ws.iter_rows(values_only=True):
-        if row[0] == "Realised trades":
-            mode = "r"
+def fetch_orders(token, segment="CASH"):
+    """Every order for the CURRENT day — the only window this API offers."""
+    out, page = [], 0
+    while True:
+        body = api("/order/list", token, segment=segment, page=page, page_size=50)
+        rows = body.get("payload", {}).get("order_list") or body.get("order_list") or []
+        if not rows:
+            break
+        out.extend(rows)
+        print(f"  orders page {page}: {len(rows)}")
+        page += 1
+        if page > 100:
+            sys.exit("runaway pagination — stopping at page 100")
+    return out
+
+
+def fetch_trades(token, orders, segment="CASH"):
+    """Fills per order. An order can produce several trades, so this is the grain that
+    matches a tradebook; the order itself is not."""
+    fills = []
+    for o in orders:
+        oid = o.get("groww_order_id")
+        if not oid:
             continue
-        if row[0] == "Unrealised trades":
-            mode = "u"
-            continue
-        # A lot row has a numeric quantity and a dd-mm-yyyy buy date; headers and the
-        # summary/charges block above do not.
-        if not isinstance(row[2], (int, float)):
-            continue
-        if not isinstance(row[3], str) or "-" not in row[3]:
-            continue
-        (realised if mode == "r" else unrealised).append(row)
-    return realised, unrealised
+        body = api(f"/order/trades/{oid}", token, segment=segment, page=0, page_size=50)
+        rows = body.get("payload", {}).get("trade_list") or body.get("trade_list") or []
+        fills.extend(rows)
+    return fills
 
 
-def tracked(name, buy_date, rules):
-    """Whether a lot bought on `buy_date` is one this client's book tracks."""
-    if not rules:
-        return True
-    if buy_date >= rules["cutoff"]:
-        return True
-    return name in rules["carried_over"] and buy_date >= rules["carried_over_from"]
-
-
-def to_events(realised, unrealised, rules, name2sym):
-    """Lot rows -> (symbol, date, side) -> {qty, value} legs, plus what was skipped and why."""
+def merge(fills):
+    """Fill grain -> one row per (symbol, date, direction) at a weighted-average price."""
     agg = collections.defaultdict(lambda: {"qty": 0, "value": 0.0})
-    skipped, unmapped = collections.Counter(), {}
-
-    def add(name, isin, side, qty, price, day):
-        sym = name2sym.get(name)
-        if not sym:
-            unmapped[name] = isin
-            return
-        a = agg[(sym, day.isoformat(), side)]
+    for f in fills:
+        if (f.get("trade_status") or "").upper() in ("REJECTED", "CANCELLED", "FAILED"):
+            continue
+        sym = (f.get("trading_symbol") or f.get("symbol") or "").strip().upper()
+        side = (f.get("transaction_type") or "").strip().upper()
+        qty = int(f.get("quantity") or 0)
+        px = float(f.get("price") or 0)
+        day = str(f.get("trade_date_time") or f.get("created_at") or "")[:10]
+        if not (sym and side in ("BUY", "SELL") and qty and day):
+            print(f"  ! skipping unresolvable fill: {json.dumps(f)[:200]}")
+            continue
+        a = agg[(sym, day, side)]
         a["qty"] += qty
-        a["value"] += qty * float(price)
-
-    for row in realised:
-        name, isin, qty, bd = row[0], row[1], int(row[2]), _date(row[3])
-        if not tracked(name, bd, rules):
-            skipped[name] += 1
-            continue
-        add(name, isin, "BUY", qty, row[4], bd)
-        add(name, isin, "SELL", qty, row[7], _date(row[6]))
-    for row in unrealised:
-        name, isin, qty, bd = row[0], row[1], int(row[2]), _date(row[3])
-        if not tracked(name, bd, rules):
-            skipped[name] += 1
-            continue
-        add(name, isin, "BUY", qty, row[4], bd)
-
-    merged = {k: {"qty": v["qty"], "price": round(v["value"] / v["qty"], 4)}
-              for k, v in agg.items() if v["qty"]}
-    return merged, skipped, unmapped
+        a["value"] += qty * px
+    return {k: {"qty": v["qty"], "price": round(v["value"] / v["qty"], 4)}
+            for k, v in agg.items()}
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", required=True)
-    ap.add_argument("--file", required=True)
+    ap.add_argument("--segment", default="CASH")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args()
 
-    name2sym = {n: v["symbol"] for n, v in json.load(open(SYMBOL_MAP)).items()}
-    realised, unrealised = parse_report(args.file)
-    print(f"report: {len(realised)} realised lots, {len(unrealised)} unrealised lots")
+    token = os.getenv("GROWW_ACCESS_TOKEN")
+    if not token:
+        sys.exit("set GROWW_ACCESS_TOKEN")
 
-    conn = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
-                            dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
-                            password=os.getenv("DB_PASSWORD"), sslmode="require")
-    cur = conn.cursor()
-    cur.execute("select id, joining_date from portfolio_tracker.clients where name=%s",
-                (args.client,))
+    c = psycopg2.connect(host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"),
+                         dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
+                         password=os.getenv("DB_PASSWORD"), sslmode="require")
+    cur = c.cursor()
+    cur.execute("select id from portfolio_tracker.clients where name=%s", (args.client,))
     row = cur.fetchone()
     if not row:
         sys.exit(f"no client named {args.client!r}")
-    cid, joining_date = row
+    cid = row[0]
 
-    rules = rules_for(args.client, joining_date)
-    if not rules:
-        sys.exit(f"{args.client} has neither a joining_date nor a JOIN_RULES entry — set one first, "
-                 "or lots bought before they joined get filed as their trades.")
-    print(f"join cutoff {rules['cutoff']} "
-          f"(from {'JOIN_RULES' if args.client in JOIN_RULES else 'clients.joining_date'})")
-    merged, skipped, unmapped = to_events(realised, unrealised, rules, name2sym)
-    if skipped:
-        print(f"  skipped {sum(skipped.values())} pre-join lot(s) across {len(skipped)} name(s) — "
-              "their disposals are untracked too")
-    if unmapped:
-        print(f"\n{len(unmapped)} NAME(S) WITH NO TICKER in tools/symbol_map.json:")
-        for n, isin in sorted(unmapped.items()):
-            print(f"   {n}  ({isin})")
-        sys.exit("Refusing to run — add these to symbol_map.json first (a guessed ticker files the "
-                 "trade against the wrong company).")
-    print(f"{len(merged)} merged (symbol, date, side) rows\n")
+    print(f"Fetching Groww orders for today ({datetime.date.today()}) …")
+    orders = fetch_orders(token, args.segment)
+    print(f"{len(orders)} orders")
+    fills = fetch_trades(token, orders, args.segment)
+    print(f"{len(fills)} fills")
+    raw = os.path.join(DUMP, f"groww_raw_{args.client.split()[0].lower()}.json")
+    json.dump({"orders": orders, "fills": fills}, open(raw, "w"), indent=2)
+    print(f"raw saved -> {raw}")
 
-    cur.execute("""select stock_symbol, date, type, quantity, price, broker
-                   from portfolio_tracker.trades where client_id=%s""", (cid,))
-    existing = {(s, d.isoformat(), t): {"qty": q, "price": float(p), "broker": b}
-                for s, d, t, q, p, b in cur.fetchall()}
+    merged = merge(fills)
+    print(f"\n{len(merged)} merged (symbol, date, side) rows\n")
+
+    days = sorted({k[1] for k in merged}) or [str(datetime.date.today())]
+    cur.execute("""select stock_symbol, date, type, quantity, price from portfolio_tracker.trades
+                   where client_id=%s and date between %s and %s""", (cid, days[0], days[-1]))
+    existing = {(s, d.isoformat(), t): {"qty": q, "price": float(p)}
+                for s, d, t, q, p in cur.fetchall()}
 
     new, match, conflict = [], [], []
     for k, v in sorted(merged.items()):
         e = existing.get(k)
         if not e:
             new.append((k, v))
-        # Same quantity and the total consideration agrees to within a rupee => the same trade at a
-        # rounded price. A real discrepancy moves the value by far more.
         elif e["qty"] == v["qty"] and abs(e["qty"] * e["price"] - v["qty"] * v["price"]) < 1.0:
-            match.append((k, v, e))
+            match.append((k, v))
         else:
             conflict.append((k, v, e))
-    # Rows the DB holds that this report doesn't mention. Expected, not an error: the report covers a
-    # window, and anything sold before it opened is absent by construction.
-    only_db = [(k, v) for k, v in sorted(existing.items()) if k not in merged]
 
-    def show(title, items, fmt):
-        print(f"--- {title}: {len(items)} ---")
-        for it in items:
-            print("   " + fmt(*it))
-        print()
-
-    show("NEW (not in DB) — would insert", new,
-         lambda k, v: f"{k[1]} {k[0]:12s} {k[2]:4s} qty={v['qty']} @ {v['price']}")
-    show("ALREADY IN DB, identical", match,
-         lambda k, v, e: f"{k[1]} {k[0]:12s} {k[2]:4s} qty={v['qty']} @ {v['price']}")
-    show("CONFLICT — same key, different numbers", conflict,
-         lambda k, v, e: f"{k[1]} {k[0]:12s} {k[2]:4s} report qty={v['qty']}@{v['price']} | "
-                         f"db qty={e['qty']}@{e['price']}")
-    show("IN DB, absent from this report (outside its window — left alone)", only_db,
-         lambda k, v: f"{k[1]} {k[0]:12s} {k[2]:4s} qty={v['qty']} @ {v['price']}")
+    for k, v in new:
+        print(f"  NEW      {k[1]} {k[0]:12s} {k[2]:4s} qty={v['qty']} @ {v['price']}")
+    for k, v in match:
+        print(f"  already  {k[1]} {k[0]:12s} {k[2]:4s} qty={v['qty']} @ {v['price']}")
+    for k, v, e in conflict:
+        print(f"  CONFLICT {k[1]} {k[0]:12s} {k[2]:4s} groww {v['qty']}@{v['price']} "
+              f"| db {e['qty']}@{e['price']}")
 
     if conflict:
-        print("CONFLICTS PRESENT — resolve these before applying. Nothing written.")
+        print("\nCONFLICTS PRESENT — resolve before applying. Nothing written.")
         return
     if not args.apply:
-        print("[DRY RUN] re-run with --apply to insert the NEW rows.")
+        print(f"\n[DRY RUN] {len(new)} row(s) would be inserted. Re-run with --apply.")
         return
 
     n = 0
     for (sym, day, side), v in new:
         cur.execute("""INSERT INTO portfolio_tracker.trades
             (client_id, stock_symbol, type, quantity, price, date, broker, notes)
-            VALUES (%s,%s,%s,%s,%s,%s,'Groww','from Groww P&L report')
+            VALUES (%s,%s,%s,%s,%s,%s,'Groww','from Groww API')
             ON CONFLICT (client_id, broker, stock_symbol, date, type)
             WHERE broker IS NOT NULL DO NOTHING""",
             (cid, sym, side, v["qty"], v["price"], day))
         n += cur.rowcount
-    conn.commit()
-    print(f"inserted {n} rows")
+    c.commit()
+    print(f"\ninserted {n} rows")
 
 
 if __name__ == "__main__":
