@@ -4394,21 +4394,6 @@ export default function App() {
         const dayChange = dayRows.reduce((a, r) => a + r.dayChg, 0);
         const movers = [...dayRows].filter(r => r.prev).sort((a, b) => Math.abs(b.dayChg) - Math.abs(a.dayChg))
           .filter((r, i, arr) => arr.findIndex(x => x.stock === r.stock) === i).slice(0, 5);
-        // Per-client rows for the list card.
-        const clientRows = clientNames.map(c => {
-          const rows = portfolioAll.filter(p => c === "All" ? !ownNames.has(p.client) : c === "Own" ? ownNames.has(p.client) : p.client === c);
-          const val = rows.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
-          const open = rows.filter(p => p.netQty > 0).length;
-          const pl = rows.reduce((a, p) => a + p.totalPL, 0);
-          // Same basis as the hero Return: P&L over the most capital ever tied up at once.
-          const scoped = trades.filter(t => c === "All" ? !ownNames.has(t.client_name) : c === "Own" ? ownNames.has(t.client_name) : t.client_name === c);
-          let committed = 0, peak = 0;
-          [...scoped].sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(t => {
-            committed += (t.type === "BUY" ? 1 : -1) * t.quantity * Number(t.price);
-            if (committed > peak) peak = committed;
-          });
-          return { c, val, open, ret: peak > 0 ? pl / peak * 100 : 0 };
-        });
         const allocTotal = holdings.reduce((s, h) => s + h.currentVal, 0);
         const ALLOC = ["#1D4ED8", "#0E7490", "#B45309", "#7C3AED", "#BE185D", "#4D7C0F", "#475569"];
         const bySym = {};
@@ -4421,7 +4406,6 @@ export default function App() {
         let acc = 0;
         const winPct = decisiveLots > 0 ? winCount / decisiveLots * 100 : 0;
         const CAP = { fontSize: 12.5, color: "var(--ink-3)" };
-        const showList = isAdmin || isGuest;
         return (<>
         {trades.length === 0 ? (
           <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
@@ -4429,32 +4413,7 @@ export default function App() {
             <div style={{ ...CAP, marginTop: 4 }}>Add clients first, then log trades in the Trades tab.</div>
           </div>
         ) : (
-        <div style={{ display: "grid", gridTemplateColumns: showList ? "320px 1fr" : "1fr", gap: 16, alignItems: "start" }}>
-          {showList && (
-            <div style={{ ...PANEL, padding: 12, display: "flex", flexDirection: "column", gap: 2 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 10px 10px" }}>
-                <span style={{ fontSize: 20, fontWeight: 900 }}>{isGuest ? "Sample books" : "Clients"}</span>
-                <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Value · return</span>
-              </div>
-              {clientRows.map(r => {
-                const on = filterClient === r.c;
-                return (
-                  <button key={r.c} onClick={() => setFilterClient(r.c)} className={on ? "" : "nav-item"} style={{
-                    display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 14, border: "none",
-                    cursor: "pointer", textAlign: "left", width: "100%",
-                    background: on ? "var(--ink)" : "transparent", color: on ? "#fff" : "var(--ink)" }}>
-                    <Avatar name={scopeLabel(r.c)} all={r.c === "All" || r.c === "Own"} size={34} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: 16, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel(r.c)}</span>
-                      <span className="num" style={{ display: "block", fontSize: 13, color: on ? "var(--hero-sub)" : "var(--ink-3)" }}>{lakhs(r.val)} · {r.open} holdings</span>
-                    </span>
-                    <span className="num" style={{ fontSize: 15, fontWeight: 700, color: on ? (r.ret >= 0 ? "#6EE7B7" : "#FCA5A5") : tone(r.ret) }}>{pct(r.ret)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
               <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: "28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
