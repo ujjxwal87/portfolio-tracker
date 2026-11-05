@@ -18,6 +18,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 load_dotenv(os.path.join(ROOT, "backend", ".env"))
 BROKER = "Zerodha"
+# Family books are taken in full, whatever their joining date.
+NO_JOIN_CUTOFF = {"Ujjawal Chhajer", "Deepmala Chhajer", "Nandu"}
 PRE_JOIN_LOTS = {("Tanishka Bansal", "GILT5YBEES"), ("Tanishka Bansal", "LTF")}
 
 
@@ -71,7 +73,7 @@ def main():
     cid, joined = row
     # Anything before the joining date is untracked by design, and so is the later sale of a lot
     # bought then — drop the former here, and check the latter against the negative-holdings list.
-    if joined:
+    if joined and args.client not in NO_JOIN_CUTOFF:
         early = [k for k in merged if k[1] < joined.isoformat()]
         for k in early:
             del merged[k]
