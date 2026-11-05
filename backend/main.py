@@ -249,10 +249,11 @@ def create_client(body: ClientCreate, user: auth.CurrentUser = Depends(auth.requ
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
-                "INSERT INTO portfolio_tracker.clients (name, phone, email, joining_date, is_own_money, owner_id) "
-                "VALUES (%s, %s, %s, %s, %s, %s) RETURNING id, name, phone, email, joining_date, "
-                "         is_own_money, created_at, updated_at",
-                (body.name, body.phone, body.email, body.joining_date, body.is_own_money, user.id),
+                "INSERT INTO portfolio_tracker.clients (name, phone, email, joining_date, is_own_money, owner_id, benchmark_keys) "
+                "VALUES (%s, %s, %s, %s, %s, %s, COALESCE(%s, '{}')) RETURNING id, name, phone, email, joining_date, "
+                "         cash_balance, benchmark_keys, is_own_money, created_at, updated_at, trades_synced_at",
+                (body.name, body.phone, body.email, body.joining_date, body.is_own_money, user.id,
+                 _valid_benchmarks(body.benchmark_keys)),
             )
             return cur.fetchone()
 
@@ -267,8 +268,8 @@ def update_client(client_id: str, body: ClientCreate,
                 "UPDATE portfolio_tracker.clients "
                 "SET name=%s, phone=%s, email=%s, joining_date=%s, is_own_money=%s, "
                 "    benchmark_keys=COALESCE(%s, benchmark_keys), updated_at=NOW() "
-                "WHERE id=%s RETURNING id, name, phone, email, joining_date, benchmark_keys, "
-                "         is_own_money, created_at, updated_at",
+                "WHERE id=%s RETURNING id, name, phone, email, joining_date, cash_balance, benchmark_keys, "
+                "         is_own_money, created_at, updated_at, trades_synced_at",
                 (body.name, body.phone, body.email, body.joining_date, body.is_own_money,
                  _valid_benchmarks(body.benchmark_keys), client_id),
             )
@@ -1182,6 +1183,79 @@ def get_benchmark(client_id: str, portfolio_value: Optional[float] = None, user:
     return result
 
 
+@app.get("/api/benchmark/by-client")
+def get_benchmark_by_client(index: str = "nifty50", values: str = "", user: auth.CurrentUser = Depends(auth.current_user)):
+    """Money-weighted (XIRR) return of every client the advisor owns vs one index, in one call.
+
+    `values` is "client_id:portfolio_value,..." — the live portfolio value only the frontend knows
+    (it holds the prices). Clients without deposits or without a value are skipped."""
+    if not user.is_admin:
+        raise HTTPException(403, "Admins only")
+    if index != BLEND_KEY and index not in INDEXES:
+        raise HTTPException(400, "Unknown index")
+    pv = {}
+    for part in values.split(","):
+        if ":" in part:
+            cid, val = part.split(":", 1)
+            try:
+                pv[cid.strip()] = float(val)
+            except ValueError:
+                pass
+    if not pv:
+        return {"index": index, "label": None, "index_xirr_pct": None, "clients": []}
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT f.client_id::text AS client_id, f.date, f.amount FROM portfolio_tracker.cash_flows f "
+                "JOIN portfolio_tracker.clients c ON c.id = f.client_id WHERE c.owner_id = %s ORDER BY f.date",
+                (user.id,),
+            )
+            rows = cur.fetchall()
+    by_client = {}
+    for r in rows:
+        if r["client_id"] in pv:
+            by_client.setdefault(r["client_id"], []).append(r)
+    if not by_client:
+        return {"index": index, "label": None, "index_xirr_pct": None, "clients": []}
+
+    start = min(f["date"] for fl in by_client.values() for f in fl).strftime("%Y-%m-%d")
+    keys = list(BLEND_WEIGHTS) if index == BLEND_KEY else [index]
+    series = {}
+    for k in keys:
+        try:
+            series[k] = _index_daily(INDEXES[k][0], start)
+        except Exception:
+            series[k] = None
+        if not series[k]:
+            raise HTTPException(502, "Index data unavailable")
+    weights = BLEND_WEIGHTS if index == BLEND_KEY else {index: 1.0}
+    label = BLEND_LABEL if index == BLEND_KEY else INDEXES[index][1]
+    now_level, now_day = {}, {}
+    for k in keys:
+        d, lv = list(series[k].items())[-1]
+        now_day[k], now_level[k] = d, lv
+    end_day = datetime.strptime(max(now_day.values()), "%Y-%m-%d").date()
+
+    def index_value(flows):
+        total = 0.0
+        for f in flows:
+            day = f["date"].strftime("%Y-%m-%d")
+            for k, w in weights.items():
+                _, lv = _level_on_or_after(series[k], day)
+                if lv:
+                    total += float(f["amount"]) * w / lv * now_level[k]
+        return total
+
+    out = []
+    for cid, flows in by_client.items():
+        xf = [(f["date"], -float(f["amount"])) for f in flows]
+        p_x = _xirr(xf + [(end_day, pv[cid])])
+        i_x = _xirr(xf + [(end_day, index_value(flows))])
+        out.append({"client_id": cid, "portfolio_xirr_pct": p_x, "index_xirr_pct": i_x,
+                    "alpha_xirr_pp": round(p_x - i_x, 2) if p_x is not None and i_x is not None else None})
+    return {"index": index, "label": label, "clients": out}
+
+
 @app.get("/api/benchmark/series")
 def get_benchmark_series(client_id: str, user: auth.CurrentUser = Depends(auth.current_user)):
     client_id = auth.scope_client_id(user, client_id, list(guest_client_map()) if user.is_guest else None)
@@ -1280,7 +1354,14 @@ class TradeReviewBody(BaseModel):
 def list_trade_reviews(user: auth.CurrentUser = Depends(auth.require_admin)):
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM portfolio_tracker.trade_reviews")
+            # Only reviews of this advisor's own clients' trades — the two advisors are peers.
+            cur.execute(
+                "SELECT r.* FROM portfolio_tracker.trade_reviews r "
+                "JOIN portfolio_tracker.trades t ON t.id::text = r.buy_trade_id::text "
+                "JOIN portfolio_tracker.clients c ON c.id = t.client_id "
+                "WHERE c.owner_id = %s",
+                (user.id,),
+            )
             return cur.fetchall()
 
 
@@ -1295,8 +1376,22 @@ def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(
     cols = ["strategy", "planned_entry", "planned_sl", "planned_target", "followed_plan",
             "entry_reason", "exit_reason", "emotion", "discipline", "mistakes", "chart_url", "reviewed"]
     values = {c: fields.get(c) for c in cols}
+    # A field the client sent — even as null — overwrites, so deselecting a strategy/emotion or
+    # removing a chart sticks. A field it left out keeps whatever is stored.
+    present = [c for c in cols if c in fields]
+    set_sql = ", ".join(
+        ("mistakes = COALESCE(EXCLUDED.mistakes, '{}')" if c == "mistakes"
+         else "reviewed = COALESCE(EXCLUDED.reviewed, FALSE)" if c == "reviewed"
+         else f"{c} = EXCLUDED.{c}")
+        for c in present)
+    set_sql = (set_sql + ", " if set_sql else "") + "updated_at = NOW()"
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT 1 FROM portfolio_tracker.trades t JOIN portfolio_tracker.clients c ON c.id = t.client_id "
+                "WHERE t.id::text = %s AND c.owner_id = %s", (body.buy_trade_id, user.id))
+            if not cur.fetchone():
+                raise HTTPException(404, "Trade not found")
             cur.execute(
                 """
                 INSERT INTO portfolio_tracker.trade_reviews
@@ -1307,20 +1402,7 @@ def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(
                         %(planned_target)s, %(followed_plan)s, %(entry_reason)s, %(exit_reason)s,
                         %(emotion)s, %(discipline)s, COALESCE(%(mistakes)s, '{}'), %(chart_url)s,
                         COALESCE(%(reviewed)s, FALSE), NOW())
-                ON CONFLICT (buy_trade_id, sell_trade_id) DO UPDATE SET
-                    strategy       = COALESCE(EXCLUDED.strategy, trade_reviews.strategy),
-                    planned_entry  = COALESCE(EXCLUDED.planned_entry, trade_reviews.planned_entry),
-                    planned_sl     = COALESCE(EXCLUDED.planned_sl, trade_reviews.planned_sl),
-                    planned_target = COALESCE(EXCLUDED.planned_target, trade_reviews.planned_target),
-                    followed_plan  = COALESCE(%(followed_plan)s, trade_reviews.followed_plan),
-                    entry_reason   = COALESCE(EXCLUDED.entry_reason, trade_reviews.entry_reason),
-                    exit_reason    = COALESCE(EXCLUDED.exit_reason, trade_reviews.exit_reason),
-                    emotion        = COALESCE(EXCLUDED.emotion, trade_reviews.emotion),
-                    discipline     = COALESCE(EXCLUDED.discipline, trade_reviews.discipline),
-                    mistakes       = COALESCE(%(mistakes)s, trade_reviews.mistakes),
-                    chart_url      = COALESCE(EXCLUDED.chart_url, trade_reviews.chart_url),
-                    reviewed       = COALESCE(%(reviewed)s, trade_reviews.reviewed),
-                    updated_at     = NOW()
+                ON CONFLICT (buy_trade_id, sell_trade_id) DO UPDATE SET """ + set_sql + """
                 RETURNING *
                 """,
                 {"buy_trade_id": body.buy_trade_id, "sell_trade_id": body.sell_trade_id, **values},

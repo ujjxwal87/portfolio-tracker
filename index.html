@@ -3,33 +3,43 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0b1b3f" />
+    <meta name="theme-color" content="#F1F2F7" />
     <title>Mudra Securities</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
+      @font-face { font-family: "Satoshi"; font-weight: 400; font-display: swap; src: url("/fonts/Satoshi-Regular.woff2") format("woff2"); }
+      @font-face { font-family: "Satoshi"; font-weight: 500; font-display: swap; src: url("/fonts/Satoshi-Medium.woff2") format("woff2"); }
+      @font-face { font-family: "Satoshi"; font-weight: 700; font-display: swap; src: url("/fonts/Satoshi-Bold.woff2") format("woff2"); }
+      @font-face { font-family: "Satoshi"; font-weight: 900; font-display: swap; src: url("/fonts/Satoshi-Black.woff2") format("woff2"); }
+
       :root {
-        --surface: #ffffff;
-        --canvas: #f6f7f9;
-        --ink: #0f172a;
-        --ink-2: #475569;
-        --ink-3: #94a3b8;
-        --line: #e8ecf1;
-        --accent: #2563eb;
-        --good: #15803d;
-        --bad: #dc2626;
-        --row-rule: #f2f4f8;
-        --table-head: #fafbfd;
-        --row-hover: #f7f9fc;
-        --amber: #d97706;
-        --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06);
-        --shadow-md: 0 2px 4px rgba(15,23,42,.04), 0 8px 20px -6px rgba(15,23,42,.14);
-        --r-sm: 8px;
-        --r-md: 12px;
-        --r-lg: 16px;
+        --canvas: #F1F2F7;
+        --surface: #FFFFFF;
+        --surface-2: #F8F9FC;
+        --tint: #F4F2FF;
+        --ink: #16182B;
+        --ink-2: #3B3F57;
+        --ink-3: #6B7088;
+        --hero-sub: #A9ADC6;
+        --line: #E3E5EE;
+        --row-rule: #F0F1F6;
+        --accent: #5B4CF0;
+        --accent-soft: #EEF0FF;
+        --good: #0F9F6E;  --good-soft: #E7F7F0;
+        --bad: #E5484D;   --bad-soft: #FDECEC;
+        --warn: #A15C00;  --warn-soft: #FFF4E5;
+        --invest: #7E22CE; --invest-soft: #F3E8FF;
+        --amber: #D97706;
+        --table-head: #F8F9FC;
+        --row-hover: #F8F9FC;
+        --brand-gold-1: #B8860B; --brand-gold-2: #F5D67B; --brand-gold-ink: #3D2B00;
+        --r-card: 22px; --r-control: 14px; --r-pill: 999px; --r-tile: 9px;
+        --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+        --shadow-card: 0 1px 2px rgba(22,24,43,.04);
+        --shadow-sm: 0 1px 2px rgba(22,24,43,.04);
+        --shadow-md: 0 2px 4px rgba(22,24,43,.04), 0 8px 20px -6px rgba(22,24,43,.14);
+        --shadow-pop: 0 18px 50px rgba(22,24,43,.18);
       }
 
       * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -39,7 +49,7 @@
       body {
         background: var(--canvas);
         color: var(--ink);
-        font-family: "Manrope", -apple-system, BlinkMacSystemFont, "Segoe UI",
+        font-family: "Satoshi", -apple-system, BlinkMacSystemFont, "Segoe UI",
                      Roboto, "Helvetica Neue", Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
         -moz-osx-font-smoothing: grayscale;
@@ -52,12 +62,12 @@
       input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
         outline: none;
         border-color: var(--accent);
-        box-shadow: 0 0 0 3px rgba(37,99,235,.16);
+        box-shadow: 0 0 0 4px rgba(91,76,240,.14);
       }
 
       /* Every number wears Inter Tight with tabular figures — this is what aligns columns. */
       .num, .fig {
-        font-family: "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-family: "Satoshi", -apple-system, "Segoe UI", sans-serif;
         font-variant-numeric: tabular-nums;
         letter-spacing: -.01em;
       }
@@ -71,9 +81,9 @@
 
       .grid-row { transition: background-color .12s ease; }
       .grid-row:hover { background: var(--row-hover); }
-      .nav-item:hover { background: #f4f6f9; }
+      .nav-item:hover { background: var(--surface-2); }
 
-      ::selection { background: rgba(37,99,235,.16); }
+      ::selection { background: rgba(91,76,240,.16); }
 
       ::-webkit-scrollbar { width: 11px; height: 11px; }
       ::-webkit-scrollbar-track { background: transparent; }

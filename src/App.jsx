@@ -39,7 +39,7 @@ function smoothPath(vals, w, h, pad, mn, sp) {
 }
 
 const Badge = ({ children, color }) => {
-  const colors = { green: ["#dcfce7","#166534"], blue: ["#dbeafe","#1e40af"], amber: ["#fef3c7","#92400e"], red: ["#fee2e2","#991b1b"], violet: ["#f3e8ff","#6b21a8"], gray: ["#f3f4f6","#374151"] };
+  const colors = { green: ["var(--good-soft)","#0B7A55"], blue: ["var(--accent-soft)","#4335C9"], amber: ["var(--warn-soft)","var(--warn)"], red: ["var(--bad-soft)","#C2353A"], violet: ["var(--invest-soft)","var(--invest)"], gray: ["var(--row-rule)","var(--ink-2)"] };
   const [bg, fg] = colors[color] || colors.gray;
   return <span style={{ background: bg, color: fg, padding: "2px 8px", borderRadius: 9999, fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>{children}</span>;
 };
@@ -152,31 +152,123 @@ const Sparkline = ({ points, w = 280, h = 100 }) => {
 
 const Hero = ({ view, eyebrow, children, right }) => (
   <div style={{
-    borderRadius: 24, padding: "30px 34px", color: "#fff", position: "relative", overflow: "hidden",
-    background: HERO_GRADIENT[view], display: "flex", alignItems: "center", justifyContent: "space-between",
+    borderRadius: "var(--r-card)", padding: "26px 30px", color: "#fff", position: "relative", overflow: "hidden",
+    background: "var(--ink)", display: "flex", alignItems: "center", justifyContent: "space-between",
     gap: 24, flexWrap: "wrap",
   }}>
-    <div aria-hidden="true" style={{ position: "absolute", right: -90, top: -140, width: 420, height: 420,
-      borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.16),transparent 62%)" }} />
-    <div aria-hidden="true" style={{ position: "absolute", right: 120, bottom: -190, width: 340, height: 340,
-      borderRadius: "50%", border: "1px solid rgba(255,255,255,.14)" }} />
-    <div aria-hidden="true" style={{ position: "absolute", inset: 0,
-      backgroundImage: "linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px)",
-      backgroundSize: "62px 62px", maskImage: "linear-gradient(100deg,transparent 40%,#000 100%)",
-      WebkitMaskImage: "linear-gradient(100deg,transparent 40%,#000 100%)" }} />
     <div style={{ position: "relative", minWidth: 0 }}>
-      <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase", color: "rgba(255,255,255,.55)" }}>{eyebrow}</div>
+      <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase", color: "var(--hero-sub)" }}>{eyebrow}</div>
       {children}
     </div>
     {right && <div style={{ position: "relative", flex: "none" }}>{right}</div>}
   </div>
 );
 
+// Approved line icon set (icons/line in the redesign handoff): 24px grid, round strokes, currentColor.
+const NAV_ICONS = {
+  dashboard: <><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="4" rx="1.5"/><rect x="13" y="10" width="7" height="10" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/></>,
+  clients: <><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14c2.6 0 4.5 1.7 4.5 4.5"/></>,
+  portfolio: <><rect x="3" y="7" width="18" height="13" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/></>,
+  trades: <path d="M4 8h14m0 0-3.5-3.5M18 8l-3.5 3.5M20 16H6m0 0 3.5-3.5M6 16l3.5 3.5"/>,
+  investments: <><path d="M12 21v-9"/><path d="M12 12c0-4 3-6.5 7.5-6.5 0 4.5-3 6.5-7.5 6.5z"/><path d="M12 14.5c0-3.2-2.3-5.5-6.5-5.5 0 3.5 2.3 5.5 6.5 5.5z"/></>,
+  benchmark: <><path d="M4 4v16h16"/><path d="m7.5 15 3.5-4 3 3 5-6"/><path d="M7.5 11h12" strokeDasharray="2 2.5"/></>,
+  performance: <><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></>,
+};
+const NavIcon = ({ name, size = 18 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9"
+       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: "none" }}>{NAV_ICONS[name]}</svg>
+);
+
+const Avatar = ({ name, size = 32, all = false }) => (
+  <span style={{ width: size, height: size, borderRadius: "50%", flex: "none", display: "grid", placeItems: "center",
+                 background: all ? "var(--ink)" : tintFor(name)[1], color: "#fff",
+                 fontSize: Math.round(size * .36), fontWeight: 700 }}>
+    {all ? "∗" : name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase()}
+  </span>
+);
+
+// Right-hand slide-over used by the trade form, client form and retrospect drawer.
+const Sheet = ({ title, subtitle, onClose, width = 480, children, footer }) => {
+  useEffect(() => {
+    const esc = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onClose]);
+  return (
+    <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+         style={{ position: "fixed", inset: 0, background: "rgba(22,24,43,.32)", zIndex: 60, display: "flex", justifyContent: "flex-end" }}>
+      <div role="dialog" aria-label={title} style={{ width: "100%", maxWidth: width, height: "100%", background: "var(--surface)",
+            borderRadius: "28px 0 0 28px", boxShadow: "var(--shadow-pop)", display: "flex", flexDirection: "column" }}>
+        <div style={{ padding: "22px 26px 12px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: "-.02em" }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 2 }}>{subtitle}</div>}
+          </div>
+          <button onClick={onClose} aria-label="Close" style={{ border: "none", background: "var(--canvas)", width: 32, height: 32,
+                  borderRadius: "50%", cursor: "pointer", fontSize: 16, color: "var(--ink-2)" }}>×</button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "6px 26px 20px" }}>{children}</div>
+        {footer && <div style={{ padding: "14px 26px 22px", borderTop: "1px solid var(--row-rule)" }}>{footer}</div>}
+      </div>
+    </div>
+  );
+};
+
+// Header client filter — replaces the sidebar list. Same options and same filterClient state as before.
+const ClientPicker = ({ label, names, value, onChange, scopeLabel, subFor }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [open]);
+  const isAll = (c) => c === "All" || c === "Own";
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button onClick={() => setOpen(o => !o)} aria-haspopup="listbox" aria-expanded={open} style={{
+        display: "flex", alignItems: "center", gap: 10, padding: "6px 14px 6px 6px", borderRadius: "var(--r-pill)",
+        border: "1px solid var(--line)", background: "var(--surface)", cursor: "pointer", textAlign: "left" }}>
+        <Avatar name={scopeLabel(value)} all={isAll(value)} />
+        <span style={{ lineHeight: 1.2 }}>
+          <span style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase" }}>{label}</span>
+          <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{scopeLabel(value)}</span>
+        </span>
+        <span style={{ color: "var(--ink-3)", fontSize: 11 }}>▾</span>
+      </button>
+      {open && (
+        <div role="listbox" style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 40, width: 330,
+              maxHeight: 420, overflowY: "auto", background: "var(--surface)", borderRadius: 18,
+              boxShadow: "var(--shadow-pop)", border: "1px solid var(--line)", padding: 6 }}>
+          {names.map(c => {
+            const on = c === value;
+            return (
+              <button key={c} role="option" aria-selected={on} className={on ? "" : "nav-item"}
+                      onClick={() => { onChange(c); setOpen(false); }} style={{
+                display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 10px", borderRadius: 14,
+                border: "none", cursor: "pointer", textAlign: "left",
+                background: on ? "var(--accent-soft)" : "transparent" }}>
+                <Avatar name={scopeLabel(c)} all={isAll(c)} size={34} />
+                <span style={{ minWidth: 0, flex: 1 }}>
+                  <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--ink)",
+                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel(c)}</span>
+                  <span className="num" style={{ display: "block", fontSize: 12, color: "var(--ink-3)" }}>{subFor(c)}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PANEL = {
   background: "var(--surface)",
-  borderRadius: 18,
-  border: "1px solid var(--line)",
-  boxShadow: "0 1px 2px rgba(15,23,42,.04)",
+  borderRadius: "var(--r-card)",
+  boxShadow: "var(--shadow-card)",
 };
 
 const PanelTitle = ({ children, right }) => (
@@ -188,12 +280,12 @@ const PanelTitle = ({ children, right }) => (
 );
 
 const Segmented = ({ options, value, onChange }) => (
-  <div style={{ display: "flex", gap: 2, background: "#F1F4F8", padding: 3, borderRadius: 10 }}>
+  <div style={{ display: "flex", gap: 2, background: "var(--canvas)", padding: 4, borderRadius: 999 }}>
     {options.map(o => {
       const v = typeof o === "object" ? o.value : o, l = typeof o === "object" ? o.label : o;
       return (
         <button key={String(v)} onClick={() => onChange(v)} style={{
-          padding: "5px 12px", fontSize: 12, fontWeight: value === v ? 700 : 500, borderRadius: 8,
+          padding: "6px 14px", fontSize: 12, fontWeight: value === v ? 700 : 500, borderRadius: 999,
           border: "none", cursor: "pointer",
           background: value === v ? "var(--surface)" : "transparent",
           color: value === v ? "var(--ink)" : "var(--ink-2)",
@@ -214,8 +306,8 @@ const Segmented = ({ options, value, onChange }) => (
 // shell to a dashed, shadowless surface so a counterfactual never reads as real money.
 const Card = ({ title, value, sub, accent, tone, size = 29, hypothetical }) => (
   <div className={hypothetical ? "" : "card-hover"} style={{
-    ...PANEL, borderRadius: 16, padding: "18px 20px 16px",
-    ...(hypothetical ? { background: "#FAFBFD", border: "1px dashed #D7DEE8", boxShadow: "none" } : {}),
+    ...PANEL, padding: "18px 20px 16px",
+    ...(hypothetical ? { background: "var(--surface-2)", border: "1px dashed #D3D6E2", boxShadow: "none" } : {}),
   }}>
     <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: accent || "var(--ink-3)" }} />
     <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 12 }}>{title}</div>
@@ -319,7 +411,7 @@ const MobileCombo = ({ points }) => {
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" style={{ display: "block" }}>
       {[0.25, 0.5, 0.75].map(f => <line key={f} x1={0} x2={W} y1={H * f} y2={H * f} stroke="#EEF1F6" strokeWidth={1} />)}
       <line x1={0} x2={W} y1={zero} y2={zero} stroke="#CBD5E1" strokeWidth={1} />
-      {[["realized", "#2563EB"], ["unrealized", "#D97706"]].map(([k, c]) => (
+      {[["realized", "var(--accent)"], ["unrealized", "#D97706"]].map(([k, c]) => (
         <g key={k}>
           <path d={path(k)} fill="none" stroke={c} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
           {points.map((p, i) => <circle key={i} cx={cx(i)} cy={yOf(p[k])} r={dotR} fill={c} stroke="#fff" strokeWidth={1.6} />)}
@@ -400,7 +492,7 @@ const StockAutocomplete = ({ value, onChange, style }) => {
   return (
     <div ref={containerRef} style={{ position: "relative" }}>
       <input style={style} value={value} onChange={e => handleChange(e.target.value)} onKeyDown={handleKey} placeholder="Type stock symbol..." autoComplete="off" />
-      {loading && <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "#6b7280", pointerEvents: "none" }}>⟳</div>}
+      {loading && <div style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", fontSize: 11, color: "var(--ink-3)", pointerEvents: "none" }}>⟳</div>}
       {open && (
         <div ref={listRef} style={{ position: "absolute", top: "calc(100% + 2px)", left: 0, minWidth: "100%", zIndex: 9999, background: "#fff", border: "1px solid #d1d5db", borderRadius: 8, maxHeight: 240, overflowY: "auto", boxShadow: "0 8px 24px rgba(0,0,0,.15)" }}>
           {suggestions.map((s, i) => (
@@ -409,7 +501,7 @@ const StockAutocomplete = ({ value, onChange, style }) => {
               onMouseEnter={() => setHighlighted(i)}
               style={{ padding: "8px 12px", cursor: "pointer", background: i === highlighted ? "#eff6ff" : "#fff", borderBottom: i < suggestions.length - 1 ? "1px solid #f3f4f6" : "none" }}>
               <span style={{ fontWeight: 700, fontSize: 13, color: i === highlighted ? "#1e40af" : "#111" }}>{s.symbol}</span>
-              <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 8 }}>{s.name}</span>
+              <span style={{ fontSize: 11, color: "var(--ink-3)", marginLeft: 8 }}>{s.name}</span>
             </div>
           ))}
         </div>
@@ -747,7 +839,7 @@ function PnlComboChart({ points }) {
   const ticks = [];
   for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
   const lblEvery = Math.ceil(points.length / 8);
-  const C_REAL = "#2563eb", C_LINE = "#d97706";
+  const C_REAL = "var(--accent)", C_LINE = "#d97706";
   // Realized keeps its straight polyline (it is inherently a step series, one value per bucket);
   // unrealized becomes a smooth Catmull-Rom curve with a soft gradient fill under it.
   const realP = points.map((p, i) => [cx(i), yOf(p.realized)]);
@@ -1171,8 +1263,8 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
 
   return (<>
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,.38)", zIndex: 40 }} />
-    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(620px,100%)", background: "var(--canvas)",
-                  boxShadow: "-20px 0 50px -20px rgba(15,23,42,.35)", zIndex: 41, display: "flex", flexDirection: "column" }}>
+    <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(620px,100%)", background: "var(--canvas)", borderRadius: "28px 0 0 28px", overflow: "hidden",
+                  boxShadow: "var(--shadow-pop)", zIndex: 41, display: "flex", flexDirection: "column" }}>
       <div style={{ background: "#fff", borderBottom: "1px solid var(--line)", padding: "16px 20px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <LogoChip symbol={t.stock} size={46} />
@@ -1194,7 +1286,7 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
         <div style={SECTION}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={SECTION_LABEL}>Plan vs actual</div>
-            <div style={{ display: "flex", gap: 2, background: "#F1F4F8", padding: 3, borderRadius: 10 }}>
+            <div style={{ display: "flex", gap: 2, background: "var(--canvas)", padding: 4, borderRadius: 999 }}>
               {[["Yes", true, "#15803d"], ["No", false, "#dc2626"]].map(([label, val, color]) => (
                 <button key={label} onClick={() => save({ followed_plan: val })}
                         style={{ padding: "5px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, border: "none", cursor: "pointer",
@@ -1244,6 +1336,22 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
                 <td style={{ textAlign: "right" }}>{t.rMultiple != null ? `${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : "—"}</td></tr>
             </tbody>
           </table>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+            {[["Planned stop-loss", "planned_sl", t.plannedSL], ["Planned target", "planned_target", t.plannedTarget]].map(([label, field, cur]) => (
+              <div key={field}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
+                <input type="number" step="0.05" key={`${t.key}-${field}-${cur ?? ""}`} defaultValue={cur ?? ""} placeholder="—"
+                       onBlur={e => {
+                         const raw = e.target.value.trim();
+                         const v = raw === "" ? null : Number(raw);
+                         if (raw !== "" && (!Number.isFinite(v) || v <= 0)) return;
+                         if (v !== (cur ?? null)) save({ [field]: v });
+                       }}
+                       style={{ width: "100%", boxSizing: "border-box", padding: "8px 11px", borderRadius: 12, border: "1px solid var(--line)",
+                                background: "var(--surface-2)", fontSize: 13 }} />
+              </div>
+            ))}
+          </div>
         </div>
 
         <div style={SECTION}>
@@ -1377,15 +1485,15 @@ function PnlTotalBarChart({ points }) {
   const barW = band * 0.5;
   const ticks = [];
   for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
-  const lblEvery = Math.ceil(points.length / 8);
-  const C_GOOD = "#16a34a", C_BAD = "#dc2626";
+  const lblEvery = points.length > 14 ? 4 : points.length > 8 ? 2 : 1;
+  const signed = (n) => (n >= 0 ? "+" : "−") + fmt(Math.abs(n));
   return (
     <div style={{ position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", overflow: "visible" }}>
         {ticks.map((t, i) => (
           <g key={i}>
-            <line x1={ML} x2={W - MR} y1={yOf(t)} y2={yOf(t)} stroke={Math.abs(t) < 1e-6 ? "#cbd5e1" : "#f1f5f9"} strokeWidth={Math.abs(t) < 1e-6 ? 1.5 : 1} />
-            <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#94a3b8">{fmtCompact(t)}</text>
+            <line x1={ML} x2={W - MR} y1={yOf(t)} y2={yOf(t)} stroke={Math.abs(t) < 1e-6 ? "#D3D6E2" : "#F0F1F6"} strokeWidth={Math.abs(t) < 1e-6 ? 1.5 : 1} />
+            <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#6B7088">{fmtCompact(t)}</text>
           </g>
         ))}
         {points.map((p, i) => {
@@ -1393,15 +1501,16 @@ function PnlTotalBarChart({ points }) {
           const x = ML + band * i + (band - barW) / 2;
           const y = Math.min(y0, yOf(total));
           const h = Math.max(1, Math.abs(yOf(total) - y0));
+          const on = hover === i;
           return (
-            <rect key={i} x={x} y={y} width={barW} height={h} rx={3}
-                  fill={total >= 0 ? C_GOOD : C_BAD} opacity={hover === -1 || hover === i ? 1 : 0.45} />
+            <rect key={i} x={x} y={y} width={barW} height={h} rx={6}
+                  fill={total >= 0 ? (on ? "#16A34A" : "#9ED5AE") : (on ? "#DC2626" : "#EBA3A3")} />
           );
         })}
         {points.map((p, i) => (
           <g key={i}>
             {(i % lblEvery === 0 || i === points.length - 1) && (
-              <text x={ML + band * (i + 0.5)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#475569" fontWeight="600">{p.label}</text>
+              <text x={ML + band * (i + 0.5)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#3B3F57" fontWeight="500">{p.label}</text>
             )}
             <rect x={ML + band * i} y={MT} width={band} height={plotH} fill="transparent"
                   onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "pointer" }} />
@@ -1412,11 +1521,12 @@ function PnlTotalBarChart({ points }) {
         <div style={{
           position: "absolute", left: `${((hover + 0.5) / points.length) * 100}%`, top: 0,
           transform: `translateX(${hover > points.length / 2 ? "-105%" : "5%"})`,
-          background: "#0f172a", color: "#fff", borderRadius: 8, padding: "8px 10px", fontSize: 11,
-          pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "0 4px 14px rgba(0,0,0,.18)", zIndex: 5,
+          background: "var(--ink)", color: "#fff", borderRadius: 12, padding: "9px 12px", fontSize: 11.5,
+          pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "var(--shadow-pop)", zIndex: 5,
         }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>{points[hover].label}{points[hover].sub ? ` · ${points[hover].sub}` : ""}</div>
           <div>Total P&amp;L: <b>{fmt(totals[hover])}</b></div>
+          <div style={{ color: "var(--hero-sub)", marginTop: 2 }}>Realised {signed(points[hover].realized)} · Unrealised {signed(points[hover].unrealized)}</div>
         </div>
       )}
     </div>
@@ -1826,8 +1936,8 @@ function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, addi
   };
 
   return (
-    <div className="card-hover" style={{ ...PANEL, borderRadius: 16, padding: "18px 20px 16px", minWidth: 220 }}>
-      <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: "#7C3AED" }} />
+    <div className="card-hover" style={{ ...PANEL, background: "var(--tint)", padding: "18px 20px 16px", minWidth: 220 }}>
+      <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: "var(--accent)" }} />
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
         <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Swing Capital</div>
         {isAdmin && !adding && (
@@ -2193,6 +2303,8 @@ export default function App() {
   const [priceError, setPriceError] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [expandedRows, setExpandedRows] = useState({});
+  const [pfStatus, setPfStatus] = useState("holding");
+  const [pfOpen, setPfOpen] = useState({});
   const [showRawLog, setShowRawLog] = useState(false);
   const [rawLogSort, setRawLogSort] = useState({ col: "date", dir: "asc" });
   const toggleRawLogSort = (col) => setRawLogSort(s => s.col === col ? { col, dir: s.dir === "asc" ? "desc" : "asc" } : { col, dir: "asc" });
@@ -2630,6 +2742,7 @@ export default function App() {
   const [perfSort, setPerfSort] = useState("latest");          // latest | biggestWin | biggestLoss
   const [perfNeedsReview, setPerfNeedsReview] = useState(false);
   const [openReviewKey, setOpenReviewKey] = useState(null);
+  const [perfTbl, setPerfTbl] = useState({ col: "net", dir: "desc" });
 
   const perfMonths = useMemo(
     () => [...new Set(closedTrades.map(t => t.sellDate.slice(0, 7)))].sort(),
@@ -2786,6 +2899,23 @@ export default function App() {
       .catch(() => { if (!cancelled) { setBenchmark(null); setBenchmarkState("nodata"); } });
     return () => { cancelled = true; };
   }, [clients, filterClient, stats.currentVal]);
+
+  // "Who beat the index?" — every client's XIRR vs the chosen index, one request (admin, All/Family scope).
+  const [byClient, setByClient] = useState(null);
+  useEffect(() => {
+    if (!isAdmin || view !== "benchmark" || !(filterClient === "All" || filterClient === "Own")) { setByClient(null); return; }
+    const vals = clients.filter(c => filterClient === "All" || ownNames.has(c.name)).map(c => {
+      const held = portfolioAll.reduce((a, p) => a + (p.client === c.name && p.netQty > 0 ? p.currentVal : 0), 0);
+      return [c.id, held + Number(c.cash_balance || 0)];
+    }).filter(([, v]) => v > 0);
+    if (vals.length === 0) { setByClient({ clients: [] }); return; }
+    let cancelled = false;
+    setByClient(null);
+    apiFetch(`/benchmark/by-client?index=${benchIndex}&values=${vals.map(([id, v]) => `${id}:${v.toFixed(2)}`).join(",")}`)
+      .then(r => { if (!cancelled) setByClient(r); })
+      .catch(() => { if (!cancelled) setByClient({ clients: [], error: true }); });
+    return () => { cancelled = true; };
+  }, [isAdmin, view, filterClient, benchIndex, clients, portfolioAll, ownNames]);
 
   // Idle broker cash. Without showing it, deposits minus holdings value silently misses it.
   const selectedClient = useMemo(
@@ -2972,15 +3102,15 @@ export default function App() {
   const btnP = { padding: "8px 17px", borderRadius: "var(--r-sm)", border: "none", background: "var(--accent)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "0 2px 8px -2px rgba(37,99,235,.5)" };
   const btnS = { padding: "8px 17px", borderRadius: "var(--r-sm)", border: "1px solid var(--line)", background: "var(--surface)", color: "var(--ink-2)", fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "var(--shadow-sm)" };
   const btnD = { padding: "8px 17px", borderRadius: "var(--r-sm)", border: "none", background: "var(--bad)", color: "#fff", fontWeight: 600, fontSize: 13, cursor: "pointer", boxShadow: "0 2px 8px -2px rgba(220,38,38,.45)" };
-  const th = { textAlign: "left", padding: "9px 8px", fontSize: 10, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: .5, whiteSpace: "nowrap", borderBottom: "1px solid var(--line)" };
-  const td = { padding: "9px 8px", fontSize: 13, borderBottom: "1px solid #f2f5f8" };
+  const th = { textAlign: "left", padding: "9px 8px", fontSize: 10, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: .5, whiteSpace: "nowrap", borderBottom: "1px solid var(--row-rule)" };
+  const td = { padding: "10px 8px", fontSize: 13, borderBottom: "1px solid var(--row-rule)" };
 
   const MiniBar = ({ label, val, max, color }) => (
     <div style={{ marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 2 }}>
-        <span style={{ fontWeight: 600 }}>{label}</span><span style={{ color: "#6b7280" }}>{pct(val)}</span>
+        <span style={{ fontWeight: 600 }}>{label}</span><span style={{ color: "var(--ink-3)" }}>{pct(val)}</span>
       </div>
-      <div style={{ background: "#f3f4f6", borderRadius: 4, height: 8, overflow: "hidden" }}>
+      <div style={{ background: "var(--row-rule)", borderRadius: 4, height: 8, overflow: "hidden" }}>
         <div style={{ width: `${Math.min(Math.abs(val) / (max || 1) * 100, 100)}%`, height: "100%", background: color, borderRadius: 4 }} />
       </div>
     </div>
@@ -2989,8 +3119,8 @@ export default function App() {
   const LockedPanel = ({ what }) => (
     <div style={{ ...PANEL, padding: 34, textAlign: "center", maxWidth: 540, margin: "28px auto" }}>
       <div style={{ width: 46, height: 46, borderRadius: 14, margin: "0 auto 16px", display: "grid",
-                    placeItems: "center", background: "#F1F5F9", fontSize: 21 }}>🔒</div>
-      <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: "-.02em" }}>
+                    placeItems: "center", background: "var(--tint)", fontSize: 21 }}>🔒</div>
+      <div style={{ fontSize: 16, fontWeight: 900, letterSpacing: "-.02em" }}>
         {what} is not available on the demo
       </div>
       <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.55 }}>
@@ -2998,7 +3128,7 @@ export default function App() {
         the performance those holdings produced.
       </div>
       <div style={{ display: "flex", gap: 9, justifyContent: "center", marginTop: 20, flexWrap: "wrap" }}>
-        <button onClick={() => setView("dashboard")} style={{ ...btnP, padding: "9px 18px" }}>View dashboard</button>
+        <button onClick={() => setView("dashboard")} style={{ ...btnP, padding: "9px 18px", borderRadius: 14, boxShadow: "none" }}>View dashboard</button>
         <button onClick={() => setView("benchmark")} style={btnS}>View benchmark</button>
       </div>
     </div>
@@ -3016,7 +3146,7 @@ export default function App() {
     </div>
   );
 
-  if (authChecking) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "#6b7280" }}>Restoring your session…</div>;
+  if (authChecking) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "var(--ink-3)" }}>Restoring your session…</div>;
 
   if (!session) return (
     <LoginScreen notice={sessionNotice}
@@ -3033,7 +3163,7 @@ export default function App() {
       onDone={() => setShowChangePw(false)} onCancel={() => setShowChangePw(false)} />
   );
 
-  if (appLoading) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "#6b7280" }}>Loading portfolio and live prices…</div>;
+  if (appLoading) return <div style={{ textAlign: "center", padding: 80, fontSize: 15, color: "var(--ink-3)" }}>Loading portfolio and live prices…</div>;
   if (appError) return <div style={{ textAlign: "center", padding: 80 }}><div style={{ fontSize: 15, color: "#dc2626", fontWeight: 700 }}>{appError}</div></div>;
 
   const views = ["dashboard", "clients", "portfolio", "trades", "benchmark"];
@@ -3042,10 +3172,11 @@ export default function App() {
 
   // Admin-only for now: measure against peak capital staked, not net. Withdrawing profit shrinks
   // net_invested and inflates the return against it (Sohil 1.25x, Vinti 1.28x).
-  const usePeak = isAdmin && bmk0?.portfolio_return_pct_peak != null;
-  const returnPct = bmk0 ? (usePeak ? bmk0.portfolio_return_pct_peak : bmk0.portfolio_return_pct) : stats.totalReturn;
-  const alphaPP = bmk0 ? returnPct - bmk0.benchmark_return_pct : 0;
-  const returnBasis = bmk0 ? `on ${compactINR(usePeak ? bmk0.peak_invested : bmk0.net_invested)} invested` : "on capital deployed";
+  // One return figure everywhere: money-weighted (XIRR), so every deposit counts from its own date.
+  const usePeak = false;
+  const returnPct = bmk0 && bmk0.portfolio_xirr_pct != null ? bmk0.portfolio_xirr_pct : stats.totalReturn;
+  const alphaPP = bmk0 && bmk0.alpha_xirr_pp != null ? bmk0.alpha_xirr_pp : 0;
+  const returnBasis = bmk0 && bmk0.portfolio_xirr_pct != null ? "XIRR · money-weighted" : "on capital deployed";
   // While the money-weighted figure is still loading, show nothing rather than flash the
   // cumulative-cost fallback and then correct it upward.
   const returnReady = benchmarkState !== "loading";
@@ -3073,8 +3204,7 @@ export default function App() {
     const MNAV = [["dashboard", "Home", "◇"], ["clients", "Clients", "◉"],
                   ["portfolio", "Holdings", "▤"], ["trades", "Trades", "⇄"],
                   ["investments", "Invest", "◆"],
-                  ["benchmark", "Bench", "◈"],
-                  ["performance", "Perf", "◉"]].filter(([v]) => isAdmin || (v !== "clients" && v !== "performance"));
+                  ["benchmark", "Bench", "◈"]].filter(([v]) => isAdmin || v !== "clients");
     const scopeText = scopeLabel(filterClient);
     const holdingsValue = holdings.reduce((s, h) => s + h.currentVal, 0);
     // Same admin-only cross-client search as desktop; null when the box is empty.
@@ -3084,8 +3214,8 @@ export default function App() {
     const combinedValue = portfolioAll.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
     const bmk = benchmarkState === "ok" ? benchmark : null;
     const sel = bmk?.indices?.[benchIndex] || null;
-    const RET = bmk ? bmk.portfolio_return_pct : stats.totalReturn;
-    const ahead = sel ? RET - sel.return_pct : 0;
+    const RET = bmk && bmk.portfolio_xirr_pct != null ? bmk.portfolio_xirr_pct : stats.totalReturn;
+    const ahead = sel ? (sel.alpha_xirr_pp != null ? sel.alpha_xirr_pp : RET - (sel.xirr_pct ?? sel.return_pct)) : 0;
     const nifty = bmk?.indices?.nifty50 || null;
     const SHORT_INDEX = { nifty50: "Nifty 50", sensex: "Sensex", midcap150: "Midcap 150", smallcap250: "Smallcap 250", blend403030: "40/30/30" };
     const tone = (v) => v >= 0 ? "var(--good)" : "var(--bad)";
@@ -3803,96 +3933,78 @@ export default function App() {
     );
   }
 
+  const NAV_TITLE = { dashboard: "Dashboard", clients: "Clients", portfolio: "Portfolio", trades: "Trades",
+                      investments: "Investments", benchmark: "Benchmark", performance: "Performance" };
+  const pickerSub = (c) => {
+    const n = tradeCountFor(c);
+    const v = c === "All" ? Object.values(clientValue).reduce((x, y) => x + y, 0)
+      : c === "Own" ? [...ownNames].reduce((x, nm) => x + (clientValue[nm] || 0), 0) : (clientValue[c] || 0);
+    return `${inrRound(v)} · ${n} trade${n === 1 ? "" : "s"}`;
+  };
+  const todayLine = new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "246px 1fr", minHeight: "100vh", color: "var(--ink)" }}>
+    <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 16, padding: 16, minHeight: "100vh",
+                  alignItems: "start", color: "var(--ink)" }}>
       {/* ── SIDEBAR ─────────────────────────────────────────────────────────── */}
-      <aside style={{ background: "var(--surface)", borderRight: "1px solid var(--line)",
-                      padding: "20px 14px", display: "flex", flexDirection: "column", gap: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 4px" }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, display: "grid", placeItems: "center",
-                        background: "linear-gradient(135deg,#B8860B,#F5D67B)", color: "#3D2B00", fontWeight: 700, fontSize: 15 }}>M</div>
+      <aside style={{ position: "sticky", top: 16, height: "calc(100vh - 32px)", background: "var(--surface)",
+                      borderRadius: 24, boxShadow: "var(--shadow-card)", padding: 16,
+                      display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 4px" }}>
+          <div style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center", flex: "none",
+                        background: "linear-gradient(135deg,var(--brand-gold-1),var(--brand-gold-2))",
+                        color: "var(--brand-gold-ink)", fontWeight: 900, fontSize: 17 }}>M</div>
           <div>
-            <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Mudra Securities</div>
+            <div style={{ fontSize: 14.5, fontWeight: 900, letterSpacing: "-.01em" }}>Mudra Securities</div>
+            <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>FIFO · NSE live</div>
           </div>
         </div>
 
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV.map(([v, label, icon]) => (
+        <nav style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {NAV.map(([v, label]) => (
             <button key={v} className={view === v ? "" : "nav-item"} onClick={() => setView(v)} style={{
-              display: "flex", alignItems: "center", gap: 11, padding: "10px 11px", borderRadius: 10,
+              display: "flex", alignItems: "center", gap: 12, height: 42, padding: "0 13px", borderRadius: "var(--r-control)",
               border: "none", cursor: "pointer", textAlign: "left", width: "100%",
               background: view === v ? "var(--ink)" : "transparent",
-              color: view === v ? "#fff" : "var(--ink-2)",
-              fontSize: 13.5, fontWeight: view === v ? 600 : 500,
+              color: view === v ? "#fff" : "#5B6078",
+              fontSize: 13.5, fontWeight: view === v ? 700 : 500,
             }}>
-              <span style={{ fontSize: 13, opacity: view === v ? 1 : .75 }}>{icon}</span>{label}
+              <NavIcon name={v} />{NAV_TITLE[v]}
             </button>
           ))}
         </nav>
 
-        {(isAdmin || isGuest) && (
-        <div>
-          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".09em", color: "var(--ink-3)",
-                        textTransform: "uppercase", padding: "0 6px 8px" }}>{isGuest ? "Sample books" : "Client filter"}</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-            {clientNames.map((c, i) => {
-              const on = filterClient === c;
-              return (
-                <button key={c} className={on ? "" : "nav-item"} onClick={() => setFilterClient(c)} style={{
-                  display: "flex", alignItems: "center", gap: 8, padding: "7px 8px", borderRadius: 8,
-                  cursor: "pointer", width: "100%", textAlign: "left",
-                  background: on ? "#EFF6FF" : "transparent",
-                  border: on ? "1px solid #BFDBFE" : "1px solid transparent",
-                }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", flex: "none",
-                                 background: (c === "All" || c === "Own") ? "var(--ink-3)" : tintFor(c)[1] }} />
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: on ? "var(--ink)" : "var(--ink-2)",
-                                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {scopeLabel(c)}
-                  </span>
-                  <span className="num" style={{ marginLeft: "auto", fontSize: 11, color: "var(--ink-3)" }}>{tradeCountFor(c)}</span>
-                </button>
-              );
-            })}
+        <div style={{ marginTop: "auto", background: "var(--surface-2)", borderRadius: 16, padding: 12 }}>
+          <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>Prices last refreshed</div>
+          <div className="num" style={{ fontSize: 13, fontWeight: 700, margin: "2px 0 9px" }}>
+            {lastRefreshed ? lastRefreshed.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Kolkata" }) + " IST" : "—"}
           </div>
-        </div>
-        )}
-
-        <div style={{ marginTop: "auto", ...PANEL, borderRadius: 12, padding: 12 }}>
-          <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>Prices last refreshed</div>
-          <div className="num" style={{ fontSize: 12.5, fontWeight: 600, margin: "2px 0 9px" }}>
-            {lastRefreshed ? lastRefreshed.toLocaleString("en-IN", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"}
-          </div>
-          <button onClick={refreshPrices} disabled={priceLoading} style={{ ...btnP, width: "100%", padding: "8px 10px",
-                  fontSize: 12.5, opacity: priceLoading ? .7 : 1 }}>
-            {priceLoading ? "Fetching…" : "Refresh prices"}
+          <button onClick={refreshPrices} disabled={priceLoading} style={{ ...btnP, width: "100%", padding: "9px 10px",
+                  fontSize: 12.5, borderRadius: 12, boxShadow: "none", opacity: priceLoading ? .7 : 1 }}>
+            {priceLoading ? "Fetching…" : "↻ Refresh prices"}
           </button>
           {priceError && <div style={{ fontSize: 10.5, color: "var(--bad)", fontWeight: 600, marginTop: 6 }}>{priceError}</div>}
         </div>
 
-        <div style={{ ...PANEL, borderRadius: 12, padding: 12 }}>
+        <div>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-            <span style={{ width: 28, height: 28, borderRadius: 8, flex: "none", display: "grid", placeItems: "center",
-                           background: "linear-gradient(135deg,#2563EB,#0EA5E9)", color: "#fff",
-                           fontSize: 11, fontWeight: 700 }}>
-              {(session.name || session.username).slice(0, 2).toUpperCase()}
-            </span>
+            <Avatar name={isGuest ? "Guest" : (session.name || session.username)} size={34} />
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {isGuest ? "Guest preview" : (session.name || session.username)}
               </div>
-              <div style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600 }}>
+              <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>
                 {isAdmin ? "Administrator" : isGuest ? "Demo access" : "Client access"}
               </div>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             {!isGuest && (
-              <button onClick={() => setShowChangePw(true)} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5 }}>
+              <button onClick={() => setShowChangePw(true)} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5, borderRadius: 12, boxShadow: "none" }}>
                 Password
               </button>
             )}
-            <button onClick={signOut} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5, color: "var(--bad)" }}>
+            <button onClick={signOut} style={{ ...btnS, flex: 1, padding: "7px 8px", fontSize: 11.5, borderRadius: 12, boxShadow: "none", color: "var(--bad)" }}>
               Sign out
             </button>
           </div>
@@ -3900,452 +4012,593 @@ export default function App() {
       </aside>
 
       {/* ── MAIN ────────────────────────────────────────────────────────────── */}
-      <main style={{ padding: "24px 30px 44px", minWidth: 0 }}>
-       <div style={viewArtStyle(view)}>
+      <main style={{ padding: "8px 4px 44px", minWidth: 0 }}>
+       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      <header style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 12.5, color: "var(--ink-3)", fontWeight: 500 }}>{todayLine}</div>
+          <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-.02em", lineHeight: 1.15 }}>{NAV_TITLE[view]}</h1>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        {(isAdmin || isGuest) && view !== "clients" && (
+          <ClientPicker label={isGuest ? "Sample books" : "Client filter"} names={clientNames} value={filterClient}
+                        onChange={setFilterClient} scopeLabel={scopeLabel} subFor={pickerSub} />
+        )}
+        {!isAdmin && !isGuest && (
+          <span style={{ padding: "9px 16px", borderRadius: "var(--r-pill)", background: "var(--surface)",
+                         border: "1px solid var(--line)", fontSize: 13, fontWeight: 700 }}>
+            Your portfolio · {session.name || session.username}
+          </span>
+        )}
+        {isAdmin && (
+          <button onClick={openAddTrade} disabled={clients.length === 0}
+                  style={{ height: 42, padding: "0 20px", borderRadius: "var(--r-control)", border: "none",
+                           background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
+                           opacity: clients.length === 0 ? .6 : 1 }}>+ Add trade</button>
+        )}
+        </div>
+      </header>
 
       {/* ── CLIENTS TAB ─────────────────────────────────────────────────────── */}
       {view === "clients" && (() => {
         const combined = portfolioAll.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
-        const FCOLS = "1.6fr 1.5fr 1fr .9fr .6fr 1.5fr 1fr";
+        const tone = (n) => n >= 0 ? "var(--good)" : "var(--bad)";
+        const FCOLS = "34px 1.6fr 1.4fr .5fr 1fr 1.1fr .7fr 1.5fr";
+        const FLD = { fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 };
         const field = (label, key, type) => (
           <div>
-            <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>{label}</label>
-            <input type={type || "text"} style={{ ...inp, marginTop: 5 }} value={clientForm[key]}
+            <label style={FLD}>{label}</label>
+            <input type={type || "text"} style={inp} value={clientForm[key]}
                    onChange={e => setClientForm(pr => ({ ...pr, [key]: e.target.value }))} />
           </div>
         );
+        const ranked = clients.map(c => {
+          const rows = portfolioAll.filter(p => p.client === c.name);
+          const pl = rows.reduce((a, p) => a + p.totalPL, 0);
+          const cost = rows.reduce((a, p) => a + p.investedHolding + p.matchDetails.reduce((x, m) => x + m.buyPrice * m.qty, 0), 0);
+          return { c, pl, ret: cost > 0 ? pl / cost * 100 : 0, n: trades.filter(t => t.client_id === c.id).length };
+        }).sort((a, b) => b.pl - a.pl);
+        const maxAbs = Math.max(1, ...ranked.map(r => Math.abs(r.pl)));
+        const podium = [ranked[1], ranked[0], ranked[2]].filter(Boolean);
+        const HEIGHT = { 0: 112, 1: 148, 2: 92 };
         return (<>
-          <Hero view="clients" eyebrow="Clients"
-            right={!showClientForm && (
-              <button onClick={openAddClient} style={{ padding: "11px 20px", borderRadius: 11, border: "none",
-                      background: "#fff", color: "#4C1D95", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>
-                + Add client
-              </button>)}>
-            <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
-              {clients.length} under management
+          <Hero view="clients" eyebrow="Under management"
+            right={<button onClick={openAddClient} style={{ height: 42, padding: "0 20px", borderRadius: "var(--r-control)", border: "none",
+                      background: "#fff", color: "var(--ink)", fontWeight: 700, fontSize: 13.5, cursor: "pointer" }}>+ Add client</button>}>
+            <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 900, letterSpacing: "-.03em" }}>
+              {clients.length} client{clients.length === 1 ? "" : "s"} · {compactINR(combined)}
             </h2>
-            <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
-              <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{trades.length}</strong> trades booked
-              {" · "}<strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(combined)}</strong> combined value
+            <div style={{ fontSize: 13.5, color: "var(--hero-sub)", marginTop: 6 }}>
+              <strong className="fig" style={{ color: "#fff" }}>{trades.length}</strong> trades booked
             </div>
           </Hero>
 
           {issuedLogin && (
-            <div style={{ ...PANEL, border: "1px solid #BBF7D0", background: "#F0FDF4", padding: 18 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 6 }}>
-                {issuedLogin.reset ? "Password reset" : "Login created"} for {issuedLogin.client}
+            <div onMouseDown={(e) => { if (e.target === e.currentTarget) setIssuedLogin(null); }}
+                 style={{ position: "fixed", inset: 0, background: "rgba(22,24,43,.32)", zIndex: 70, display: "grid", placeItems: "center", padding: 16 }}>
+              <div style={{ background: "var(--surface)", borderRadius: 24, padding: 26, width: "min(420px,100%)", boxShadow: "var(--shadow-pop)" }}>
+                <div style={{ fontSize: 18, fontWeight: 900 }}>{issuedLogin.reset ? "Password reset" : "Login created"} for {issuedLogin.client}</div>
+                <div style={{ background: "var(--surface-2)", borderRadius: 14, padding: 14, marginTop: 14, fontSize: 13.5, lineHeight: 1.8 }}>
+                  Username <strong className="num">{issuedLogin.username}</strong><br />
+                  Temporary password <strong className="num">{issuedLogin.temporary_password}</strong>
+                </div>
+                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 10 }}>
+                  Share this once. It is not stored anywhere and they must change it at first sign-in.
+                </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                  <button onClick={() => { try { navigator.clipboard.writeText(`Username: ${issuedLogin.username}\nTemporary password: ${issuedLogin.temporary_password}`); } catch {} }}
+                          style={{ ...btnS, flex: 1, height: 42, borderRadius: "var(--r-control)", boxShadow: "none" }}>Copy</button>
+                  <button onClick={() => setIssuedLogin(null)} style={{ ...btnP, flex: 1, height: 42, borderRadius: "var(--r-control)", boxShadow: "none", background: "var(--ink)" }}>Done</button>
+                </div>
               </div>
-              <div style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6 }}>
-                Username <strong className="num">{issuedLogin.username}</strong><br />
-                Temporary password <strong className="num">{issuedLogin.temporary_password}</strong>
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
-                Share this once — it is not stored anywhere and they must change it at first sign-in.
-              </div>
-              <button onClick={() => setIssuedLogin(null)} style={{ ...btnS, marginTop: 12, padding: "7px 14px", fontSize: 12 }}>
-                Done
-              </button>
             </div>
           )}
 
           {showClientForm && (
-            <div style={{ ...PANEL, border: "1px solid #DDD6FE", padding: 20 }}>
-              <div style={{ fontSize: 14.5, fontWeight: 700, marginBottom: 14 }}>
-                {editingClientId ? "Edit client" : "New client"}
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 14 }}>
+            <Sheet title={editingClientId ? "Edit client" : "New client"} onClose={cancelClientForm} width={440}
+                   footer={<div style={{ display: "flex", gap: 10 }}>
+                     <button onClick={handleSaveClient} disabled={clientSaving}
+                             style={{ ...btnP, flex: 1, height: 42, borderRadius: "var(--r-control)", boxShadow: "none", opacity: clientSaving ? .7 : 1 }}>
+                       {clientSaving ? "Saving…" : "Save client"}</button>
+                     <button onClick={cancelClientForm} style={{ ...btnS, height: 42, borderRadius: "var(--r-control)", boxShadow: "none" }}>Cancel</button>
+                   </div>}>
+              <div style={{ display: "grid", gap: 14, paddingTop: 8 }}>
                 {field("Name", "name")}{field("Email", "email")}{field("Phone", "phone")}{field("Joining date", "joining_date", "date")}
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <label style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".05em" }}>
-                  Benchmarks this client sees
-                </label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                  <span style={{ padding: "7px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700,
-                                 background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" }}>
-                    Nifty 50 · always
-                  </span>
-                  {Object.keys(INDEX_LABELS).filter(k => k !== "nifty50").map(k => {
-                    const on = (clientForm.benchmark_keys || []).includes(k);
-                    return (
-                      <button key={k} type="button" onClick={() => setClientForm(f => ({
-                        ...f,
-                        benchmark_keys: on ? f.benchmark_keys.filter(x => x !== k) : [...(f.benchmark_keys || []), k],
-                      }))} style={{ padding: "7px 13px", borderRadius: 99, fontSize: 12.5, cursor: "pointer",
-                                    fontWeight: on ? 700 : 600,
-                                    background: on ? "var(--ink)" : "var(--surface)",
-                                    color: on ? "#fff" : "var(--ink-2)",
-                                    border: `1px solid ${on ? "var(--ink)" : "var(--line)"}` }}>
-                        {INDEX_LABELS[k]}
-                      </button>
-                    );
-                  })}
+                <div>
+                  <label style={FLD}>Benchmarks this client sees</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <span style={{ padding: "7px 13px", borderRadius: 99, fontSize: 12.5, fontWeight: 700, background: "var(--accent-soft)", color: "#4335C9" }}>
+                      Nifty 50 · always
+                    </span>
+                    {Object.keys(INDEX_LABELS).filter(k => k !== "nifty50").map(k => {
+                      const on = (clientForm.benchmark_keys || []).includes(k);
+                      return (
+                        <button key={k} type="button" onClick={() => setClientForm(f => ({
+                          ...f, benchmark_keys: on ? f.benchmark_keys.filter(x => x !== k) : [...(f.benchmark_keys || []), k],
+                        }))} style={{ padding: "7px 13px", borderRadius: 99, fontSize: 12.5, cursor: "pointer", fontWeight: on ? 700 : 500,
+                                      background: on ? "var(--accent)" : "var(--surface)", color: on ? "#fff" : "var(--ink-2)",
+                                      border: `1px solid ${on ? "var(--accent)" : "var(--line)"}` }}>
+                          {INDEX_LABELS[k]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>Anything selected here is added to this client's own view.</div>
                 </div>
-                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
-                  Nifty 50 is always compared. Anything selected here is added to this client's own view.
-                </div>
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <button type="button" onClick={() => setClientForm(f => ({ ...f, is_own_money: !f.is_own_money }))}
-                        style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 11,
-                                 cursor: "pointer", background: clientForm.is_own_money ? "#FEF3C7" : "var(--surface)",
-                                 border: `1px solid ${clientForm.is_own_money ? "#FCD34D" : "var(--line)"}` }}>
-                  <span style={{ width: 16, height: 16, borderRadius: 5, display: "inline-block",
-                                 background: clientForm.is_own_money ? "#B45309" : "transparent",
-                                 border: `1px solid ${clientForm.is_own_money ? "#B45309" : "var(--line)"}` }} />
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--ink)" }}>Our own money</span>
-                </button>
-                <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
-                  Kept out of the All-clients dashboard totals. Still shows in Portfolio, Trades, and when
-                  this name is picked on its own.
+                <div>
+                  <button type="button" onClick={() => setClientForm(f => ({ ...f, is_own_money: !f.is_own_money }))}
+                          style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderRadius: 14, cursor: "pointer",
+                                   background: clientForm.is_own_money ? "#FFF6DD" : "var(--surface)",
+                                   border: `1px solid ${clientForm.is_own_money ? "#F0D58A" : "var(--line)"}` }}>
+                    <span style={{ width: 16, height: 16, borderRadius: 5, display: "inline-block",
+                                   background: clientForm.is_own_money ? "#8A6200" : "transparent",
+                                   border: `1px solid ${clientForm.is_own_money ? "#8A6200" : "var(--line)"}` }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700 }}>Our own money</span>
+                  </button>
+                  <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 8 }}>
+                    Kept out of the All-clients dashboard totals. Still shows in Portfolio, Trades, and when this name is picked on its own.
+                  </div>
                 </div>
               </div>
-              <div style={{ marginTop: 16, display: "flex", gap: 9 }}>
-                <button onClick={handleSaveClient} disabled={clientSaving}
-                        style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: "var(--ink)", color: "#fff",
-                                 fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: clientSaving ? .7 : 1 }}>
-                  {clientSaving ? "Saving…" : "Save client"}
-                </button>
-                <button onClick={cancelClientForm} style={btnS}>Cancel</button>
-              </div>
-            </div>
+            </Sheet>
           )}
 
           {clients.length === 0 ? (
             <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>👥</div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>No clients yet</div>
             </div>
-          ) : (
-            <div style={{ ...PANEL, overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: FCOLS, gap: 12, padding: "12px 22px",
-                            background: "var(--table-head)", borderBottom: "1px solid var(--line)" }}>
-                {["Name","Email","Phone","Joining Date","Trades","Last Trade Update",""].map((h, i) => (
-                  <div key={h || i} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
-                                             color: "var(--ink-3)", textAlign: i === 4 ? "right" : "left" }}>{h}</div>
-                ))}
-              </div>
-              {clients.map((c, i) => {
-                const n = trades.filter(t => t.client_id === c.id).length;
-                const [bg, fg] = tintFor(c.name);
-                const initials = c.name.split(" ").filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase();
-                return (
-                  <div key={c.id} className="grid-row" style={{ display: "grid", gridTemplateColumns: FCOLS, gap: 12,
-                       alignItems: "center", padding: "14px 22px", borderBottom: i === clients.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                      <span style={{ width: 32, height: 32, borderRadius: 9, background: bg, color: fg, flex: "none",
-                                     display: "grid", placeItems: "center", fontSize: 12, fontWeight: 700 }}>{initials}</span>
-                      <span style={{ fontSize: 13.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+          ) : (<>
+            <div style={{ ...PANEL, padding: "20px 22px 0" }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Leaderboard</div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Total P&L since joining · realised + unrealised</div>
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 14, marginTop: 18 }}>
+                {podium.map((r) => {
+                  const rank = ranked.indexOf(r);
+                  return (
+                    <div key={r.c.id} style={{ width: 150, textAlign: "center" }}>
+                      <Avatar name={r.c.name} size={44} />
+                      <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.c.name}</div>
+                      <div className="fig" style={{ fontSize: 13, fontWeight: 900, color: tone(r.pl), marginBottom: 8 }}>{fmt(r.pl)}</div>
+                      <div style={{ height: HEIGHT[rank], borderRadius: "14px 14px 0 0", background: rank === 0 ? "var(--ink)" : "var(--accent-soft)",
+                                    color: rank === 0 ? "#fff" : "#4335C9", display: "grid", placeItems: "start center", paddingTop: 10,
+                                    fontSize: 26, fontWeight: 900 }}>{rank + 1}</div>
                     </div>
-                    <div style={{ fontSize: 13.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "—"}</div>
-                    <div className="num" style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{c.phone || "—"}</div>
-                    <div className="num" style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{c.joining_date ? fmtDate(c.joining_date) : "—"}</div>
-                    <div className="num" style={{ fontSize: 13, fontWeight: 600, textAlign: "right" }}>{n}</div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div style={{ ...PANEL, overflow: "hidden" }}>
+              <div style={{ display: "grid", gridTemplateColumns: FCOLS, gap: 12, padding: "12px 22px", background: "var(--table-head)",
+                            fontSize: 11, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+                <div>#</div><div>Client</div><div>Contact</div><div style={{ textAlign: "right" }}>Trades</div>
+                <div>Last trade update</div><div>Total P&L</div><div style={{ textAlign: "right" }}>Return</div><div />
+              </div>
+              {ranked.map((r, i) => {
+                const c = r.c;
+                return (
+                  <div key={c.id} className="grid-row" style={{ display: "grid", gridTemplateColumns: FCOLS, gap: 12, alignItems: "center",
+                       padding: "13px 22px", borderTop: "1px solid var(--row-rule)" }}>
+                    <div className="num" style={{ fontWeight: 900, color: "var(--ink-3)" }}>{i + 1}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                      <Avatar name={c.name} size={34} />
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                          {c.is_own_money && <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: "#FFF6DD", color: "#8A6200" }}>Family</span>}
+                        </span>
+                        <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)" }}>
+                          {c.joining_date ? `since ${fmtDate(c.joining_date)}` : "—"}
+                          {(c.benchmark_keys || []).length ? ` · ${(c.benchmark_keys || []).map(k => INDEX_LABELS[k] || k).join(", ")}` : ""}
+                        </span>
+                      </span>
+                    </div>
+                    <div style={{ minWidth: 0, fontSize: 12.5, color: "var(--ink-2)" }}>
+                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "—"}</div>
+                      <div className="num" style={{ color: "var(--ink-3)" }}>{c.phone || "—"}</div>
+                    </div>
+                    <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: "right" }}>{r.n}</div>
                     <div className="num" style={{ fontSize: 12, color: "var(--ink-2)" }}
                          title={c.trades_synced_at ? "Last time this client's trades were pulled/reconciled from a broker" : "Never synced from a broker"}>
                       {fmtDateTimeIST(c.trades_synced_at)}
                     </div>
-                    <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-                      <button onClick={() => handleClientLogin(c)} style={{ border: "none", background: "none", color: "var(--ink-2)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Login</button>
-                      <button onClick={() => openEditClient(c)} style={{ border: "none", background: "none", color: "var(--accent)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Edit</button>
-                      <button onClick={() => handleDeleteClient(c.id)} style={{ border: "none", background: "none", color: "var(--bad)", cursor: "pointer", fontSize: 12.5, fontWeight: 600, padding: 0 }}>Delete</button>
+                    <div>
+                      <div className="fig" style={{ fontSize: 13, fontWeight: 700, color: tone(r.pl) }}>{fmt(r.pl)}</div>
+                      <div style={{ height: 4, borderRadius: 99, background: "var(--row-rule)", marginTop: 4 }}>
+                        <div style={{ height: 4, borderRadius: 99, width: `${Math.abs(r.pl) / maxAbs * 100}%`, background: r.pl >= 0 ? "#9ED5AE" : "#EBA3A3" }} />
+                      </div>
+                    </div>
+                    <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: "right", color: tone(r.ret) }}>{pct(r.ret)}</div>
+                    <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                      <button onClick={() => handleClientLogin(c)} style={{ ...btnS, padding: "6px 12px", fontSize: 12, borderRadius: 999, boxShadow: "none" }}>Login</button>
+                      <button onClick={() => openEditClient(c)} style={{ ...btnS, padding: "6px 12px", fontSize: 12, borderRadius: 999, boxShadow: "none", color: "var(--accent)" }}>Edit</button>
+                      <button onClick={() => handleDeleteClient(c.id)} style={{ ...btnS, padding: "6px 12px", fontSize: 12, borderRadius: 999, boxShadow: "none", color: "var(--bad)" }}>Delete</button>
                     </div>
                   </div>
                 );
               })}
             </div>
-          )}
+          </>)}
         </>);
       })()}
 
       {/* ── DASHBOARD TAB ────────────────────────────────────────────────────── */}
-      {view === "dashboard" && (<>
-        <Hero view="dashboard"
-          eyebrow={`Total P&L · ${filterClient === "All" ? (hidingOwn ? "All clients · client money only" : "All clients") : scopeLabel(filterClient)}`}
-          right={
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-              {joinedOn && (
-                <div style={{ fontSize: 12, color: "rgba(255,255,255,.62)", whiteSpace: "nowrap" }}>
-                  Client since <strong style={{ color: "#fff", fontWeight: 700 }}>{joinedOn}</strong>
-                </div>
-              )}
-              <Sparkline points={pnlChartData} />
-            </div>
-          }>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginTop: 6 }}>
-            <div className="fig" style={{ fontSize: 52, fontWeight: 800, letterSpacing: "-.045em", lineHeight: 1.05 }}>
-              {fmt(stats.totalPL)}
-            </div>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 12px", borderRadius: 99,
-                           background: "rgba(16,185,129,.18)", border: "1px solid rgba(16,185,129,.35)", whiteSpace: "nowrap" }}>
-              {returnReady && <span style={{ fontSize: 11 }}>{returnPct >= 0 ? "\u25b2" : "\u25bc"}</span>}
-              <span className="fig" style={{ fontSize: 13, fontWeight: 600 }}>{returnText}</span>
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,.72)" }}>{returnSub}</span>
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginTop: 14, fontSize: 13.5, color: "rgba(255,255,255,.72)" }}>
-            <span style={{ whiteSpace: "nowrap" }}>Invested (open) <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(stats.openInvested)}</strong></span>
-            <span style={{ whiteSpace: "nowrap" }}>Current <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(stats.currentVal)}</strong></span>
-            {selectedCash > 0 && <span style={{ whiteSpace: "nowrap" }}>Idle cash <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(selectedCash)}</strong></span>}
-            {bmk0 && <span style={{ whiteSpace: "nowrap" }}>Nifty 50 · same timing <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{pct(bmk0.benchmark_return_pct)}</strong></span>}
-            {bmk0 && <span style={{ whiteSpace: "nowrap" }}>Alpha <strong className="fig" style={{ color: "#6EE7B7", fontWeight: 600 }}>{pct(bmk0.alpha_pct_pp)} pp</strong></span>}
-          </div>
-        </Hero>
-
+      {view === "dashboard" && (() => {
+        const signedFmt = (n) => (n >= 0 ? "+" : "−") + fmt(Math.abs(n));
+        const tone = (n) => n >= 0 ? "var(--good)" : "var(--bad)";
+        const scopeName = filterClient === "All" ? (hidingOwn ? "All clients · client money only" : "All clients") : scopeLabel(filterClient);
+        // Previous close per symbol, from the daily history already loaded for the P&L chart.
+        const prevClose = (sym) => {
+          const h = dailyPrices[sym]; if (!h) return null;
+          const ds = Object.keys(h).sort(); if (ds.length === 0) return null;
+          const last = h[ds[ds.length - 1]], live = cmp[sym];
+          if (live && Math.abs(live - last) > 0.005) return last;
+          return ds.length > 1 ? h[ds[ds.length - 2]] : null;
+        };
+        const dayRows = holdings.map(h => {
+          const pc = prevClose(h.stock);
+          return { ...h, prev: pc, dayChg: pc ? (h.cmp - pc) * h.netQty : 0, dayPct: pc ? (h.cmp / pc - 1) * 100 : 0 };
+        });
+        const dayChange = dayRows.reduce((a, r) => a + r.dayChg, 0);
+        const movers = [...dayRows].filter(r => r.prev).sort((a, b) => Math.abs(b.dayChg) - Math.abs(a.dayChg))
+          .filter((r, i, arr) => arr.findIndex(x => x.stock === r.stock) === i).slice(0, 5);
+        // Per-client rows for the list card.
+        const clientRows = clientNames.map(c => {
+          const rows = portfolioAll.filter(p => c === "All" ? !ownNames.has(p.client) : c === "Own" ? ownNames.has(p.client) : p.client === c);
+          const val = rows.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
+          const open = rows.filter(p => p.netQty > 0).length;
+          const pl = rows.reduce((a, p) => a + p.totalPL, 0);
+          const cost = rows.reduce((a, p) => a + p.investedHolding + p.matchDetails.reduce((x, m) => x + m.buyPrice * m.qty, 0), 0);
+          return { c, val, open, ret: cost > 0 ? pl / cost * 100 : 0 };
+        });
+        const allocTotal = holdings.reduce((s, h) => s + h.currentVal, 0);
+        const ALLOC = ["#1D4ED8", "#0E7490", "#B45309", "#7C3AED", "#BE185D", "#4D7C0F", "#475569"];
+        const bySym = {};
+        holdings.forEach(h => { bySym[h.stock] = (bySym[h.stock] || 0) + h.currentVal; });
+        const allocRows = Object.entries(bySym).sort((a, b) => b[1] - a[1]);
+        const allocShown = allocRows.slice(0, 6);
+        const rest = allocRows.slice(6).reduce((a, [, v]) => a + v, 0);
+        if (rest > 0) allocShown.push(["Others", rest]);
+        const R = 52, CIRC = 2 * Math.PI * R;
+        let acc = 0;
+        const winPct = decisiveLots > 0 ? winCount / decisiveLots * 100 : 0;
+        const CAP = { fontSize: 12.5, color: "var(--ink-3)" };
+        const showList = isAdmin || isGuest;
+        return (<>
         {trades.length === 0 ? (
           <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>📊</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#374151" }}>No trades yet</div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>Add clients first, then log trades in the Trades tab.</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>No trades yet</div>
+            <div style={{ ...CAP, marginTop: 4 }}>Add clients first, then log trades in the Trades tab.</div>
           </div>
-        ) : (<>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-            <Card title="Total P&L" value={fmt(stats.totalPL)} sub={`${returnText} ${returnSub}`}
-                  tone={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} />
-            <Card title="Realized P&L" value={fmt(stats.totalRealizedPL)} sub={`${realizedLots} matched lot${realizedLots === 1 ? "" : "s"}`}
-                  tone={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalRealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
-            <Card title="Unrealized P&L" value={fmt(stats.totalUnrealizedPL)} sub={`${holdings.length} open position${holdings.length === 1 ? "" : "s"}`}
-                  tone={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"} accent={stats.totalUnrealizedPL >= 0 ? "var(--good)" : "var(--bad)"} />
-            <Card title="Current Value" value={fmt(stats.currentVal)} sub="incl. live NSE prices" accent="var(--accent)" />
-          </div>
+        ) : (
+        <div style={{ display: "grid", gridTemplateColumns: showList ? "280px 1fr" : "1fr", gap: 16, alignItems: "start" }}>
+          {showList && (
+            <div style={{ ...PANEL, padding: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-3)", padding: "6px 8px 8px" }}>
+                {isGuest ? "Sample books" : "Clients"}
+              </div>
+              {clientRows.map(r => {
+                const on = filterClient === r.c;
+                return (
+                  <button key={r.c} onClick={() => setFilterClient(r.c)} className={on ? "" : "nav-item"} style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", borderRadius: 14, border: "none",
+                    cursor: "pointer", textAlign: "left", width: "100%",
+                    background: on ? "var(--ink)" : "transparent", color: on ? "#fff" : "var(--ink)" }}>
+                    <Avatar name={scopeLabel(r.c)} all={r.c === "All" || r.c === "Own"} size={34} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel(r.c)}</span>
+                      <span className="num" style={{ display: "block", fontSize: 11.5, color: on ? "var(--hero-sub)" : "var(--ink-3)" }}>{inrRound(r.val)} · {r.open} open</span>
+                    </span>
+                    <span className="num" style={{ fontSize: 12, fontWeight: 700, color: on ? (r.ret >= 0 ? "#6EE7B7" : "#FCA5A5") : tone(r.ret) }}>{pct(r.ret)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-            {benchmarkState === "ok" ? (<>
-              <Card title="Your Return" value={returnText}
-                    sub={`XIRR ${benchmark.portfolio_xirr_pct}% · on ${fmt(usePeak ? benchmark.peak_invested : benchmark.net_invested)} invested`}
-                    tone={returnPct >= 0 ? "var(--good)" : "var(--bad)"}
-                    accent={returnPct >= 0 ? "var(--good)" : "var(--bad)"} />
-              <Card title="Nifty 50 — same timing" value={pct(benchmark.benchmark_return_pct)}
-                    sub={`XIRR ${benchmark.benchmark_xirr_pct}% · ${fmt(benchmark.benchmark_value)}`} accent="var(--ink-3)" />
-              <Card title="Alpha" value={`${pct(alphaPP)} pp`}
-                    sub={`XIRR ${benchmark.alpha_xirr_pp >= 0 ? "+" : ""}${benchmark.alpha_xirr_pp} pp · ${fmt(benchmark.portfolio_value - benchmark.benchmark_value)}`}
-                    tone={alphaPP >= 0 ? "var(--good)" : "var(--bad)"}
-                    accent={alphaPP >= 0 ? "var(--good)" : "var(--bad)"} />
-            </>) : (<>
-              <Card title="Your Return" value={returnText} sub={returnSub}
-                    tone={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"}
-                    accent={stats.totalReturn >= 0 ? "var(--good)" : "var(--bad)"} />
-              <Card title="Nifty 50 — same timing" value="—"
-                    sub={benchmarkState === "all" ? "select a client" : benchmarkState === "loading" ? "loading\u2026" : "no deposits recorded"} />
-              <Card title="Alpha" value="—" sub="needs deposit dates" />
-            </>)}
-            {isAdmin && (<>
-              <Card title="Win Rate" value={stats.winRate.toFixed(0) + "%"}
-                    sub={`${winCount} of ${decisiveLots} decisive exits profitable`} accent="var(--accent)" />
-              <Card title="Risk : Reward" value={rrText(stats.riskReward)}
-                    sub={stats.riskReward == null ? "no decisive losses yet"
-                       : `avg loss ${fmt(stats.avgLoss)} vs avg profit ${fmt(stats.avgWin)}`}
-                    accent="var(--accent)" />
-            </>)}
-          </div>
-
-          {holdings.length > 0 && (() => {
-            const allocTotal = holdings.reduce((s, h) => s + h.currentVal, 0);
-            const RAMP = ["#1E3A8A", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#7DA9F5"];
-            const top6 = holdings.slice(0, 6);
-            return (
-              <div style={{ ...PANEL, padding: "18px 20px 20px" }}>
-                <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 14 }}>
-                  <div style={{ fontSize: 14.5, fontWeight: 700, letterSpacing: "-.01em" }}>Allocation</div>
-                  <div className="num" style={{ fontSize: 12, color: "var(--ink-3)" }}>{fmt(allocTotal)}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
+              <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: 24, position: "relative", overflow: "hidden" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase", color: "var(--hero-sub)" }}>Portfolio value · {scopeName}</div>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,.12)", whiteSpace: "nowrap" }}>{holdings.length} holdings</span>
                 </div>
-                {top6.map((h, i) => {
-                  const w = allocTotal > 0 ? (h.currentVal / allocTotal * 100) : 0;
-                  return (
-                    <div key={h.stock + h.client} style={{ marginBottom: 13 }}>
-                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</div>
-                        <div style={{ display: "flex", gap: 10, flex: "none" }}>
-                          <div className="num" style={{ fontSize: 12, color: "var(--ink-3)" }}>{fmt(h.currentVal)}</div>
-                          <div className="num" style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: "-.02em" }}>{w.toFixed(1)}%</div>
+                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                  <div>
+                    <div className="fig" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-.03em", lineHeight: 1.1, marginTop: 8 }}>{fmt(stats.currentVal)}</div>
+                    <span className="fig" style={{ display: "inline-block", marginTop: 8, padding: "4px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700,
+                                   background: dayChange >= 0 ? "rgba(16,185,129,.2)" : "rgba(239,68,68,.22)", color: dayChange >= 0 ? "#6EE7B7" : "#FCA5A5" }}>
+                      {signedFmt(dayChange)} today
+                    </span>
+                  </div>
+                  <Sparkline points={pnlChartData} w={240} h={80} />
+                </div>
+                <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginTop: 18, fontSize: 13, color: "var(--hero-sub)" }}>
+                  <span>Invested <strong className="fig" style={{ color: "#fff" }}>{fmt(stats.openInvested)}</strong></span>
+                  <span>Total P&L <strong className="fig" style={{ color: stats.totalPL >= 0 ? "#6EE7B7" : "#FCA5A5" }}>{fmt(stats.totalPL)}</strong></span>
+                  <span>Return <strong className="fig" style={{ color: "#fff" }}>{returnText}</strong> <span style={{ fontSize: 11.5 }}>{returnSub}</span></span>
+                  {joinedOn && <span>Client since <strong style={{ color: "#fff" }}>{joinedOn}</strong></span>}
+                </div>
+              </div>
+              <div style={{ ...PANEL, padding: 22, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 14 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>Unrealised</div>
+                  <div className="fig" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-.03em", color: tone(stats.totalUnrealizedPL) }}>{fmt(stats.totalUnrealizedPL)}</div>
+                  <div style={CAP}>On open positions at live price</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>Realised</div>
+                  <div className="fig" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-.03em", color: tone(stats.totalRealizedPL) }}>{fmt(stats.totalRealizedPL)}</div>
+                  <div style={CAP}>Booked with FIFO cost basis · {realizedLots} lot{realizedLots === 1 ? "" : "s"}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={PANEL}>
+              <PanelTitle right={
+                <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  {pnlTotalChartData.length > 0 && (() => { const l = pnlTotalChartData[pnlTotalChartData.length - 1]; const v = l.realized + l.unrealized;
+                    return <span className="num" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>now <b style={{ color: tone(v) }}>{signedFmt(v)}</b></span>; })()}
+                  <Segmented options={PNL_VIEWS.map(v => ({ value: v, label: PNL_VIEW_LABEL[v] }))}
+                             value={pnlTotalView} onChange={setPnlTotalView} />
+                </div>
+              }>Total P&L (Realised + Unrealised)</PanelTitle>
+              <div style={{ padding: "10px 14px 16px" }}>
+                {pnlTotalChartData.length > 0 ? <PnlTotalBarChart points={pnlTotalChartData} /> :
+                  <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No data for this period.</div>}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "1.3fr 1.3fr 1fr" : "1fr 1fr", gap: 16 }}>
+              <div style={{ ...PANEL, padding: 20 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Allocation</div>
+                {allocTotal > 0 ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                    <svg width="124" height="124" viewBox="0 0 124 124" style={{ flex: "none" }}>
+                      {allocShown.map(([n, v], i) => {
+                        const len = v / allocTotal * CIRC; const off = acc; acc += len;
+                        return <circle key={n} cx="62" cy="62" r={R} fill="none" stroke={ALLOC[i % ALLOC.length]} strokeWidth="16"
+                                       strokeDasharray={`${len} ${CIRC - len}`} strokeDashoffset={-off} transform="rotate(-90 62 62)" />;
+                      })}
+                    </svg>
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {allocShown.map(([n, v], i) => (
+                        <div key={n} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
+                          <span style={{ width: 9, height: 9, borderRadius: 3, background: ALLOC[i % ALLOC.length], flex: "none" }} />
+                          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 500 }}>{n}</span>
+                          <span className="num" style={{ fontWeight: 700 }}>{(v / allocTotal * 100).toFixed(1)}%</span>
                         </div>
-                      </div>
-                      <div style={{ height: 6, borderRadius: 99, background: "#F1F4F8", marginTop: 6, overflow: "hidden" }}>
-                        <div style={{ height: 6, borderRadius: 99, width: `${w}%`, background: RAMP[i] }} />
-                      </div>
+                      ))}
                     </div>
-                  );
-                })}
+                  </div>
+                ) : <div style={CAP}>No open holdings.</div>}
               </div>
-            );
-          })()}
 
-          <div style={PANEL}>
-            <PanelTitle right={
-              <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--ink-2)" }}>
-                  <span style={{ width: 16, height: 3, borderRadius: 2, background: "var(--accent)" }} />Realized
-                </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--ink-2)" }}>
-                  <span style={{ width: 16, height: 3, borderRadius: 2, background: "var(--amber)" }} />Unrealized
-                </span>
-                <Segmented options={PNL_VIEWS.map(v => ({ value: v, label: PNL_VIEW_LABEL[v] }))}
-                           value={pnlView} onChange={setPnlView} />
+              <div style={{ ...PANEL, padding: 20 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Movers today</div>
+                {movers.length === 0 ? <div style={CAP}>No price history loaded yet.</div> : movers.map(r => (
+                  <div key={r.stock} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--row-rule)" }}>
+                    <LogoChip symbol={r.stock} size={32} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 13, fontWeight: 700 }}>{r.stock}</span>
+                      <span className="num" style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)" }}>{fmt(r.cmp)}</span>
+                    </span>
+                    <span className="num" style={{ fontSize: 13, fontWeight: 700, color: tone(r.dayPct) }}>{pct(r.dayPct)}</span>
+                  </div>
+                ))}
               </div>
-            }>Realized vs Unrealized P&L</PanelTitle>
-            <div style={{ padding: "10px 14px 16px" }}>
-              {pnlChartData.length > 0 ? <PnlComboChart points={pnlChartData} /> :
-                <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No data for this period.</div>}
+
+              {isAdmin && (
+                <div style={{ ...PANEL, padding: 20, textAlign: "center" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, textAlign: "left" }}>Win rate</div>
+                  <svg width="110" height="110" viewBox="0 0 110 110">
+                    <circle cx="55" cy="55" r="44" fill="none" stroke="var(--row-rule)" strokeWidth="12" />
+                    <circle cx="55" cy="55" r="44" fill="none" stroke="var(--good)" strokeWidth="12" strokeLinecap="round"
+                            strokeDasharray={`${winPct / 100 * 2 * Math.PI * 44} ${2 * Math.PI * 44}`} transform="rotate(-90 55 55)" />
+                    <text x="55" y="61" textAnchor="middle" fontSize="22" fontWeight="900" fill="var(--ink)">{winPct.toFixed(0)}%</text>
+                  </svg>
+                  <div style={{ ...CAP, marginTop: 6 }}>{winCount} of {decisiveLots} decisive exits in profit</div>
+                </div>
+              )}
             </div>
           </div>
-
-          <div style={PANEL}>
-            <PanelTitle right={
-              <Segmented options={PNL_VIEWS.map(v => ({ value: v, label: PNL_VIEW_LABEL[v] }))}
-                         value={pnlTotalView} onChange={setPnlTotalView} />
-            }>Total P&L (Realized + Unrealized)</PanelTitle>
-            <div style={{ padding: "10px 14px 16px" }}>
-              {pnlTotalChartData.length > 0 ? <PnlTotalBarChart points={pnlTotalChartData} /> :
-                <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No data for this period.</div>}
-            </div>
-          </div>
-        </>)}
-      </>)}
+        </div>
+        )}
+        </>);
+      })()}
 
       {/* ── PORTFOLIO TAB ────────────────────────────────────────────────────── */}
       {view === "portfolio" && isGuest && <LockedPanel what="Portfolio" />}
       {view === "portfolio" && !isGuest && (() => {
         // A search deliberately ignores the client filter and spans every book, so the Client
         // column is forced on — the point of searching is to see who else holds the name.
-        const searching = isAdmin && holdingHits !== null;
-        const rows = searching ? holdingHits : holdings;
+        const q = holdingSearch.trim().toUpperCase();
+        const searching = isAdmin && q !== "";
+        const source = searching ? portfolioAll.filter(p => p.stock.toUpperCase().includes(q)) : portfolio;
         const showClient = searching || filterClient === "All" || filterClient === "Own";
-        const totalVal = rows.reduce((s, h) => s + h.currentVal, 0);
-        const totalInvested = rows.reduce((s, h) => s + h.investedHolding, 0);
+        const STATUS_TABS = [["holding", "Holding"], ["partially_booked", "Partly booked"], ["fully_booked", "Booked"]];
+        const counts = Object.fromEntries(STATUS_TABS.map(([k]) => [k, source.filter(p => p.status === k).length]));
+        const rows = source.filter(p => p.status === pfStatus).sort((a, b) =>
+          pfStatus === "fully_booked" ? b.realizedPL - a.realizedPL : b.currentVal - a.currentVal);
+        const open = rows.filter(r => r.netQty > 0);
+        const totalVal = open.reduce((s, h) => s + h.currentVal, 0);
+        const totalInvested = open.reduce((s, h) => s + h.investedHolding, 0);
+        const totalReal = rows.reduce((s, h) => s + h.realizedPL, 0);
         const unreal = totalVal - totalInvested;
-        const cols = showClient
-          ? "1.2fr 1.1fr .8fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr"
-          : "1.1fr .8fr .7fr .8fr .8fr 1fr 1fr 1fr 1.1fr";
-        const heads = [...(showClient ? ["Client"] : []),
-                       "Stock","Kind","Net Qty","Avg Buy","CMP","Invested","Current Value","P&L","Weight"];
-        // Client / Stock / Kind read left; every figure column reads right.
-        const firstNumCol = showClient ? 3 : 2;
+        const heldAll = source.filter(p => p.netQty > 0);
+        const heroVal = heldAll.reduce((s, h) => s + h.currentVal, 0);
+        const heroInv = heldAll.reduce((s, h) => s + h.investedHolding, 0);
+        const cols = "1.5fr .75fr .55fr .85fr .85fr .95fr .95fr 1fr .95fr 1fr 28px";
+        const heads = ["Stock", "Kind", "Qty", "Avg buy", "LTP", "Invested", "Value", "Unrealised", "Realised", "Weight", ""];
+        const tone = (n) => n >= 0 ? "var(--good)" : "var(--bad)";
+        const rowKey = (h) => `${h.client}||${h.stock}`;
         return (<>
           <Hero view="portfolio" eyebrow={`Portfolio · ${scopeLabel(filterClient)}`}
             right={
-              <div style={{ background: "rgba(255,255,255,.14)", border: "1px solid rgba(255,255,255,.2)",
-                            borderRadius: 16, padding: "14px 20px", textAlign: "right" }}>
-                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "rgba(255,255,255,.6)" }}>Unrealized P&L</div>
-                <div className="fig" style={{ fontSize: 24, fontWeight: 600, marginTop: 4 }}>{fmt(unreal)}</div>
+              <div style={{ background: "rgba(255,255,255,.1)", borderRadius: 16, padding: "14px 20px", textAlign: "right" }}>
+                <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--hero-sub)" }}>Unrealised P&L</div>
+                <div className="fig" style={{ fontSize: 24, fontWeight: 900, marginTop: 4, color: heroVal - heroInv >= 0 ? "#6EE7B7" : "#FCA5A5" }}>{fmt(heroVal - heroInv)}</div>
               </div>}>
-            <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
-              {rows.length} active holding{rows.length === 1 ? "" : "s"}
+            <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 900, letterSpacing: "-.03em" }}>
+              {heldAll.length} active holding{heldAll.length === 1 ? "" : "s"}
             </h2>
-            <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
-              Invested <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(totalInvested)}</strong>
-              {" · "}Current <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(totalVal)}</strong>
-              {searching && <> · <strong style={{ color: "#fff", fontWeight: 600 }}>
-                {new Set(rows.map(r => r.client)).size} client{new Set(rows.map(r => r.client)).size === 1 ? "" : "s"} hold this
+            <div style={{ fontSize: 13.5, color: "var(--hero-sub)", marginTop: 6 }}>
+              Invested <strong className="fig" style={{ color: "#fff" }}>{fmt(heroInv)}</strong>
+              {" · "}Current <strong className="fig" style={{ color: "#fff" }}>{fmt(heroVal)}</strong>
+              {searching && <> · <strong style={{ color: "#fff" }}>
+                {new Set(heldAll.map(r => r.client)).size} client{new Set(heldAll.map(r => r.client)).size === 1 ? "" : "s"} hold {q}
               </strong></>}
             </div>
             {isAdmin && (
               <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ position: "relative", flex: "0 1 340px" }}>
                   <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
-                                 fontSize: 13, color: "rgba(255,255,255,.55)", pointerEvents: "none" }}>⌕</span>
+                                 fontSize: 13, color: "var(--hero-sub)", pointerEvents: "none" }}>⌕</span>
                   <input value={holdingSearch} onChange={e => setHoldingSearch(e.target.value)}
                          placeholder="Search a company — see every client holding it"
                          style={{ width: "100%", boxSizing: "border-box", padding: "10px 34px 10px 30px",
-                                  borderRadius: 11, border: "1px solid rgba(255,255,255,.28)",
-                                  background: "rgba(255,255,255,.14)", color: "#fff", fontSize: 13, outline: "none" }} />
+                                  borderRadius: 14, border: "1px solid rgba(255,255,255,.2)",
+                                  background: "rgba(255,255,255,.1)", color: "#fff", fontSize: 13, outline: "none" }} />
                   {holdingSearch && (
                     <button onClick={() => setHoldingSearch("")} title="Clear"
                             style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                                     border: "none", background: "none", color: "rgba(255,255,255,.75)",
+                                     border: "none", background: "none", color: "var(--hero-sub)",
                                      fontSize: 17, cursor: "pointer", lineHeight: 1 }}>×</button>
                   )}
                 </div>
-                {searching && (
-                  <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.6)", whiteSpace: "nowrap" }}>across all clients</span>
-                )}
+                {searching && <span style={{ fontSize: 11.5, color: "var(--hero-sub)", whiteSpace: "nowrap" }}>across all clients</span>}
               </div>
             )}
           </Hero>
 
+          <div style={{ alignSelf: "flex-start" }}>
+            <Segmented options={STATUS_TABS.map(([k, l]) => ({ value: k, label: `${l} · ${counts[k]}` }))}
+                       value={pfStatus} onChange={setPfStatus} />
+          </div>
+
           {rows.length === 0 ? (
             <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>{searching ? "\ud83d\udd0d" : "\ud83d\udced"}</div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>
-                {searching ? `No client holds a stock matching "${holdingSearch.trim()}"` : "No active holdings"}
+                {searching ? `No ${STATUS_TABS.find(t => t[0] === pfStatus)[1].toLowerCase()} position matches "${holdingSearch.trim()}"`
+                           : `No ${STATUS_TABS.find(t => t[0] === pfStatus)[1].toLowerCase()} positions`}
               </div>
             </div>
           ) : (
             <div style={{ ...PANEL, overflow: "hidden" }}>
               <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
-                            padding: "12px 22px", background: "var(--table-head)", borderBottom: "1px solid var(--line)" }}>
+                            padding: "12px 22px", background: "var(--table-head)", borderBottom: "1px solid var(--row-rule)" }}>
                 {heads.map((h, i) => (
-                  <div key={h} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
-                                        color: "var(--ink-3)", textAlign: i >= firstNumCol ? "right" : "left" }}>{h}</div>
+                  <div key={i} style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
+                                        color: "var(--ink-3)", textAlign: i >= 2 && i < 10 ? "right" : "left" }}>{h}</div>
                 ))}
               </div>
               {rows.map((h, i) => {
-                const weight = totalVal > 0 ? (h.currentVal / totalVal * 100) : 0;
-                const fg = tintFor(h.stock)[1];
+                const isOpen = h.netQty > 0;
+                const weight = isOpen && totalVal > 0 ? (h.currentVal / totalVal * 100) : 0;
+                const key = rowKey(h), expanded = !!pfOpen[key];
+                const k = positionKind(h), busy = kindSaving === key;
                 return (
-                  <div key={i} className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12,
-                       alignItems: "center", padding: "13px 22px", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
-                    {showClient && <div style={{ fontSize: 13, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.client}</div>}
-                    <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                      <LogoChip symbol={h.stock} />
-                      <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</span>
-                    </div>
-                    <div>
-                      {(() => {
-                        const k = positionKind(h), busy = kindSaving === `${h.client}||${h.stock}`;
-                        return (
-                          <button onClick={() => isAdmin && setPositionKind(h, k === "investment" ? "trade" : "investment")}
-                                  disabled={!isAdmin || busy}
-                                  title={isAdmin ? `Click to mark this position as ${k === "investment" ? "a trade" : "an investment"} (open lots only)` : undefined}
-                                  style={{ border: "none", padding: 0, background: "none",
-                                           cursor: isAdmin ? "pointer" : "default", opacity: busy ? .5 : 1 }}>
-                            <Badge color={k === "investment" ? "violet" : k === "mixed" ? "amber" : "blue"}>
-                              {k === "investment" ? "INVEST" : k === "mixed" ? "MIXED" : "TRADE"}
-                            </Badge>
-                          </button>
-                        );
-                      })()}
-                    </div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{h.netQty}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(h.avgBuyPrice)}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600 }}>{fmt(h.cmp)}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(h.investedHolding)}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
-                         color: h.currentVal > h.investedHolding ? "var(--good)" : "var(--bad)" }}>{fmt(h.currentVal)}</div>
-                    {/* Unrealized only — this table is open holdings, so booked P&L belongs on Trades. */}
-                    <div style={{ textAlign: "right" }}>
-                      <div className="fig" style={{ fontSize: 13, fontWeight: 600,
-                           color: h.unrealizedPL >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(h.unrealizedPL)}</div>
-                      <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>
-                        {h.investedHolding > 0
-                          ? `${h.unrealizedPL >= 0 ? "+" : ""}${(h.unrealizedPL / h.investedHolding * 100).toFixed(1)}%`
-                          : "—"}
+                  <div key={key} style={{ borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+                    <div className="grid-row" onClick={() => setPfOpen(p => ({ ...p, [key]: !p[key] }))}
+                         style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "12px 22px", cursor: "pointer" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                        <LogoChip symbol={h.stock} size={36} />
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</span>
+                          {showClient && (
+                            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--ink-3)" }}>
+                              <Avatar name={h.client} size={14} />{h.client}
+                            </span>
+                          )}
+                        </span>
                       </div>
+                      <div onClick={e => e.stopPropagation()}>
+                        <button onClick={() => isAdmin && isOpen && setPositionKind(h, k === "investment" ? "trade" : "investment")}
+                                disabled={!isAdmin || busy || !isOpen}
+                                title={isAdmin && isOpen ? `Click to mark this position as ${k === "investment" ? "a trade" : "an investment"} (open lots only)` : undefined}
+                                style={{ border: "none", padding: 0, background: "none", cursor: isAdmin && isOpen ? "pointer" : "default", opacity: busy ? .5 : 1 }}>
+                          <Badge color={k === "investment" ? "violet" : k === "mixed" ? "amber" : "blue"}>
+                            {k === "investment" ? "INVEST" : k === "mixed" ? "MIXED" : "TRADE"}
+                          </Badge>
+                        </button>
+                      </div>
+                      <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{isOpen ? h.netQty : "—"}</div>
+                      <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{isOpen ? fmt(h.avgBuyPrice) : "—"}</div>
+                      <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 700 }}>{h.cmp ? fmt(h.cmp) : "—"}</div>
+                      <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{isOpen ? fmt(h.investedHolding) : "—"}</div>
+                      <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 700 }}>{isOpen ? fmt(h.currentVal) : "—"}</div>
+                      <div style={{ textAlign: "right" }}>
+                        {isOpen ? (<>
+                          <div className="fig" style={{ fontSize: 13, fontWeight: 700, color: tone(h.unrealizedPL) }}>{fmt(h.unrealizedPL)}</div>
+                          <div className="num" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>
+                            {h.investedHolding > 0 ? pct(h.unrealizedPL / h.investedHolding * 100) : "—"}
+                          </div>
+                        </>) : <span className="num" style={{ color: "var(--ink-3)" }}>—</span>}
+                      </div>
+                      <div className="fig" style={{ fontSize: 13, textAlign: "right", fontWeight: 700, color: h.matchDetails.length ? tone(h.realizedPL) : "var(--ink-3)" }}>
+                        {h.matchDetails.length ? fmt(h.realizedPL) : "—"}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                        {isOpen && <span style={{ width: 46, height: 5, borderRadius: 99, background: "var(--row-rule)", overflow: "hidden", flex: "none" }}>
+                          <span style={{ display: "block", height: "100%", borderRadius: 99, background: "var(--accent)", width: `${Math.min(weight * 2.2, 100)}%` }} />
+                        </span>}
+                        <span className="num" style={{ fontSize: 13, fontWeight: 700, minWidth: 40, textAlign: "right" }}>{isOpen ? weight.toFixed(1) + "%" : "—"}</span>
+                      </div>
+                      <div style={{ color: "var(--ink-3)", fontSize: 12, textAlign: "center" }}>{expanded ? "▴" : "▾"}</div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}>
-                      <span style={{ width: 54, height: 5, borderRadius: 99, background: "#EEF1F6", overflow: "hidden", flex: "none" }}>
-                        <span style={{ display: "block", height: "100%", borderRadius: 99, background: fg,
-                                       width: `${Math.min(weight * 2.2, 100)}%` }} />
-                      </span>
-                      <span className="num" style={{ fontSize: 13, fontWeight: 600, minWidth: 44, textAlign: "right" }}>{weight.toFixed(1)}%</span>
-                    </div>
+                    {expanded && (
+                      <div style={{ margin: "0 22px 14px", background: "var(--surface-2)", borderRadius: 16, padding: 16,
+                                    display: "grid", gridTemplateColumns: h.holdingLots.length && h.matchDetails.length ? "1fr 1fr" : "1fr", gap: 24 }}>
+                        {h.holdingLots.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>Open lots</div>
+                            {h.holdingLots.map((l, j) => {
+                              const unrl = l.remainQty * ((h.cmp || l.price) - l.price);
+                              return (
+                                <div key={j} className="num" style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, padding: "5px 0", borderTop: j ? "1px solid var(--row-rule)" : "none" }}>
+                                  <span style={{ width: 82, color: "var(--ink-3)" }}>{fmtDate(l.date)}</span>
+                                  <span style={{ flex: 1 }}>{l.remainQty} @ {fmt(l.price)}</span>
+                                  <Badge color={l.kind === "investment" ? "violet" : "blue"}>{l.kind === "investment" ? "INVEST" : "TRADE"}</Badge>
+                                  <span style={{ width: 96, textAlign: "right", fontWeight: 700, color: tone(unrl) }}>{fmt(unrl)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {h.matchDetails.length > 0 && (
+                          <div>
+                            <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>Booked · FIFO</div>
+                            {h.matchDetails.map((m, j) => (
+                              <div key={j} className="num" style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, padding: "5px 0", borderTop: j ? "1px solid var(--row-rule)" : "none" }}>
+                                <span style={{ flex: 1 }}>{fmtDate(m.buyDate)} @ {fmt(m.buyPrice)} → {fmtDate(m.sellDate)} @ {fmt(m.sellPrice)}</span>
+                                <span style={{ color: "var(--ink-3)" }}>× {m.qty}</span>
+                                {m.kind === "intraday" && <Badge color="amber">INTRADAY</Badge>}
+                                <span style={{ width: 96, textAlign: "right", fontWeight: 700, color: tone(m.pl) }}>{fmt(m.pl)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
               <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
                             padding: "13px 22px", borderTop: "1px solid var(--line)", background: "var(--table-head)", fontWeight: 700 }}>
                 <div style={{ fontSize: 13 }}>Total</div>
-                {showClient && <div />}
-                <div /><div /><div />
+                <div /><div /><div /><div />
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalInvested)}</div>
-                <div className="num" style={{ fontSize: 13, textAlign: "right",
-                     color: totalVal > totalInvested ? "var(--good)" : "var(--bad)" }}>{fmt(totalVal)}</div>
+                <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalVal)}</div>
                 <div style={{ textAlign: "right" }}>
-                  <div className="fig" style={{ fontSize: 13, color: unreal >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(unreal)}</div>
-                  <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)", fontWeight: 600, marginTop: 1 }}>
-                    {totalInvested > 0 ? `${unreal >= 0 ? "+" : ""}${(unreal / totalInvested * 100).toFixed(1)}%` : "—"}
+                  <div className="fig" style={{ fontSize: 13, color: tone(unreal) }}>{fmt(unreal)}</div>
+                  <div className="num" style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 600, marginTop: 1 }}>
+                    {totalInvested > 0 ? pct(unreal / totalInvested * 100) : "—"}
                   </div>
                 </div>
-                <div className="num" style={{ fontSize: 13, textAlign: "right" }}>100.0%</div>
+                <div className="fig" style={{ fontSize: 13, textAlign: "right", color: tone(totalReal) }}>{fmt(totalReal)}</div>
+                <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{open.length ? "100.0%" : "—"}</div>
+                <div />
               </div>
             </div>
           )}
@@ -4355,14 +4608,7 @@ export default function App() {
       {/* ── TRADES TAB ──────────────────────────────────────────────────────── */}
       {view === "trades" && isGuest && <LockedPanel what="Trades" />}
       {view === "trades" && !isGuest && (<>
-        <Hero view="trades" eyebrow={`Trades · ${scopeLabel(filterClient)}`}
-          right={isAdmin && !showForm && (
-            <button onClick={openAddTrade} disabled={clients.length === 0}
-                    style={{ padding: "11px 20px", borderRadius: 11, border: "none", background: "#fff",
-                             color: "#7C3E06", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
-                             opacity: clients.length === 0 ? .6 : 1 }}>
-              + Add trade
-            </button>)}>
+        <Hero view="trades" eyebrow={`Trades · ${scopeLabel(filterClient)}`}>
           <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
             {tradeRows.length} trade{tradeRows.length === 1 ? "" : "s"}, FIFO matched
           </h2>
@@ -4391,44 +4637,8 @@ export default function App() {
         </Hero>
 
         {clients.length === 0 && !showForm && (
-          <div style={{ background: "#fefce8", borderRadius: 10, padding: "10px 14px", border: "1px solid #fde68a", marginBottom: 12, fontSize: 12, color: "#92400e" }}>
+          <div style={{ background: "var(--warn-soft)", borderRadius: 14, padding: "10px 14px", fontSize: 12, color: "var(--warn)" }}>
             Add at least one client before logging trades.
-          </div>
-        )}
-
-        {showForm && (
-          <div style={{ background: editingId ? "#fffbeb" : "#fff", borderRadius: 12, padding: 14, border: `1px solid ${editingId ? "#fbbf24" : "#e5e7eb"}`, marginBottom: 14 }}>
-            {editingId && <div style={{ fontSize: 11, fontWeight: 700, color: "#92400e", marginBottom: 8 }}>Editing Trade</div>}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(140px,1fr))", gap: 8, overflow: "visible" }}>
-              <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Client *</label>
-                <select style={inp} value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}>
-                  <option value="">Select client…</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select></div>
-              <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Type *</label>
-                <select style={inp} value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}><option value="BUY">BUY</option><option value="SELL">SELL</option></select></div>
-              <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Stock * <span style={{ fontWeight: 400, color: "#9ca3af" }}>(NSE)</span></label>
-                <StockAutocomplete value={form.stock_symbol} onChange={v => setForm(p => ({ ...p, stock_symbol: v }))} style={inp} /></div>
-              <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Quantity *</label>
-                <input type="number" style={inp} value={form.quantity} onChange={e => setForm(p => ({ ...p, quantity: e.target.value }))} /></div>
-              <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Price *</label>
-                <input type="number" step="0.01" style={inp} value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} /></div>
-              <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Date *</label>
-                <input type="date" style={inp} value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} /></div>
-              {form.type === "BUY" && (
-                <div><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Kind *</label>
-                  <select style={inp} value={form.kind} onChange={e => setForm(p => ({ ...p, kind: e.target.value }))}>
-                    <option value="trade">Trade</option><option value="investment">Investment</option>
-                  </select></div>
-              )}
-              <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 10, fontWeight: 700, color: "#6b7280" }}>Notes</label>
-                <input style={inp} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes…" /></div>
-            </div>
-            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center" }}>
-              <button onClick={handleSaveTrade} disabled={tradeSaving} style={{ ...btnP, background: editingId ? "#d97706" : "#2563eb", opacity: tradeSaving ? 0.7 : 1 }}>{tradeSaving ? "Saving…" : editingId ? "Save Changes" : "Add Trade"}</button>
-              <button onClick={cancelForm} style={btnS}>Cancel</button>
-              <span style={{ fontSize: 11, color: "#6b7280" }}>SELL validates against FIFO holdings, and inherits the kind of the lot it closes</span>
-            </div>
           </div>
         )}
 
@@ -4456,7 +4666,7 @@ export default function App() {
           <HighlightPanel title="Search results"
                           note={`${openPositionSearchHits.length} open lot${openPositionSearchHits.length === 1 ? "" : "s"} matching "${tradeSearch.trim()}"`}
                           rows={openPositionSearchHits} kind="open" showClient
-                          levelFor={levelFor} isAdmin={false} layout="cards" />
+                          levelFor={levelFor} isAdmin={false} />
         ) : tradeSearchHits !== null ? (
           <div style={{ ...PANEL, overflow: "hidden" }}>
             <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
@@ -4469,7 +4679,7 @@ export default function App() {
             ) : (
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                  <thead><tr style={{ borderBottom: "2px solid var(--line)" }}>
                     {[["client_name","Client"],["type","Type"],["stock_symbol","Stock"],["quantity","Qty"],
                       ["price","Price"],["date","Date"],["kind","Kind"],["notes","Notes"]].map(([key, label]) => (
                       <th key={key} onClick={() => toggleTradeSearchSort(key)}
@@ -4499,8 +4709,8 @@ export default function App() {
                         ? <Badge color={(t.kind || "trade") === "investment" ? "violet" : "blue"}>
                             {(t.kind || "trade") === "investment" ? "INVEST" : "TRADE"}
                           </Badge>
-                        : <span style={{ color: "#9ca3af", fontSize: 11 }}>inherits</span>}</td>
-                      <td className="num" style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
+                        : <span style={{ color: "var(--ink-3)", fontSize: 11 }}>inherits</span>}</td>
+                      <td className="num" style={{ ...td, color: "var(--ink-3)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -4521,17 +4731,17 @@ export default function App() {
                           onSaveCapitalValue={(id, value) => { setCapitalEditingId(null); saveCapital(id, value); }}
                           capitalSavingId={capitalSaving} capitalDetailId={capitalDetailId}
                           onToggleCapitalDetail={(id) => setCapitalDetailId(prev => prev === id ? null : id)}
-                          layout="cards" />
+                          />
           <HighlightPanel title="Recent closed trades" note="Newest exits"
                           rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
-                          layout="cards" />
+                          />
           <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
                           rows={highlights.best} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
-                          layout="cards" />
+                          />
           {isAdmin && (
             <HighlightPanel title="Top 5 losing trades" note="Admin only · hidden from client logins"
                             rows={highlights.worst} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
-                            layout="cards" />
+                            />
           )}
         </div>
         )}
@@ -4544,7 +4754,7 @@ export default function App() {
           {showRawLog && (
             <div style={{ overflowX: "auto", marginTop: 10 }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead><tr style={{ borderBottom: "2px solid #e5e7eb" }}>
+                <thead><tr style={{ borderBottom: "2px solid var(--line)" }}>
                   {[["client_name","Client"],["type","Type"],["stock_symbol","Stock"],["quantity","Qty"],
                     ["price","Price"],["date","Date"],["kind","Kind"],["notes","Notes"]].map(([key, label]) => (
                     <th key={key} onClick={() => toggleRawLogSort(key)}
@@ -4585,8 +4795,8 @@ export default function App() {
                             {(t.kind || "trade") === "investment" ? "INVEST" : "TRADE"}
                           </Badge>
                         </button>
-                      : <span style={{ color: "#9ca3af", fontSize: 11 }}>inherits</span>}</td>
-                    <td className="num" style={{ ...td, color: "#6b7280", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
+                      : <span style={{ color: "var(--ink-3)", fontSize: 11 }}>inherits</span>}</td>
+                    <td className="num" style={{ ...td, color: "var(--ink-3)", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.notes || "—"}</td>
                     {capitalLedger && (
                       <td className="num" style={{ ...td, textAlign: "right" }}>
                         <CapitalCell row={t} entry={entry} isAdmin={isAdmin}
@@ -4599,7 +4809,7 @@ export default function App() {
                       </td>
                     )}
                     <td className="num" style={{ ...td, whiteSpace: "nowrap" }}>
-                      {isAdmin && <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "#2563eb", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>}
+                      {isAdmin && <button onClick={() => startEdit(t)} title="Edit" style={{ border: "none", background: "none", color: "var(--accent)", cursor: "pointer", fontSize: 14, padding: "0 4px" }}>✎</button>}
                       {isAdmin && <button onClick={() => handleDeleteTrade(t.id)} title="Delete" style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer", fontSize: 16, padding: "0 4px" }}>×</button>}
                     </td>
                   </tr>
@@ -4624,14 +4834,7 @@ export default function App() {
 
       {view === "investments" && isGuest && <LockedPanel what="Investments" />}
       {view === "investments" && !isGuest && (<>
-        <Hero view="investments" eyebrow={`Investments · ${scopeLabel(filterClient)}`}
-          right={isAdmin && !showForm && (
-            <button onClick={openAddTrade} disabled={clients.length === 0}
-                    style={{ padding: "11px 20px", borderRadius: 11, border: "none", background: "#fff",
-                             color: "#86198F", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
-                             opacity: clients.length === 0 ? .6 : 1 }}>
-              + Add trade
-            </button>)}>
+        <Hero view="investments" eyebrow={`Investments · ${scopeLabel(filterClient)}`}>
           <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
             {investments.open.length} open, {investments.closed.length} closed
           </h2>
@@ -4643,7 +4846,7 @@ export default function App() {
         </Hero>
 
         {investments.open.length === 0 && investments.closed.length === 0 ? (
-          <div style={{ ...PANEL, padding: 40, textAlign: "center", color: "#6b7280", fontSize: 13.5, marginTop: 14 }}>
+          <div style={{ ...PANEL, padding: 40, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5, marginTop: 14 }}>
             Nothing classified as an investment yet. Mark a BUY as <strong>Investment</strong> when you log it,
             or flip its Kind badge in the raw trade log on the Trades tab.
           </div>
@@ -4674,77 +4877,96 @@ export default function App() {
       {view === "benchmark" && (() => {
         const bmk = benchmarkState === "ok" ? benchmark : null;
         const sel = bmk?.indices?.[benchIndex] || null;
-        const RET = bmk ? bmk.portfolio_return_pct : stats.totalReturn;
-        const ahead = sel ? RET - sel.return_pct : 0;
+        const RET = bmk && bmk.portfolio_xirr_pct != null ? bmk.portfolio_xirr_pct : stats.totalReturn;
+        const ahead = sel ? (sel.alpha_xirr_pp != null ? sel.alpha_xirr_pp : RET - (sel.xirr_pct ?? sel.return_pct)) : 0;
+        const tone = (n) => n >= 0 ? "var(--good)" : "var(--bad)";
+        const allScope = filterClient === "All" || filterClient === "Own";
+        const idxLabel = INDEX_LABELS[benchIndex] || benchIndex;
+        const bc = (byClient?.clients || []).map(r => ({ ...r, name: clients.find(c => c.id === r.client_id)?.name || "—" }))
+          .filter(r => r.portfolio_xirr_pct != null).sort((a, b) => b.portfolio_xirr_pct - a.portfolio_xirr_pct);
+        const idxX = bc.find(r => r.index_xirr_pct != null)?.index_xirr_pct ?? null;
+        const scale = Math.max(1, ...bc.map(r => Math.abs(r.portfolio_xirr_pct)), Math.abs(idxX || 0));
         return (<>
-          <Hero view="benchmark" eyebrow="Customized benchmark · money-weighted"
+          <Hero view="benchmark" eyebrow={`Benchmark · ${scopeLabel(filterClient)}`}
             right={
-              <div style={{ display: "flex", gap: 3, background: "rgba(255,255,255,.14)", padding: 4,
-                            borderRadius: 99, border: "1px solid rgba(255,255,255,.18)" }}>
+              <div style={{ display: "flex", gap: 3, background: "rgba(255,255,255,.1)", padding: 4, borderRadius: 99, flexWrap: "wrap" }}>
                 {indexChoices.map(k => (
                   <button key={k} onClick={() => setBenchIndex(k)} style={{
                     padding: "8px 15px", borderRadius: 99, border: "none", cursor: "pointer", fontSize: 12.5,
                     fontWeight: benchIndex === k ? 700 : 500, whiteSpace: "nowrap",
                     background: benchIndex === k ? "#fff" : "transparent",
-                    color: benchIndex === k ? "var(--ink)" : "rgba(255,255,255,.8)",
+                    color: benchIndex === k ? "var(--ink)" : "var(--hero-sub)",
                   }}>{INDEX_LABELS[k]}</button>
                 ))}
               </div>}>
-            <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
+            <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 900, letterSpacing: "-.03em" }}>
               {sel ? `${ahead >= 0 ? "Ahead of" : "Behind"} ${sel.label} by ${Math.abs(ahead).toFixed(2)} pp`
-                   : "Benchmark unavailable"}
+                   : allScope ? `Every client vs ${idxLabel}` : "Benchmark unavailable"}
             </h2>
-            <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
-              {bmk ? <>Each deposit priced at the index close on its own date · XIRR{" "}
-                <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{bmk.portfolio_xirr_pct}%</strong></>
-                   : benchmarkState === "all" ? "Select a client to see their benchmark"
+            <div style={{ fontSize: 13.5, color: "var(--hero-sub)", marginTop: 6 }}>
+              {bmk ? <>Each deposit is priced at the index close on its own date. Returns are XIRR (money-weighted){" "}
+                <strong className="fig" style={{ color: "#fff" }}>{bmk.portfolio_xirr_pct}%</strong></>
+                   : allScope ? "Pick a client in the header for the full breakdown"
                    : benchmarkState === "loading" ? "Loading…" : "No deposits recorded for this client"}
             </div>
           </Hero>
 
-          {/* Tier 1 — the shared cost basis both columns below are measured against */}
-          <div style={{ ...PANEL, borderRadius: 16, padding: "20px 24px", display: "flex",
-                        alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 18 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 3, height: 13, borderRadius: 2, background: "var(--accent)", flex: "none" }} />
-                <span style={{ fontSize: 11.5, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".05em" }}>Amount invested</span>
-              </div>
-              <div className="fig" style={{ fontSize: 32, fontWeight: 600, letterSpacing: "-.02em", marginTop: 9 }}>
-                {fmt(bmk ? bmk.net_invested : stats.totalInvested)}
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 5 }}>
-                Net of withdrawals · the cost basis both columns below are measured against
-              </div>
+          {isAdmin && allScope && (
+            <div style={{ ...PANEL, padding: 22 }}>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>Who beat the {idxLabel}?</div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-3)", margin: "2px 0 14px" }}>XIRR since joining · dashed line is the index{idxX != null ? ` (${idxX}%)` : ""}</div>
+              {byClient === null ? <div style={{ color: "var(--ink-3)", fontSize: 13 }}>Loading…</div>
+               : bc.length === 0 ? <div style={{ color: "var(--ink-3)", fontSize: 13 }}>{byClient.error ? "Could not load the comparison." : "No client has deposits recorded yet."}</div>
+               : bc.map(r => {
+                const w = Math.abs(r.portfolio_xirr_pct) / scale * 100;
+                return (
+                  <div key={r.client_id} onClick={() => setFilterClient(r.name)} className="grid-row"
+                       style={{ display: "grid", gridTemplateColumns: "190px 1fr 70px 84px", gap: 14, alignItems: "center", padding: "9px 6px", borderRadius: 12, cursor: "pointer" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+                      <Avatar name={r.name} size={28} />
+                      <span style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                    </span>
+                    <span style={{ position: "relative", height: 12, background: "var(--row-rule)", borderRadius: 99 }}>
+                      <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${w}%`, borderRadius: 99,
+                                     background: r.portfolio_xirr_pct >= 0 ? "#9ED5AE" : "#EBA3A3" }} />
+                      {r.index_xirr_pct != null && (
+                        <span style={{ position: "absolute", top: -4, bottom: -4, left: `${Math.min(Math.abs(r.index_xirr_pct) / scale * 100, 100)}%`,
+                                       borderLeft: "2px dashed var(--ink-2)" }} />
+                      )}
+                    </span>
+                    <span className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: "right", color: tone(r.portfolio_xirr_pct) }}>{pct(r.portfolio_xirr_pct)}</span>
+                    <span className="num" style={{ fontSize: 12, fontWeight: 700, textAlign: "center", padding: "3px 8px", borderRadius: 99,
+                                  background: r.alpha_xirr_pp >= 0 ? "var(--good-soft)" : "var(--bad-soft)", color: r.alpha_xirr_pp >= 0 ? "#0B7A55" : "#C2353A" }}>
+                      {r.alpha_xirr_pp == null ? "—" : `${r.alpha_xirr_pp >= 0 ? "+" : ""}${r.alpha_xirr_pp} pp`}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            {sel && (
-              <div style={{ fontSize: 12, color: "var(--ink-3)", textAlign: "right", maxWidth: 230 }}>
-                Same money, same dates — your portfolio on the left, {sel.label} on the right.
-              </div>
-            )}
-          </div>
+          )}
 
-          {/* Tier 2 — what actually happened */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-            <Card title="Current Value" size={26} accent="var(--accent)"
+          {(!allScope || bmk) && (<>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+            <Card title="Amount invested" size={26} accent="var(--accent)"
+                  value={fmt(bmk ? bmk.net_invested : stats.totalInvested)}
+                  sub="Net deposits, the cost basis everything else is measured against" />
+            <Card title="Portfolio value" size={26} accent="var(--accent)"
                   value={fmt(bmk ? bmk.portfolio_value : stats.currentVal)}
-                  sub={`Live NSE prices · ${holdings.length} open positions`} />
+                  sub={`holdings ${fmt(stats.currentVal)}${selectedCash > 0 ? ` · idle cash ${fmt(selectedCash)}` : ""}`} />
             <Card title="Total P&L" size={26} value={fmt(stats.totalPL)}
-                  sub={`${pct(stats.totalReturn)} · ${realizedLots} matched lots`}
-                  tone={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"}
-                  accent={stats.totalPL >= 0 ? "var(--good)" : "var(--bad)"} />
+                  sub={`${holdings.length} open position${holdings.length === 1 ? "" : "s"} · ${realizedLots} matched lots`}
+                  tone={tone(stats.totalPL)} accent={tone(stats.totalPL)} />
           </div>
 
-          {/* Tier 3 — the counterfactual, in the same columns so it reads vertically */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
             {sel ? (<>
               <Card hypothetical size={26} accent="var(--ink-3)"
                     title={`If invested in ${sel.label}`} value={fmt(sel.value)}
                     sub="Each deposit at that day's index close" />
               <Card hypothetical size={26} accent="var(--ink-3)"
                     title={`P&L if invested in ${sel.label}`} value={fmt(sel.gain)}
-                    sub={`${pct(sel.return_pct)} · XIRR ${sel.xirr_pct}%${sel.alpha_pct_pp != null ? ` · you ${sel.alpha_pct_pp >= 0 ? "+" : ""}${sel.alpha_pct_pp} pp` : ""}`}
-                    tone={sel.gain >= 0 ? "var(--good)" : "var(--bad)"} />
+                    sub={`XIRR ${sel.xirr_pct}%${sel.alpha_xirr_pp != null ? ` · you ${sel.alpha_xirr_pp >= 0 ? "+" : ""}${sel.alpha_xirr_pp} pp` : ""}`}
+                    tone={tone(sel.gain)} />
             </>) : (<>
               <Card hypothetical size={26} title="If invested in the index" value="—" sub="needs deposit dates" />
               <Card hypothetical size={26} title="P&L if invested in the index" value="—" sub="needs deposit dates" />
@@ -4752,21 +4974,18 @@ export default function App() {
           </div>
 
           {bmk && sel && (
-            <div style={{ ...PANEL, background: "#ECFDF3", border: "1px solid #CDEEDA", position: "relative",
-                          overflow: "hidden", padding: "24px 26px 20px" }}>
-              <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: "var(--good)" }} />
-              <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+            <div style={{ ...PANEL, background: "var(--good-soft)", padding: "24px 26px 20px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>
                 Alpha generated vs {sel.label}
               </div>
-              <div className="fig" style={{ fontSize: 34, fontWeight: 700, letterSpacing: "-.03em", marginTop: 6,
-                                            color: ahead >= 0 ? "var(--good)" : "var(--bad)" }}>
+              <div className="fig" style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-.03em", marginTop: 6, color: tone(ahead) }}>
                 {ahead >= 0 ? "+" : ""}{ahead.toFixed(2)} pp
               </div>
               <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6 }}>
-                Portfolio {pct(RET)} vs index {pct(sel.return_pct)} · <strong className="fig" style={{ color: "var(--ink)" }}>
-                {fmt(bmk.portfolio_value - sel.value)}</strong> ahead in rupee terms
+                <strong className="fig" style={{ color: "var(--ink)" }}>{fmt(Math.abs(bmk.portfolio_value - sel.value))}</strong>{" "}
+                {bmk.portfolio_value >= sel.value ? "ahead of" : "behind"} {sel.label} with the same deposits
               </div>
-              <div style={{ display: "flex", gap: 30, flexWrap: "wrap", marginTop: 18, paddingTop: 16, borderTop: "1px solid #CDEEDA" }}>
+              <div style={{ display: "flex", gap: 30, flexWrap: "wrap", marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(15,159,110,.2)" }}>
                 <div>
                   <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Your XIRR</div>
                   <div className="fig" style={{ fontSize: 14, fontWeight: 700 }}>{bmk.portfolio_xirr_pct}%</div>
@@ -4776,8 +4995,7 @@ export default function App() {
                     <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{bmk.indices[k].label}</div>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>
                       <span className="fig">{bmk.indices[k].xirr_pct}%</span>
-                      <span className="fig" style={{ fontSize: 12, fontWeight: 600, marginLeft: 5,
-                            color: bmk.indices[k].alpha_xirr_pp >= 0 ? "var(--good)" : "var(--bad)" }}>
+                      <span className="fig" style={{ fontSize: 12, fontWeight: 600, marginLeft: 5, color: tone(bmk.indices[k].alpha_xirr_pp) }}>
                         (you {bmk.indices[k].alpha_xirr_pp >= 0 ? "+" : ""}{bmk.indices[k].alpha_xirr_pp} pp)
                       </span>
                     </div>
@@ -4792,6 +5010,7 @@ export default function App() {
               </div>
             </div>
           )}
+          </>)}
         </>);
       })()}
 
@@ -4809,190 +5028,133 @@ export default function App() {
           if (i === -1 || list.length === 0) return;
           setOpenReviewKey(list[(i + dir + list.length) % list.length].key);
         };
+        const decisive = k.wins + k.losses;
+        const filterVal = perfNeedsReview ? "review" : perfOutcome;
+        const setFilterVal = (v) => { if (v === "review") { setPerfNeedsReview(true); setPerfOutcome("all"); } else { setPerfNeedsReview(false); setPerfOutcome(v); } };
+        const needs = perfMonthTrades.filter(x => !x.review?.reviewed).length;
+        const sortBy = perfTbl.col;
+        const rows = [...perfFilteredTrades].sort((a, b) => {
+          const v = (t) => sortBy === "exit" ? t.sellDate : sortBy === "held" ? t.holdDays : sortBy === "ret" ? t.returnPct : t.net;
+          const va = v(a), vb = v(b);
+          const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
+          return perfTbl.dir === "asc" ? c : -c;
+        });
+        const maxRet = Math.max(5, ...rows.map(r => Math.abs(r.returnPct)));
+        const sortHead = (label, col, align = "right") => (
+          <div onClick={() => setPerfTbl(p => ({ col, dir: p.col === col && p.dir === "desc" ? "asc" : "desc" }))}
+               style={{ cursor: "pointer", userSelect: "none", textAlign: align, color: sortBy === col ? "var(--ink)" : "var(--ink-3)" }}>
+            {label} {sortBy === col ? (perfTbl.dir === "desc" ? "↓" : "↑") : "↕"}
+          </div>
+        );
+        const cols = "1.5fr .85fr .5fr .8fr .8fr .55fr 1.2fr .95fr 1.3fr .95fr 20px";
+        const stat = (label, value, color) => (
+          <div><div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>{label}</div>
+            <div className="fig" style={{ fontSize: 18, fontWeight: 900, marginTop: 2, color: color || "var(--ink)" }}>{value}</div></div>);
         return (<>
-          <Hero view="performance" eyebrow={`PERFORMANCE · ${scopeLabel(filterClient)} · ${monthLabel(perfMonth)}`}
-            right={
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={() => monthIdx > 0 && setPerfMonth(perfMonths[monthIdx - 1])} disabled={monthIdx <= 0}
-                        style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.25)",
-                                 background: "rgba(255,255,255,.1)", color: "#fff", fontSize: 16, cursor: monthIdx > 0 ? "pointer" : "default",
-                                 opacity: monthIdx > 0 ? 1 : 0.4 }}>‹</button>
-                <div style={{ minWidth: 120, textAlign: "center", fontSize: 14, fontWeight: 700, color: "#fff", alignSelf: "center" }}>
-                  {monthLabel(perfMonth)}
-                </div>
-                <button onClick={() => monthIdx < perfMonths.length - 1 && setPerfMonth(perfMonths[monthIdx + 1])}
-                        disabled={monthIdx >= perfMonths.length - 1}
-                        style={{ width: 38, height: 38, borderRadius: 11, border: "1px solid rgba(255,255,255,.25)",
-                                 background: "rgba(255,255,255,.1)", color: "#fff", fontSize: 16,
-                                 cursor: monthIdx < perfMonths.length - 1 ? "pointer" : "default",
-                                 opacity: monthIdx < perfMonths.length - 1 ? 1 : 0.4 }}>›</button>
-              </div>
-            }>
-            <div className="fig" style={{ fontSize: 46, fontWeight: 600, letterSpacing: "-.03em", marginTop: 6 }}>
-              {k.net >= 0 ? "+" : ""}{fmt(k.net)}
-            </div>
-            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 8, fontSize: 13.5, color: "rgba(255,255,255,.78)" }}>
-              <span style={{ whiteSpace: "nowrap" }}>{k.count} closed trades</span>
-              <span style={{ whiteSpace: "nowrap" }}>{k.wins} profit · {k.losses} loss</span>
-              <span style={{ whiteSpace: "nowrap" }}>{fmt(k.charges)} in charges deducted</span>
-            </div>
-          </Hero>
-
           {perfMonths.length === 0 ? (
             <div style={{ ...PANEL, padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>
               No closed trades yet for this scope.
             </div>
           ) : (<>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 14 }}>
-            <Card title="Total profit" value={fmt(k.totalProfit)} accent="var(--good)" tone="var(--good)"
-                  sub={`${perfMonthTrades.filter(x => x.net > 0).length} profit-making trades`} />
-            <Card title="Total loss" value={fmt(k.totalLoss)} accent="var(--bad)" tone="var(--bad)"
-                  sub={`${perfMonthTrades.filter(x => x.net < 0).length} loss-making trades`} />
-            <Card title="Win rate" value={k.winRate == null ? "—" : `${k.winRate.toFixed(0)}%`}
-                  accent="var(--accent)" tone={k.winRate == null ? "var(--ink-3)" : k.winRate >= 50 ? "var(--good)" : "var(--bad)"}
-                  sub={`${k.wins} of ${k.count} closed trades · >${WIN_PCT}% move to count as a win`} />
-            <Card title="Neutral trades" value={String(k.neutral)} accent="var(--ink-3)" tone="var(--ink-3)"
-                  sub={`Between ${LOSS_PCT}% and ${WIN_PCT}% move · ${fmt(k.neutralNet)} net (still counted above)`} />
-            <Card title="Profit factor" value={k.profitFactor == null ? "—" : k.profitFactor.toFixed(2)} accent="var(--accent)"
-                  sub="Gross profit ÷ gross loss · above 1.5 is healthy" />
-            <Card title="Avg win" value={fmt(k.avgWin)} accent="var(--good)" tone="var(--good)" sub="Per profit-making trade" />
-            <Card title="Avg loss" value={fmt(k.avgLoss)} accent="var(--bad)" tone="var(--bad)" sub={`Win/loss ratio ${rrText(k.riskReward)}`} />
-            <Card title="Best trade" value={k.best ? fmt(k.best.net) : "—"} accent="var(--ink-3)" tone="var(--good)"
-                  sub={k.best ? `${k.best.stock} · ${k.best.client} · ${fmtDate(k.best.sellDate)}` : "—"} />
-            <Card title="Worst trade" value={k.worst ? fmt(k.worst.net) : "—"} accent="var(--ink-3)" tone="var(--bad)"
-                  sub={k.worst ? `${k.worst.stock} · ${k.worst.client} · ${fmtDate(k.worst.sellDate)}` : "—"} />
+          <div style={{ ...PANEL, padding: 12, display: "flex", alignItems: "center", gap: 6, overflowX: "auto" }}>
+            <button onClick={() => monthIdx > 0 && setPerfMonth(perfMonths[monthIdx - 1])} disabled={monthIdx <= 0}
+                    style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--surface)", cursor: monthIdx > 0 ? "pointer" : "default", opacity: monthIdx > 0 ? 1 : .4 }}>‹</button>
+            {perfMonths.map(m => (
+              <button key={m} onClick={() => setPerfMonth(m)} style={{ height: 34, padding: "0 14px", borderRadius: 999, whiteSpace: "nowrap", cursor: "pointer",
+                      fontSize: 12.5, fontWeight: 700, border: m === perfMonth ? "1px solid var(--accent)" : "1px solid var(--line)",
+                      background: m === perfMonth ? "var(--accent)" : "var(--surface)", color: m === perfMonth ? "#fff" : "var(--ink-2)" }}>
+                {monthLabel(m)}
+              </button>
+            ))}
+            <button onClick={() => monthIdx < perfMonths.length - 1 && setPerfMonth(perfMonths[monthIdx + 1])} disabled={monthIdx >= perfMonths.length - 1}
+                    style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--surface)", cursor: monthIdx < perfMonths.length - 1 ? "pointer" : "default", opacity: monthIdx < perfMonths.length - 1 ? 1 : .4 }}>›</button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,460px),1fr))", gap: 20 }}>
-            <div style={{ ...PANEL, borderRadius: 18, padding: "16px 20px 20px" }}>
-              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Daily P&L</div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12 }}>By exit date · click a day to filter trades</div>
-              <PerfCalendar weeks={perfCalendar.weeks} maxAbsDay={perfCalendar.maxAbsDay} selectedDay={perfDay} onSelectDay={setPerfDay} />
+          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16 }}>
+            <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: 24 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase", color: "var(--hero-sub)" }}>
+                Net booked · {monthLabel(perfMonth)} · {scopeLabel(filterClient)}</div>
+              <div className="fig" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-.03em", marginTop: 6, color: k.net >= 0 ? "#fff" : "#FCA5A5" }}>
+                {k.net >= 0 ? "+" : "−"}{fmt(Math.abs(k.net))}</div>
+              <div style={{ fontSize: 13, color: "var(--hero-sub)", marginTop: 4 }}>{k.count} closed trade{k.count === 1 ? "" : "s"} · {fmt(k.charges)} charges deducted</div>
             </div>
-            <div style={{ ...PANEL, borderRadius: 18, padding: "16px 20px 20px" }}>
-              <div style={{ fontSize: 14.5, fontWeight: 700 }}>Equity curve</div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginBottom: 12 }}>Cumulative net P&L through the month</div>
-              <PerfEquityCurve points={perfEquity.points} peak={perfEquity.peak} maxDD={perfEquity.maxDD} monthEnd={perfEquity.monthEnd} />
-            </div>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,460px),1fr))", gap: 20 }}>
-            <div style={{ ...PANEL, overflow: "hidden" }}>
-              <PanelTitle>By strategy</PanelTitle>
-              <div style={{ display: "grid", gridTemplateColumns: "1.5fr .5fr .7fr 1fr .6fr 1.1fr", gap: 10,
-                            padding: "10px 22px", background: "#fafbfd", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)",
-                            fontSize: 10, fontWeight: 700, textTransform: "uppercase", color: "var(--ink-3)", marginTop: 12 }}>
-                <div>Setup</div><div style={{ textAlign: "right" }}>Trades</div><div style={{ textAlign: "right" }}>Win rate</div>
-                <div style={{ textAlign: "right" }}>Net P&L</div><div style={{ textAlign: "right" }}>PF</div><div />
+            <div style={{ ...PANEL, padding: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                {stat("Win rate", k.winRate == null ? "—" : `${k.winRate.toFixed(0)}%`, k.winRate == null ? null : tone(k.winRate - 50))}
+                {stat("Profit factor", k.profitFactor == null ? "—" : k.profitFactor.toFixed(2))}
+                {stat("Avg win", fmt(k.avgWin), "var(--good)")}
+                {stat("Avg loss", fmt(k.avgLoss), "var(--bad)")}
               </div>
-              {perfByStrategy.map(row => {
-                const barWidth = Math.min(50, (Math.abs(row.net) / row.maxAbs) * 50);
-                return (
-                  <div key={row.strategy} onClick={() => setPerfStrategy(perfStrategy === row.strategy ? "All" : row.strategy)}
-                       style={{ display: "grid", gridTemplateColumns: "1.5fr .5fr .7fr 1fr .6fr 1.1fr", gap: 10, padding: "11px 22px",
-                                borderBottom: "1px solid #f2f4f8", cursor: "pointer", fontSize: 12.5,
-                                background: perfStrategy === row.strategy ? "#EEF2FF" : "transparent",
-                                fontWeight: perfStrategy === row.strategy ? 800 : 400 }}>
-                    <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.strategy}</div>
-                    <div className="num" style={{ textAlign: "right" }}>{row.trades}</div>
-                    <div className="num" style={{ textAlign: "right" }}>{row.winRate == null ? "—" : `${row.winRate.toFixed(0)}%`}</div>
-                    <div className="fig" style={{ textAlign: "right", fontWeight: 700, color: tone(row.net) }}>{fmt(row.net)}</div>
-                    <div className="num" style={{ textAlign: "right", color: "var(--ink-3)" }}>—</div>
-                    <div style={{ position: "relative", height: 6, background: "#EEF1F6", borderRadius: 3, alignSelf: "center" }}>
-                      <div style={{ position: "absolute", top: 0, bottom: 0, left: "50%", width: 1, background: "var(--ink-3)" }} />
-                      <div style={{ position: "absolute", top: 0, bottom: 0, borderRadius: 3,
-                                    left: row.net >= 0 ? "50%" : `${50 - barWidth}%`, width: `${barWidth}%`,
-                                    background: row.net >= 0 ? "var(--good)" : "var(--bad)" }} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div style={SECTION}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={SECTION_LABEL}>Retrospect</div>
-                <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{perfMistakes.reviewedCount} of {perfMistakes.total} trades reviewed</span>
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 10 }}>
+                {k.wins} of {decisive} decisive exits in profit (win ≥ {WIN_PCT}%, loss ≤ {LOSS_PCT}%) · {k.neutral} neutral
               </div>
-              <div style={{ height: 6, borderRadius: 3, background: "#EEF1F6", marginBottom: 14 }}>
-                <div style={{ height: 6, borderRadius: 3, background: "#4F46E5",
-                              width: `${perfMistakes.total ? (perfMistakes.reviewedCount / perfMistakes.total) * 100 : 0}%` }} />
+              <div style={{ marginTop: 6 }}>
+                <PerfEquityCurve points={perfEquity.points} peak={perfEquity.peak} maxDD={perfEquity.maxDD} monthEnd={perfEquity.monthEnd} />
               </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 700 }}>PLAN FOLLOWED</div>
-                  <div className="fig" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-                    {perfMistakes.planFollowedPct == null ? "—" : `${perfMistakes.planFollowedPct.toFixed(0)}%`}
-                  </div>
-                </div>
-                <div style={{ border: "1px solid var(--line)", borderRadius: 12, padding: "10px 12px" }}>
-                  <div style={{ fontSize: 10, color: "var(--ink-3)", fontWeight: 700 }}>AVG DISCIPLINE</div>
-                  <div className="fig" style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>
-                    {perfMistakes.avgDiscipline == null ? "—" : `${perfMistakes.avgDiscipline.toFixed(1)} / 5`}
-                  </div>
-                </div>
-              </div>
-              <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 8 }}>Recurring mistakes</div>
-              {perfMistakes.top.length === 0 ? (
-                <div style={{ fontSize: 12, color: "var(--ink-3)" }}>No mistakes tagged on reviewed trades yet.</div>
-              ) : perfMistakes.top.map(m => (
-                <div key={m.mistake} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.mistake}</span>
-                  <div style={{ width: 60, height: 4, background: "#F1F4F8", borderRadius: 2 }}>
-                    <div style={{ width: `${(m.count / perfMistakes.maxCount) * 100}%`, height: 4, background: "#F87171", borderRadius: 2 }} />
-                  </div>
-                  <span style={{ fontSize: 11, color: "var(--ink-3)" }}>×{m.count}</span>
-                  <span className="fig" style={{ fontSize: 11, fontWeight: 700, color: tone(m.cost) }}>{fmt(m.cost)}</span>
-                </div>
-              ))}
             </div>
           </div>
 
           <div style={{ ...PANEL, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-                          padding: "14px 22px", borderBottom: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "16px 22px 12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>Trades · {monthLabel(perfMonth)}</h3>
-                {perfDay && (
-                  <span onClick={() => setPerfDay(null)} style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
-                        background: "#EEF2FF", border: "1px solid #C7D2FE", color: "#3730A3", cursor: "pointer" }}>
-                    {fmtDate(perfDay)} ×
-                  </span>
-                )}
-                {perfStrategy !== "All" && (
-                  <span onClick={() => setPerfStrategy("All")} style={{ fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 99,
-                        background: "#EEF2FF", border: "1px solid #C7D2FE", color: "#3730A3", cursor: "pointer" }}>
-                    {perfStrategy} ×
-                  </span>
-                )}
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Trades · {monthLabel(perfMonth)}</h3>
+                {perfDay && <span onClick={() => setPerfDay(null)} style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "var(--accent-soft)", color: "#4335C9", cursor: "pointer" }}>{fmtDate(perfDay)} ×</span>}
+                {perfStrategy !== "All" && <span onClick={() => setPerfStrategy("All")} style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "var(--accent-soft)", color: "#4335C9", cursor: "pointer" }}>{perfStrategy} ×</span>}
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <Segmented value={perfOutcome} onChange={setPerfOutcome} options={[
-                  { value: "all", label: `All · ${perfMonthTrades.length}` },
-                  { value: "win", label: `Profit · ${perfMonthTrades.filter(x => x.net > 0).length}` },
-                  { value: "loss", label: `Loss · ${perfMonthTrades.filter(x => x.net < 0).length}` },
-                ]} />
-                <button onClick={() => setPerfNeedsReview(v => !v)} style={{
-                  fontSize: 11.5, fontWeight: 700, padding: "6px 12px", borderRadius: 8, cursor: "pointer",
-                  border: perfNeedsReview ? "1px solid #FDBA74" : "1px solid var(--line)",
-                  background: perfNeedsReview ? "#FFF7ED" : "var(--surface)", color: perfNeedsReview ? "#C2410C" : "var(--ink-2)" }}>
-                  Needs review · {perfMonthTrades.filter(x => !x.review?.reviewed).length}
-                </button>
-                <select value={perfSort} onChange={e => setPerfSort(e.target.value)}
-                        style={{ fontSize: 12, padding: "6px 10px", borderRadius: 8, border: "1px solid var(--line)" }}>
-                  <option value="latest">Latest exit</option>
-                  <option value="biggestWin">Biggest profit</option>
-                  <option value="biggestLoss">Biggest loss</option>
-                </select>
-              </div>
+              <Segmented value={filterVal} onChange={setFilterVal} options={[
+                { value: "all", label: `All · ${perfMonthTrades.length}` },
+                { value: "win", label: `Winners · ${perfMonthTrades.filter(x => x.net > 0).length}` },
+                { value: "loss", label: `Losers · ${perfMonthTrades.filter(x => x.net < 0).length}` },
+                { value: "review", label: `Needs review · ${needs}` },
+              ]} />
             </div>
-            {perfFilteredTrades.length === 0 ? (
+            {rows.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>No closed trades match these filters.</div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(300px,1fr))", gap: 14, padding: 20 }}>
-                {perfFilteredTrades.map(t => <PerfTradeCard key={t.key} t={t} onOpen={() => setOpenReviewKey(t.key)} />)}
+            ) : (<>
+              <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 22px", background: "var(--table-head)",
+                            fontSize: 11, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+                <div>Stock</div>{sortHead("Exit", "exit", "left")}<div style={{ textAlign: "right" }}>Qty</div>
+                <div style={{ textAlign: "right" }}>Bought</div><div style={{ textAlign: "right" }}>Sold</div>
+                {sortHead("Held", "held")}{sortHead("Return", "ret")}{sortHead("Net P&L", "net")}<div>Setup</div><div>Review</div><div />
               </div>
-            )}
+              {rows.map((t, i) => {
+                const reviewed = !!t.review?.reviewed;
+                const w = Math.min(50, Math.abs(t.returnPct) / maxRet * 50);
+                return (
+                  <div key={t.key} className="grid-row" onClick={() => setOpenReviewKey(t.key)}
+                       style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "11px 22px", cursor: "pointer",
+                                borderTop: "1px solid var(--row-rule)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <LogoChip symbol={t.stock} size={34} />
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: 13.5, fontWeight: 700 }}>{t.stock}</span>
+                        <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.client}</span>
+                      </span>
+                    </div>
+                    <div className="num" style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{fmtDate(t.sellDate)}</div>
+                    <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{t.qty}</div>
+                    <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(t.buyPrice)}</div>
+                    <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(t.sellPrice)}</div>
+                    <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{t.holdDays}d</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                      <span style={{ position: "relative", width: 56, height: 6, background: "var(--row-rule)", borderRadius: 3 }}>
+                        <span style={{ position: "absolute", left: "50%", top: -2, bottom: -2, width: 1, background: "#D3D6E2" }} />
+                        <span style={{ position: "absolute", top: 0, bottom: 0, borderRadius: 3, left: t.returnPct >= 0 ? "50%" : `${50 - w}%`, width: `${w}%`,
+                                       background: t.returnPct >= 0 ? "#9ED5AE" : "#EBA3A3" }} />
+                      </span>
+                      <span className="num" style={{ fontSize: 12.5, fontWeight: 700, minWidth: 52, textAlign: "right", color: tone(t.returnPct) }}>{pct(t.returnPct)}</span>
+                    </div>
+                    <div className="fig" style={{ fontSize: 13.5, fontWeight: 900, textAlign: "right", color: tone(t.net) }}>{fmt(t.net)}</div>
+                    <div style={{ fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.review?.strategy ? `${t.review.strategy}${t.review.discipline ? ` · ${t.review.discipline}/5` : ""}` : "—"}
+                    </div>
+                    <div><Badge color={reviewed ? "green" : "amber"}>{reviewed ? "Reviewed ✓" : "Needs review"}</Badge></div>
+                    <div style={{ color: "var(--ink-3)" }}>›</div>
+                  </div>
+                );
+              })}
+              <div style={{ padding: "10px 22px 14px", fontSize: 11.5, color: "var(--ink-3)", borderTop: "1px solid var(--row-rule)" }}>P&L is net of charges.</div>
+            </>)}
           </div>
           </>)}
 
@@ -5005,6 +5167,54 @@ export default function App() {
 
        </div>
       </main>
+      {showForm && (
+        <Sheet title={editingId ? "Edit trade" : "Add trade"} subtitle="SELL validates against FIFO holdings and inherits the kind of the lot it closes."
+               onClose={cancelForm}
+               footer={
+                 <div style={{ display: "flex", gap: 10 }}>
+                   <button onClick={handleSaveTrade} disabled={tradeSaving} style={{ ...btnP, flex: 1, height: 42, borderRadius: "var(--r-control)", boxShadow: "none",
+                           background: editingId ? "var(--amber)" : "var(--accent)", opacity: tradeSaving ? .7 : 1 }}>
+                     {tradeSaving ? "Saving…" : editingId ? "Save changes" : "Add trade"}</button>
+                   <button onClick={cancelForm} style={{ ...btnS, height: 42, borderRadius: "var(--r-control)", boxShadow: "none" }}>Cancel</button>
+                 </div>}>
+          <div style={{ display: "grid", gap: 14, paddingTop: 8 }}>
+            <div style={{ display: "flex", gap: 2, background: "var(--canvas)", padding: 4, borderRadius: 999 }}>
+              {["BUY", "SELL"].map(t => (
+                <button key={t} onClick={() => setForm(p => ({ ...p, type: t }))} style={{ flex: 1, padding: "8px 0", borderRadius: 999, border: "none", cursor: "pointer",
+                        fontSize: 13, fontWeight: 700, background: form.type === t ? "var(--surface)" : "transparent",
+                        color: form.type === t ? (t === "BUY" ? "#0B7A55" : "#C2353A") : "var(--ink-3)",
+                        boxShadow: form.type === t ? "0 1px 2px rgba(22,24,43,.10)" : "none" }}>{t}</button>
+              ))}
+            </div>
+            <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Client *</label>
+              <select style={inp} value={form.client_id} onChange={e => setForm(p => ({ ...p, client_id: e.target.value }))}>
+                <option value="">Select client…</option>
+                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select></div>
+            <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Stock * <span style={{ fontWeight: 400, color: "var(--ink-3)" }}>(NSE, falls back to BSE)</span></label>
+              <StockAutocomplete value={form.stock_symbol} onChange={v => setForm(p => ({ ...p, stock_symbol: v }))} style={inp} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Quantity *</label>
+                <input type="number" style={inp} value={form.quantity} onChange={e => setForm(p => ({ ...p, quantity: e.target.value }))} /></div>
+              <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Price *</label>
+                <input type="number" step="0.01" style={inp} value={form.price} onChange={e => setForm(p => ({ ...p, price: e.target.value }))} /></div>
+            </div>
+            <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Date *</label>
+              <input type="date" style={inp} value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} /></div>
+            {form.type === "BUY" && (
+              <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Kind *</label>
+                <Segmented options={[{ value: "trade", label: "Trade" }, { value: "investment", label: "Investment" }]}
+                           value={form.kind} onChange={k => setForm(p => ({ ...p, kind: k }))} /></div>
+            )}
+            <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Notes</label>
+              <input style={inp} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes…" />
+              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 5 }}>Write "intraday" to match same-day buys and sells first.</div></div>
+            <div style={{ background: "var(--tint)", borderRadius: 14, padding: "12px 14px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
+              A SELL is checked against what the client holds (FIFO). A BUY reserves swing-capital risk: (entry − stop-loss) × qty, or 1% of capital when no stop-loss is set.
+            </div>
+          </div>
+        </Sheet>
+      )}
     </div>
   );
 }

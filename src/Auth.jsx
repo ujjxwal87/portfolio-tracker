@@ -16,26 +16,13 @@ function useNarrow() {
   return narrow;
 }
 
-// Same treatment as the dashboard hero: concentric rings, 74px stripe texture, blue wash.
-const ART_BG = {
-  backgroundColor: "#0B1330",
-  backgroundRepeat: "no-repeat,no-repeat,no-repeat,no-repeat,repeat-x,no-repeat",
-  backgroundSize: "100% 1240px,100% 1240px,100% 1240px,100% 1240px,74px 100%,100% 100%",
-  backgroundImage: [
-    "radial-gradient(circle at 86% 10%, transparent 337px, rgba(147,197,253,.16) 338px 341px, transparent 342px)",
-    "radial-gradient(circle at 86% 10%, transparent 227px, rgba(147,197,253,.15) 228px 231px, transparent 232px)",
-    "radial-gradient(circle at 86% 10%, transparent 137px, rgba(147,197,253,.14) 138px 141px, transparent 142px)",
-    "radial-gradient(760px 580px at 96% -4%, rgba(59,130,246,.38), transparent 68%)",
-    "repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 74px)",
-    "linear-gradient(135deg,#070E24 0%,#152C6B 52%,#2563EB 100%)",
-  ].join(","),
-};
+// Ink panel, matching the app's dark hero cards.
+const ART_BG = { backgroundColor: "#16182B" };
 
 const Logo = ({ size = 38 }) => (
   <div style={{ width: size, height: size, borderRadius: size * 0.32, display: "grid",
                 placeItems: "center", background: "linear-gradient(135deg,#B8860B,#F5D67B)",
-                color: "#3D2B00", fontSize: size * 0.45, fontWeight: 800, flex: "none",
-                boxShadow: "0 6px 18px -6px rgba(184,134,11,.7)" }}>M</div>
+                color: "#3D2B00", fontSize: size * 0.45, fontWeight: 900, flex: "none" }}>M</div>
 );
 
 const Wordmark = ({ dark }) => (
@@ -45,7 +32,7 @@ const Wordmark = ({ dark }) => (
       <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.02em",
                     color: dark ? "#fff" : "var(--ink)" }}>Mudra Securities</div>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase",
-                    color: dark ? "rgba(255,255,255,.5)" : "var(--ink-3)" }}>Wealth tracker</div>
+                    color: dark ? "#A9ADC6" : "var(--ink-3)" }}>Wealth tracker</div>
     </div>
   </div>
 );
@@ -56,10 +43,10 @@ const ProofChart = () => (
                 background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.14)" }}>
     <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase",
-                    color: "rgba(255,255,255,.55)" }}>Performance since first investment</div>
+                    color: "#A9ADC6" }}>Performance since first investment</div>
       <div style={{ display: "flex", gap: 14, fontSize: 10.5, fontWeight: 600, color: "rgba(255,255,255,.7)" }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
-          <span style={{ width: 14, height: 2.5, background: "#60A5FA", borderRadius: 2 }} />Portfolio</span>
+          <span style={{ width: 14, height: 2.5, background: "#F5D67B", borderRadius: 2 }} />Portfolio</span>
         <span style={{ display: "flex", alignItems: "center", gap: 6, whiteSpace: "nowrap" }}>
           <span style={{ width: 14, height: 0, borderTop: "2.5px dashed rgba(255,255,255,.55)" }} />Nifty 50</span>
       </div>
@@ -68,8 +55,8 @@ const ProofChart = () => (
          preserveAspectRatio="none" aria-hidden="true">
       <defs>
         <linearGradient id="pfFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#60A5FA" stopOpacity=".42" />
-          <stop offset="100%" stopColor="#60A5FA" stopOpacity="0" />
+          <stop offset="0%" stopColor="#F5D67B" stopOpacity=".35" />
+          <stop offset="100%" stopColor="#F5D67B" stopOpacity="0" />
         </linearGradient>
       </defs>
       {[42, 86, 130].map(y => (
@@ -79,7 +66,7 @@ const ProofChart = () => (
       <path d="M0,152 C50,148 70,138 100,140 S160,124 190,128 S250,110 280,112 S340,96 370,100 S440,86 470,80 S510,74 520,70"
             fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="2" strokeDasharray="6 5" />
       <path d="M0,150 C40,142 60,120 90,124 S140,96 170,104 S220,70 250,80 S300,52 330,44 S390,60 420,38 S486,26 520,16"
-            fill="none" stroke="#93C5FD" strokeWidth="2.6" strokeLinecap="round" />
+            fill="none" stroke="#F5D67B" strokeWidth="2.6" strokeLinecap="round" />
       <circle cx="516" cy="16" r="4" fill="#fff" />
     </svg>
   </div>
@@ -91,8 +78,8 @@ const ArtPanel = () => (
     <Wordmark dark />
     <div style={{ marginTop: 46, maxWidth: 430 }}>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase",
-                    color: "rgba(255,255,255,.55)" }}>Wealth tracker</div>
-      <div style={{ fontSize: 38, fontWeight: 800, letterSpacing: "-.03em", lineHeight: 1.1, marginTop: 12 }}>
+                    color: "#A9ADC6" }}>Wealth tracker</div>
+      <div style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-.03em", lineHeight: 1.1, marginTop: 12 }}>
         Your wealth, in one clear view.
       </div>
       <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.72)", marginTop: 14 }}>
@@ -108,12 +95,12 @@ const ArtPanel = () => (
 function AuthShell({ children }) {
   const narrow = useNarrow();
   return (
-    <div style={{ minHeight: "100vh", background: "#EEF1F5", display: "grid", placeItems: "center",
+    <div style={{ minHeight: "100vh", background: "var(--canvas)", display: "grid", placeItems: "center",
                   padding: narrow ? 16 : 24, boxSizing: "border-box" }}>
-      <div style={{ width: "100%", maxWidth: narrow ? 440 : 1180, borderRadius: 20, overflow: "hidden",
+      <div style={{ width: "100%", maxWidth: narrow ? 440 : 1180, borderRadius: 24, overflow: "hidden",
                     display: "grid", gridTemplateColumns: narrow ? "1fr" : "1.18fr 1fr",
                     minHeight: narrow ? 0 : 700, background: "#fff",
-                    boxShadow: "0 2px 6px rgba(15,23,42,.06), 0 30px 70px -30px rgba(15,23,42,.35)" }}>
+                    boxShadow: "var(--shadow-pop)" }}>
         {narrow
           ? <div style={{ ...ART_BG, padding: "22px 24px" }}><Wordmark dark /></div>
           : <ArtPanel />}
@@ -127,7 +114,7 @@ function AuthShell({ children }) {
 }
 
 const labelStyle = {
-  display: "block", fontSize: 10.5, fontWeight: 700, color: "#94A3B8",
+  display: "block", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)",
   textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6,
 };
 
@@ -141,10 +128,10 @@ function TextField({ label, trailing, style, ...props }) {
         <input {...props} onFocus={() => setFocus(true)} onBlur={() => setFocus(false)}
                style={{ width: "100%", boxSizing: "border-box",
                         padding: trailing ? "11px 62px 11px 13px" : "11px 13px",
-                        borderRadius: 10, border: `1px solid ${focus ? "#2563EB" : "#E1E6EE"}`,
-                        boxShadow: focus ? "0 0 0 3px rgba(37,99,235,.16)" : "none",
+                        height: 44, borderRadius: 14, border: `1px solid ${focus ? "#5B4CF0" : "var(--line)"}`,
+                        boxShadow: focus ? "0 0 0 4px rgba(91,76,240,.14)" : "none",
                         fontFamily: "inherit", fontSize: 13.5, color: "var(--ink)", outline: "none",
-                        background: "#fff", ...style }} />
+                        background: "var(--surface-2)", ...style }} />
         {trailing}
       </div>
     </div>
@@ -154,21 +141,21 @@ function TextField({ label, trailing, style, ...props }) {
 const PwToggle = ({ shown, onClick }) => (
   <button type="button" onClick={onClick} tabIndex={-1}
           style={{ position: "absolute", right: 8, border: "none", background: "none", cursor: "pointer",
-                   fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, color: "#2563EB", padding: "6px" }}>
+                   fontFamily: "inherit", fontSize: 11.5, fontWeight: 700, color: "#5B4CF0", padding: "6px" }}>
     {shown ? "Hide" : "Show"}
   </button>
 );
 
 const primaryBtn = {
-  width: "100%", marginTop: 18, padding: "12px 18px", borderRadius: 11, border: "none",
-  background: "#2563EB", color: "#fff", fontFamily: "inherit", fontWeight: 700, fontSize: 13.5,
-  cursor: "pointer", boxShadow: "0 10px 24px -12px rgba(37,99,235,.9)",
+  width: "100%", marginTop: 18, height: 44, padding: "0 18px", borderRadius: 14, border: "none",
+  background: "#5B4CF0", color: "#fff", fontFamily: "inherit", fontWeight: 700, fontSize: 13.5,
+  cursor: "pointer",
 };
 const noteStyle = { fontSize: 12.5, fontWeight: 600, marginTop: 14, lineHeight: 1.45 };
 
 const Heading = ({ title, sub }) => (<>
   <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-.02em" }}>{title}</div>
-  <div style={{ fontSize: 13, color: "#94A3B8", marginTop: 6, lineHeight: 1.5 }}>{sub}</div>
+  <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.5 }}>{sub}</div>
 </>);
 
 /** The shared demo account. Its password is handed out by the advisor, never shown here. */
@@ -223,15 +210,15 @@ export function LoginScreen({ onSignedIn, notice }) {
         <Heading title={active.caption}
                  sub="Signed sessions expire after idle time — you may be asked again." />
 
-        <div style={{ display: "flex", gap: 3, background: "#F1F4F8", padding: 3, borderRadius: 10,
+        <div style={{ display: "flex", gap: 3, background: "var(--canvas)", padding: 4, borderRadius: 999,
                       margin: "22px 0 20px" }}>
           {MODES.map(m => {
             const on = mode === m.key;
             return (
               <button key={m.key} type="button" onClick={() => switchMode(m.key)} style={{
-                flex: 1, padding: "9px 6px", borderRadius: 8, border: "none", cursor: "pointer",
+                flex: 1, padding: "9px 6px", borderRadius: 999, border: "none", cursor: "pointer",
                 fontFamily: "inherit", fontSize: 12.5, fontWeight: on ? 700 : 600,
-                background: on ? "#fff" : "transparent", color: on ? "var(--ink)" : "#94A3B8",
+                background: on ? "#fff" : "transparent", color: on ? "var(--ink)" : "var(--ink-3)",
                 boxShadow: on ? "0 1px 3px rgba(15,23,42,.14)" : "none",
               }}>{m.label}</button>
             );
@@ -258,11 +245,11 @@ export function LoginScreen({ onSignedIn, notice }) {
         {error && <div style={{ ...noteStyle, color: "var(--bad)" }}>{error}</div>}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "22px 0 12px" }}>
-          <span style={{ flex: 1, height: 1, background: "#EEF1F5" }} />
-          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".14em", color: "#C3CCD8" }}>SECURED</span>
-          <span style={{ flex: 1, height: 1, background: "#EEF1F5" }} />
+          <span style={{ flex: 1, height: 1, background: "var(--row-rule)" }} />
+          <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: ".14em", color: "var(--ink-3)" }}>SECURED</span>
+          <span style={{ flex: 1, height: 1, background: "var(--row-rule)" }} />
         </div>
-        <div style={{ fontSize: 11.5, color: "#94A3B8", textAlign: "center", lineHeight: 1.5 }}>
+        <div style={{ fontSize: 11.5, color: "var(--ink-3)", textAlign: "center", lineHeight: 1.5 }}>
           {active.hint}
         </div>
       </form>
@@ -317,7 +304,7 @@ export function ChangePasswordScreen({ user, forced, onDone, onCancel }) {
         {error && <div style={{ ...noteStyle, color: "var(--bad)" }}>{error}</div>}
         {!forced && (
           <button type="button" onClick={onCancel}
-                  style={{ width: "100%", marginTop: 10, padding: "11px 18px", borderRadius: 11,
+                  style={{ width: "100%", marginTop: 10, padding: "11px 18px", borderRadius: 14,
                            border: "1px solid var(--line)", background: "#fff", fontFamily: "inherit",
                            color: "var(--ink-2)", fontWeight: 600, fontSize: 13, cursor: "pointer" }}>
             Cancel
