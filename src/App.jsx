@@ -151,6 +151,27 @@ const Sparkline = ({ points, w = 280, h = 100 }) => {
   );
 };
 
+// Full-width cumulative P&L area for the Dashboard hero: purple line over a soft purple fill.
+const HeroSpark = ({ points, h = 150 }) => {
+  if (!points || points.length < 2) return <div style={{ height: h }} />;
+  const vals = points.map(p => p.realized + p.unrealized);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  const W = 800;
+  const { d } = smoothPath(vals, W, h, 6, min, span);
+  return (
+    <svg viewBox={`0 0 ${W} ${h}`} preserveAspectRatio="none" width="100%" height={h} style={{ display: "block" }} aria-hidden="true">
+      <defs>
+        <linearGradient id="heroSparkFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#8B7CF6" stopOpacity=".45" />
+          <stop offset="100%" stopColor="#8B7CF6" stopOpacity=".12" />
+        </linearGradient>
+      </defs>
+      <path d={`${d} L ${W} ${h} L 0 ${h} Z`} fill="url(#heroSparkFill)" />
+      <path d={d} fill="none" stroke="#9B8CFF" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+};
+
 const Hero = ({ view, eyebrow, children, right }) => (
   <div style={{
     borderRadius: "var(--r-card)", padding: "26px 30px", color: "#fff", position: "relative", overflow: "hidden",
@@ -348,6 +369,15 @@ const compactINR = (n) => {
   if (a >= 1e7) return sign + (a / 1e7).toFixed(2) + " Cr";
   if (a >= 1e5) return sign + (a / 1e5).toFixed(2) + " L";
   return sign + Math.round(a).toLocaleString("en-IN");
+};
+// Short money for big cards: ₹2.01L, +₹5.7k, −₹3.50L (signed=true adds an explicit + / −).
+const shortINR = (n, signed = false) => {
+  const v = Number(n) || 0, a = Math.abs(v);
+  const sign = v < 0 ? "−" : signed ? "+" : "";
+  if (a >= 1e7) return `${sign}₹${(a / 1e7).toFixed(2)}Cr`;
+  if (a >= 1e5) return `${sign}₹${(a / 1e5).toFixed(2)}L`;
+  if (a >= 1e3) return `${sign}₹${(a / 1e3).toFixed(1)}k`;
+  return `${sign}₹${Math.round(a)}`;
 };
 const inrRound = (n) => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
 
@@ -4350,38 +4380,37 @@ export default function App() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-              <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: 24, position: "relative", overflow: "hidden" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                  <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase", color: "var(--hero-sub)" }}>Portfolio value · {scopeName}</div>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: "rgba(255,255,255,.12)", whiteSpace: "nowrap" }}>{holdings.length} holdings</span>
+              <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: "22px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+                  <div style={{ fontSize: 14, color: "var(--hero-sub)" }}>Portfolio value · {scopeLabel(filterClient)}</div>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, padding: "5px 12px", borderRadius: 999, background: "rgba(255,255,255,.1)", whiteSpace: "nowrap" }}>{holdings.length} holdings</span>
                 </div>
-                <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-                  <div>
-                    <div className="fig" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-.03em", lineHeight: 1.1, marginTop: 8 }}>{fmt(stats.currentVal)}</div>
-                    <span className="fig" style={{ display: "inline-block", marginTop: 8, padding: "4px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700,
-                                   background: dayChange >= 0 ? "rgba(16,185,129,.2)" : "rgba(239,68,68,.22)", color: dayChange >= 0 ? "#6EE7B7" : "#FCA5A5" }}>
-                      {signedFmt(dayChange)} today
-                    </span>
-                  </div>
-                  <Sparkline points={pnlChartData} w={240} h={80} />
+                <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+                  <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", lineHeight: 1.05 }}>{inrRound(stats.currentVal)}</div>
+                  <span className="fig" style={{ padding: "6px 14px", borderRadius: 999, fontSize: 14, fontWeight: 700, background: "rgba(255,255,255,.1)",
+                                 color: dayChange >= 0 ? "#fff" : "#FCA5A5", whiteSpace: "nowrap" }}>
+                    {shortINR(dayChange, true)} today
+                  </span>
                 </div>
-                <div style={{ display: "flex", gap: 28, flexWrap: "wrap", marginTop: 18, fontSize: 13, color: "var(--hero-sub)" }}>
-                  <span>Invested <strong className="fig" style={{ color: "#fff" }}>{fmt(stats.openInvested)}</strong></span>
-                  <span>Total P&L <strong className="fig" style={{ color: stats.totalPL >= 0 ? "#6EE7B7" : "#FCA5A5" }}>{fmt(stats.totalPL)}</strong></span>
-                  <span>Return <strong className="fig" style={{ color: "#fff" }}>{returnText}</strong> <span style={{ fontSize: 11.5 }}>{returnSub}</span></span>
-                  {joinedOn && <span>Client since <strong style={{ color: "#fff" }}>{joinedOn}</strong></span>}
+                <div style={{ margin: "0 -26px" }}><HeroSpark points={pnlChartData} /></div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+                  <div><div style={{ fontSize: 13, color: "var(--hero-sub)" }}>Invested</div>
+                    <div className="fig" style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>{shortINR(stats.openInvested)}</div></div>
+                  <div><div style={{ fontSize: 13, color: "var(--hero-sub)" }}>Total P&L</div>
+                    <div className="fig" style={{ fontSize: 22, fontWeight: 900, marginTop: 2, color: stats.totalPL >= 0 ? "#6EE7B7" : "#FCA5A5" }}>{shortINR(stats.totalPL, true)}</div></div>
+                  <div><div style={{ fontSize: 13, color: "var(--hero-sub)" }}>Return</div>
+                    <div className="fig" style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>{returnReady ? (returnPct >= 0 ? "+" : "") + returnPct.toFixed(2) + "%" : "—"}</div></div>
                 </div>
               </div>
-              <div style={{ ...PANEL, padding: 22, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 14 }}>
+              <div style={{ ...PANEL, padding: "22px 26px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>Unrealised</div>
-                  <div className="fig" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-.03em", color: tone(stats.totalUnrealizedPL) }}>{fmt(stats.totalUnrealizedPL)}</div>
-                  <div style={CAP}>On open positions at live price</div>
+                  <div style={{ fontSize: 22, fontWeight: 900 }}>Unrealised</div>
+                  <div className="fig" style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-.02em", marginTop: 8, color: tone(stats.totalUnrealizedPL) }}>{shortINR(stats.totalUnrealizedPL, true)}</div>
                 </div>
+                <div style={{ height: 1, background: "var(--row-rule)", margin: "22px 0" }} />
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>Realised</div>
-                  <div className="fig" style={{ fontSize: 26, fontWeight: 900, letterSpacing: "-.03em", color: tone(stats.totalRealizedPL) }}>{fmt(stats.totalRealizedPL)}</div>
-                  <div style={CAP}>Booked with FIFO cost basis · {realizedLots} lot{realizedLots === 1 ? "" : "s"}</div>
+                  <div style={{ fontSize: 22, fontWeight: 900 }}>Realised</div>
+                  <div className="fig" style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-.02em", marginTop: 8, color: tone(stats.totalRealizedPL) }}>{shortINR(stats.totalRealizedPL, true)}</div>
                 </div>
               </div>
             </div>
