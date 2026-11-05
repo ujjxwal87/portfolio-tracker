@@ -379,6 +379,8 @@ const shortINR = (n, signed = false) => {
   if (a >= 1e3) return `${sign}₹${(a / 1e3).toFixed(1)}k`;
   return `${sign}₹${Math.round(a)}`;
 };
+// Whole book values in lakhs (₹29.83L), crores from 1Cr up.
+const lakhs = (n) => { const a = Number(n) || 0; return a >= 1e7 ? `₹${(a / 1e7).toFixed(2)}Cr` : `₹${(a / 1e5).toFixed(2)}L`; };
 const inrRound = (n) => "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
 
 const MCARD = { background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 16,
@@ -4001,7 +4003,7 @@ export default function App() {
     const n = tradeCountFor(c);
     const v = c === "All" ? Object.values(clientValue).reduce((x, y) => x + y, 0)
       : c === "Own" ? [...ownNames].reduce((x, nm) => x + (clientValue[nm] || 0), 0) : (clientValue[c] || 0);
-    return `${inrRound(v)} · ${n} trade${n === 1 ? "" : "s"}`;
+    return `${lakhs(v)} · ${n} trade${n === 1 ? "" : "s"}`;
   };
   const todayLine = new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 
@@ -4369,7 +4371,7 @@ export default function App() {
                     <Avatar name={scopeLabel(r.c)} all={r.c === "All" || r.c === "Own"} size={34} />
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel(r.c)}</span>
-                      <span className="num" style={{ display: "block", fontSize: 11.5, color: on ? "var(--hero-sub)" : "var(--ink-3)" }}>{inrRound(r.val)} · {r.open} open</span>
+                      <span className="num" style={{ display: "block", fontSize: 11.5, color: on ? "var(--hero-sub)" : "var(--ink-3)" }}>{lakhs(r.val)} · {r.open} open</span>
                     </span>
                     <span className="num" style={{ fontSize: 12, fontWeight: 700, color: on ? (r.ret >= 0 ? "#6EE7B7" : "#FCA5A5") : tone(r.ret) }}>{pct(r.ret)}</span>
                   </button>
@@ -4380,37 +4382,37 @@ export default function App() {
 
           <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 16 }}>
-              <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: "22px 26px", display: "flex", flexDirection: "column", gap: 14 }}>
+              <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: "28px 32px", display: "flex", flexDirection: "column", gap: 18 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <div style={{ fontSize: 14, color: "var(--hero-sub)" }}>Portfolio value · {scopeLabel(filterClient)}</div>
+                  <div style={{ fontSize: 16, color: "var(--hero-sub)" }}>Portfolio value · {scopeLabel(filterClient)}</div>
                   <span style={{ fontSize: 12.5, fontWeight: 700, padding: "5px 12px", borderRadius: 999, background: "rgba(255,255,255,.1)", whiteSpace: "nowrap" }}>{holdings.length} holdings</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                  <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", lineHeight: 1.05 }}>{inrRound(stats.currentVal)}</div>
-                  <span className="fig" style={{ padding: "6px 14px", borderRadius: 999, fontSize: 14, fontWeight: 700, background: "rgba(255,255,255,.1)",
+                  <div className="fig" style={{ fontSize: 68, fontWeight: 900, letterSpacing: "-.04em", lineHeight: 1 }}>{inrRound(stats.currentVal)}</div>
+                  <span className="fig" style={{ padding: "8px 18px", borderRadius: 999, fontSize: 18, fontWeight: 700, background: "rgba(255,255,255,.1)",
                                  color: dayChange >= 0 ? "#fff" : "#FCA5A5", whiteSpace: "nowrap" }}>
                     {shortINR(dayChange, true)} today
                   </span>
                 </div>
-                <div style={{ margin: "0 -26px" }}><HeroSpark points={pnlChartData} /></div>
+                <div style={{ margin: "0 -32px" }}><HeroSpark points={pnlChartData} h={210} /></div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-                  <div><div style={{ fontSize: 13, color: "var(--hero-sub)" }}>Invested</div>
-                    <div className="fig" style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>{shortINR(stats.openInvested)}</div></div>
-                  <div><div style={{ fontSize: 13, color: "var(--hero-sub)" }}>Total P&L</div>
-                    <div className="fig" style={{ fontSize: 22, fontWeight: 900, marginTop: 2, color: stats.totalPL >= 0 ? "#6EE7B7" : "#FCA5A5" }}>{shortINR(stats.totalPL, true)}</div></div>
-                  <div><div style={{ fontSize: 13, color: "var(--hero-sub)" }}>Return</div>
-                    <div className="fig" style={{ fontSize: 22, fontWeight: 900, marginTop: 2 }}>{returnReady ? (returnPct >= 0 ? "+" : "") + returnPct.toFixed(2) + "%" : "—"}</div></div>
+                  <div><div style={{ fontSize: 15, color: "var(--hero-sub)" }}>Invested</div>
+                    <div className="fig" style={{ fontSize: 30, fontWeight: 900, marginTop: 2 }}>{shortINR(stats.openInvested)}</div></div>
+                  <div><div style={{ fontSize: 15, color: "var(--hero-sub)" }}>Total P&L</div>
+                    <div className="fig" style={{ fontSize: 30, fontWeight: 900, marginTop: 2, color: stats.totalPL >= 0 ? "#6EE7B7" : "#FCA5A5" }}>{shortINR(stats.totalPL, true)}</div></div>
+                  <div><div style={{ fontSize: 15, color: "var(--hero-sub)" }}>Return</div>
+                    <div className="fig" style={{ fontSize: 30, fontWeight: 900, marginTop: 2 }}>{returnReady ? (returnPct >= 0 ? "+" : "") + returnPct.toFixed(2) + "%" : "—"}</div></div>
                 </div>
               </div>
               <div style={{ ...PANEL, padding: "22px 26px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 900 }}>Unrealised</div>
-                  <div className="fig" style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-.02em", marginTop: 8, color: tone(stats.totalUnrealizedPL) }}>{shortINR(stats.totalUnrealizedPL, true)}</div>
+                  <div style={{ fontSize: 24, fontWeight: 900 }}>Unrealised</div>
+                  <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", marginTop: 8, color: tone(stats.totalUnrealizedPL) }}>{shortINR(stats.totalUnrealizedPL, true)}</div>
                 </div>
                 <div style={{ height: 1, background: "var(--row-rule)", margin: "22px 0" }} />
                 <div>
-                  <div style={{ fontSize: 22, fontWeight: 900 }}>Realised</div>
-                  <div className="fig" style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-.02em", marginTop: 8, color: tone(stats.totalRealizedPL) }}>{shortINR(stats.totalRealizedPL, true)}</div>
+                  <div style={{ fontSize: 24, fontWeight: 900 }}>Realised</div>
+                  <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", marginTop: 8, color: tone(stats.totalRealizedPL) }}>{shortINR(stats.totalRealizedPL, true)}</div>
                 </div>
               </div>
             </div>
