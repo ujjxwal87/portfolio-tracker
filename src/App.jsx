@@ -4538,9 +4538,11 @@ export default function App() {
         const searching = isAdmin && q !== "";
         const source = searching ? portfolioAll.filter(p => p.stock.toUpperCase().includes(q)) : portfolio;
         const showClient = searching || filterClient === "All" || filterClient === "Own";
-        const STATUS_TABS = [["holding", "Holding"], ["partially_booked", "Partly booked"], ["fully_booked", "Booked"]];
-        const counts = Object.fromEntries(STATUS_TABS.map(([k]) => [k, source.filter(p => p.status === k).length]));
-        const rows = source.filter(p => p.status === pfStatus).sort((a, b) =>
+        const STATUS_TABS = [["holding", "Holding"], ["fully_booked", "Booked"]];
+        // Partly booked stocks are still held, so they sit under Holding.
+        const inTab = (p, k) => k === "holding" ? p.status !== "fully_booked" : p.status === "fully_booked";
+        const counts = Object.fromEntries(STATUS_TABS.map(([k]) => [k, source.filter(p => inTab(p, k)).length]));
+        const rows = source.filter(p => inTab(p, pfStatus)).sort((a, b) =>
           pfStatus === "fully_booked" ? b.realizedPL - a.realizedPL : b.currentVal - a.currentVal);
         const open = rows.filter(r => r.netQty > 0);
         const totalVal = open.reduce((s, h) => s + h.currentVal, 0);
