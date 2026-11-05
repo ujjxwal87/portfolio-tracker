@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, Fragment } from "react";
 import { SYMBOL_LOGOS } from "./symbolLogos";
+import { sectorOf } from "./sectors";
 import { LoginScreen, ChangePasswordScreen } from "./Auth";
 import {
   apiFetch, getToken, fetchMe, logout as clearSession,
@@ -1154,6 +1155,7 @@ function PerfTradeCard({ t, onOpen }) {
     exitPct = Math.max(0, Math.min(100, ((t.sellPrice - t.plannedSL) / span) * 100));
   }
   const statusPill = !reviewed ? { label: "Needs review", bg: "#FFF7ED", fg: "#C2410C" }
+    : t.review?.plan_partly ? { label: "Plan partly followed", bg: "#FFF4E5", fg: "#A15C00" }
     : t.review?.followed_plan === false ? { label: "Broke plan", bg: "#FEF2F2", fg: "#B91C1C" }
     : t.review?.followed_plan === true ? { label: "Plan followed", bg: "#ECFDF3", fg: "#15803d" }
     : null;
@@ -1287,13 +1289,17 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={SECTION_LABEL}>Plan vs actual</div>
             <div style={{ display: "flex", gap: 2, background: "var(--canvas)", padding: 4, borderRadius: 999 }}>
-              {[["Yes", true, "#15803d"], ["No", false, "#dc2626"]].map(([label, val, color]) => (
-                <button key={label} onClick={() => save({ followed_plan: val })}
-                        style={{ padding: "5px 12px", fontSize: 12, fontWeight: 700, borderRadius: 8, border: "none", cursor: "pointer",
-                                 background: r.followed_plan === val ? color : "transparent", color: r.followed_plan === val ? "#fff" : "var(--ink-2)" }}>
+              {[["Yes", { followed_plan: true, plan_partly: false }, "#15803d"],
+                ["Partly", { followed_plan: null, plan_partly: true }, "#D97706"],
+                ["No", { followed_plan: false, plan_partly: false }, "#dc2626"]].map(([label, patch, color]) => {
+                const on = r.plan_partly ? label === "Partly" : r.followed_plan === (label === "Yes" ? true : label === "No" ? false : undefined);
+                return (
+                <button key={label} onClick={() => save(patch)}
+                        style={{ padding: "5px 12px", fontSize: 12, fontWeight: 700, borderRadius: 999, border: "none", cursor: "pointer",
+                                 background: on ? color : "transparent", color: on ? "#fff" : "var(--ink-2)" }}>
                   {label}
-                </button>
-              ))}
+                </button>);
+              })}
             </div>
           </div>
           {hasPlan ? (
@@ -4255,7 +4261,7 @@ export default function App() {
         const allocTotal = holdings.reduce((s, h) => s + h.currentVal, 0);
         const ALLOC = ["#1D4ED8", "#0E7490", "#B45309", "#7C3AED", "#BE185D", "#4D7C0F", "#475569"];
         const bySym = {};
-        holdings.forEach(h => { bySym[h.stock] = (bySym[h.stock] || 0) + h.currentVal; });
+        holdings.forEach(h => { const k = sectorOf(h.stock); bySym[k] = (bySym[k] || 0) + h.currentVal; });
         const allocRows = Object.entries(bySym).sort((a, b) => b[1] - a[1]);
         const allocShown = allocRows.slice(0, 6);
         const rest = allocRows.slice(6).reduce((a, [, v]) => a + v, 0);
@@ -4352,7 +4358,7 @@ export default function App() {
 
             <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "1.3fr 1.3fr 1fr" : "1fr 1fr", gap: 16 }}>
               <div style={{ ...PANEL, padding: 20 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Allocation</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Allocation <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-3)" }}>by sector</span></div>
                 {allocTotal > 0 ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                     <svg width="124" height="124" viewBox="0 0 124 124" style={{ flex: "none" }}>

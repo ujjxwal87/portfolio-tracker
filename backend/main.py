@@ -1339,6 +1339,7 @@ class TradeReviewBody(BaseModel):
     planned_sl: Optional[float] = None
     planned_target: Optional[float] = None
     followed_plan: Optional[bool] = None
+    plan_partly: Optional[bool] = None
     entry_reason: Optional[str] = None
     exit_reason: Optional[str] = None
     emotion: Optional[str] = None
@@ -1373,7 +1374,7 @@ def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(
     fields = body.model_dump(exclude_unset=True, exclude={"buy_trade_id", "sell_trade_id"})
     if body.discipline is not None and not (1 <= body.discipline <= 5):
         raise HTTPException(400, "discipline must be between 1 and 5")
-    cols = ["strategy", "planned_entry", "planned_sl", "planned_target", "followed_plan",
+    cols = ["strategy", "planned_entry", "planned_sl", "planned_target", "followed_plan", "plan_partly",
             "entry_reason", "exit_reason", "emotion", "discipline", "mistakes", "chart_url", "reviewed"]
     values = {c: fields.get(c) for c in cols}
     # A field the client sent — even as null — overwrites, so deselecting a strategy/emotion or
@@ -1382,6 +1383,7 @@ def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(
     set_sql = ", ".join(
         ("mistakes = COALESCE(EXCLUDED.mistakes, '{}')" if c == "mistakes"
          else "reviewed = COALESCE(EXCLUDED.reviewed, FALSE)" if c == "reviewed"
+         else "plan_partly = COALESCE(EXCLUDED.plan_partly, FALSE)" if c == "plan_partly"
          else f"{c} = EXCLUDED.{c}")
         for c in present)
     set_sql = (set_sql + ", " if set_sql else "") + "updated_at = NOW()"
@@ -1396,10 +1398,10 @@ def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(
                 """
                 INSERT INTO portfolio_tracker.trade_reviews
                     (buy_trade_id, sell_trade_id, strategy, planned_entry, planned_sl, planned_target,
-                     followed_plan, entry_reason, exit_reason, emotion, discipline, mistakes,
+                     followed_plan, plan_partly, entry_reason, exit_reason, emotion, discipline, mistakes,
                      chart_url, reviewed, updated_at)
                 VALUES (%(buy_trade_id)s, %(sell_trade_id)s, %(strategy)s, %(planned_entry)s, %(planned_sl)s,
-                        %(planned_target)s, %(followed_plan)s, %(entry_reason)s, %(exit_reason)s,
+                        %(planned_target)s, %(followed_plan)s, COALESCE(%(plan_partly)s, FALSE), %(entry_reason)s, %(exit_reason)s,
                         %(emotion)s, %(discipline)s, COALESCE(%(mistakes)s, '{}'), %(chart_url)s,
                         COALESCE(%(reviewed)s, FALSE), NOW())
                 ON CONFLICT (buy_trade_id, sell_trade_id) DO UPDATE SET """ + set_sql + """
