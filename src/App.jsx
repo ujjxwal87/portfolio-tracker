@@ -295,8 +295,8 @@ const PANEL = {
 
 const PanelTitle = ({ children, right }) => (
   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between",
-                gap: 12, flexWrap: "wrap", padding: "16px 22px 0" }}>
-    <h3 style={{ margin: 0, fontSize: 14.5, fontWeight: 700 }}>{children}</h3>
+                gap: 12, flexWrap: "wrap", padding: "22px 24px 0" }}>
+    <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900, letterSpacing: "-.01em" }}>{children}</h3>
     {right}
   </div>
 );
@@ -326,6 +326,17 @@ const Segmented = ({ options, value, onChange }) => (
 // lets the delta line carry direction.
 // `size` bumps the figure when fewer cards share a row. `hypothetical` switches the
 // shell to a dashed, shadowless surface so a counterfactual never reads as real money.
+// Plain P&L tile for the Trades tab: quiet label, one big signed figure.
+const PnlStat = ({ label, value }) => (
+  <div style={{ ...PANEL, padding: "22px 26px 26px" }}>
+    <div style={{ fontSize: 15, color: "var(--ink-3)" }}>{label}</div>
+    <div className="fig" style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-.03em", marginTop: 10,
+                                  color: value >= 0 ? "var(--good)" : "var(--bad)" }}>
+      {(value >= 0 ? "+" : "−") + "₹" + Math.abs(value).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    </div>
+  </div>
+);
+
 const Card = ({ title, value, sub, accent, tone, size = 29, hypothetical }) => (
   <div className={hypothetical ? "" : "card-hover"} style={{
     ...PANEL, padding: "18px 20px 16px",
@@ -1734,46 +1745,54 @@ function ClientTradeStatsPanel({ rows, scopedTo }) {
     losses: a.losses + r.losses, lossSum: a.lossSum + r.lossSum,
     net: a.net + r.net,
   }), { wins: 0, winSum: 0, losses: 0, lossSum: 0, net: 0 });
-  const cell = { fontSize: 12.5, textAlign: "right" };
+  const cell = { fontSize: 18, textAlign: "right" };
+  const money = (n, signed) => (n < 0 ? "−" : signed ? "+" : "") + "₹" + Math.round(Math.abs(n)).toLocaleString("en-IN");
+  const first = (n) => String(n || "").split(/\s+/)[0];
   return (
     <div style={{ ...PANEL, overflow: "hidden" }}>
-      <PanelTitle right={<span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>
-        {scopedTo ? `Admin only · ${scopedTo}` : "Admin only · every client"}
+      <PanelTitle right={<span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>
+        {scopedTo ? `Admin only · ${first(scopedTo)}` : "Admin only · every client"}
       </span>}>
         {scopedTo ? "Booked trades" : "Booked trades per client"}
       </PanelTitle>
       {rows.length === 0 ? (
-        <div style={{ padding: "22px 22px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
+        <div style={{ padding: "22px 24px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
       ) : (<>
-        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 22px",
-                      background: "var(--table-head)", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "18px 24px 10px",
+                      borderBottom: "1px solid var(--row-rule)" }}>
           {heads.map((h, i) => (
-            <div key={h} style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
+            <div key={h} style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
                                   color: "var(--ink-3)", textAlign: i ? "right" : "left", whiteSpace: "nowrap" }}>{h}</div>
           ))}
         </div>
         {rows.map((r, i) => (
           <div key={r.client} className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
-               padding: "11px 22px", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
-            <div style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client}</div>
+               padding: "14px 24px", borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+              <Avatar name={r.client} size={36} />
+              <span style={{ fontSize: 19, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{first(r.client)}</span>
+            </div>
             <div className="num" style={cell}>{r.wins}</div>
-            <div className="fig" style={{ ...cell, fontWeight: 600, color: r.wins ? "var(--good)" : "var(--ink-3)" }}>{r.wins ? fmt(r.avgWin) : "—"}</div>
+            <div className="fig" style={{ ...cell, color: r.wins ? "var(--good)" : "var(--ink-3)" }}>{r.wins ? money(r.avgWin) : "—"}</div>
             <div className="num" style={cell}>{r.losses}</div>
-            <div className="fig" style={{ ...cell, fontWeight: 600, color: r.losses ? "var(--bad)" : "var(--ink-3)" }}>{r.losses ? fmt(r.avgLoss) : "—"}</div>
-            <div className="fig" style={{ ...cell, fontWeight: 600, color: r.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(r.net)}</div>
+            <div className="fig" style={{ ...cell, color: r.losses ? "var(--bad)" : "var(--ink-3)" }}>{r.losses ? money(-Math.abs(r.avgLoss)) : "—"}</div>
+            <div className="fig" style={{ ...cell, fontWeight: 700, color: r.net >= 0 ? "var(--good)" : "var(--bad)" }}>{money(r.net, true)}</div>
           </div>
         ))}
         {rows.length > 1 && (
-        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "11px 22px",
-                      background: "var(--table-head)", borderTop: "1px solid var(--line)" }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>All clients</div>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "14px 24px",
+                      background: "var(--table-head)", borderTop: "1px solid var(--row-rule)" }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", letterSpacing: ".06em" }}>All clients</div>
           <div className="num" style={cell}>{totals.wins}</div>
-          <div className="fig" style={{ ...cell, fontWeight: 600 }}>{totals.wins ? fmt(totals.winSum / totals.wins) : "—"}</div>
+          <div className="fig" style={cell}>{totals.wins ? money(totals.winSum / totals.wins) : "—"}</div>
           <div className="num" style={cell}>{totals.losses}</div>
-          <div className="fig" style={{ ...cell, fontWeight: 600 }}>{totals.losses ? fmt(totals.lossSum / totals.losses) : "—"}</div>
-          <div className="fig" style={{ ...cell, fontWeight: 700, color: totals.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(totals.net)}</div>
+          <div className="fig" style={cell}>{totals.losses ? money(-Math.abs(totals.lossSum / totals.losses)) : "—"}</div>
+          <div className="fig" style={{ ...cell, fontWeight: 700, color: totals.net >= 0 ? "var(--good)" : "var(--bad)" }}>{money(totals.net, true)}</div>
         </div>
         )}
+        <div style={{ padding: "12px 24px 18px", fontSize: 13.5, color: "var(--ink-3)" }}>
+          Decisive exits only: profitable ≥ +{WIN_PCT}%, losing ≤ −{Math.abs(LOSS_PCT)}% on the lot's cost.
+        </div>
       </>)}
     </div>
   );
@@ -1834,11 +1853,11 @@ function SLCell({ row, level, isAdmin, saving, onSave }) {
       {saving ? (
         <div style={{ fontSize: 11, color: "var(--ink-3)" }}>saving…</div>
       ) : sl == null ? (
-        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{isAdmin ? "+ set" : "—"}</div>
+        <div style={{ fontSize: 14, color: "var(--ink-3)" }}>{isAdmin ? "+ set" : "—"}</div>
       ) : (<>
-        <div className="fig" style={{ fontSize: 12.5, fontWeight: 600,
+        <div className="fig" style={{ fontSize: 16, fontWeight: 700,
              color: breached ? "var(--bad)" : "var(--ink)" }}>{fmt(sl)}</div>
-        <div className="num" style={{ fontSize: 9.5, color: breached ? "var(--bad)" : "var(--ink-3)" }}>
+        <div className="num" style={{ fontSize: 13, color: breached ? "var(--bad)" : "var(--ink-3)" }}>
           {breached ? "BREACHED" : away != null ? `${away.toFixed(1)}% away` : ""}
           {level?.own ? " · own" : ""}
         </div>
@@ -1884,7 +1903,7 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1, width: "100%" }}>
       <span onClick={onToggleExpand} title={entry.manual ? "Manually set — click for details" : "Click for the breakdown"}
-            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5,
+            style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 16,
                      fontWeight: entry.manual ? 700 : 600, cursor: "pointer",
                      textDecoration: expanded ? "underline" : "none" }}>
         {fmt(entry.after)}
@@ -1893,7 +1912,7 @@ function CapitalCell({ row, entry, isAdmin, saving, editing, onStartEdit, onCanc
                        display: "inline-block", transition: "transform .15s" }}>⌄</span>
       </span>
       {isAdmin && (
-        <span onClick={onStartEdit} style={{ fontSize: 9, color: "var(--accent)", cursor: "pointer" }}>
+        <span onClick={onStartEdit} style={{ fontSize: 13, color: "var(--accent)", cursor: "pointer" }}>
           {entry.manual ? "edit" : "override"}
         </span>
       )}
@@ -1974,19 +1993,18 @@ function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, addi
   };
 
   return (
-    <div className="card-hover" style={{ ...PANEL, background: "var(--tint)", padding: "18px 20px 16px", minWidth: 220 }}>
-      <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: "var(--accent)" }} />
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
-        <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>Swing Capital</div>
+    <div style={{ ...PANEL, background: "var(--tint)", padding: "22px 26px 20px", minWidth: 220 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
+        <div style={{ fontSize: 15, color: "var(--accent)", fontWeight: 700 }}>Swing capital</div>
         {isAdmin && !adding && (
           <button onClick={onToggleAdd} style={{ border: "none", background: "none", color: "var(--accent)",
-                   fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>+ Add lumpsum</button>
+                   fontSize: 14, fontWeight: 700, cursor: "pointer", padding: 0 }}>+ Add lumpsum</button>
         )}
       </div>
-      <div className="fig" style={{ fontSize: 29, lineHeight: 1.15, fontWeight: 800, color: "var(--ink)", marginTop: 8, letterSpacing: "-.04em" }}>
+      <div className="fig" style={{ fontSize: 38, lineHeight: 1.1, fontWeight: 900, color: "var(--ink)", marginTop: 10, letterSpacing: "-.03em" }}>
         {latest == null ? "Not set" : fmt(latest)}
       </div>
-      <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.35 }}>available for the next trade</div>
+      <div style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 8 }}>available for the next trade</div>
 
       {adding && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--line)", display: "grid", gap: 6 }}>
@@ -2010,7 +2028,7 @@ function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, addi
       {adjustments.length > 0 && (
         <div style={{ marginTop: 10 }}>
           <button onClick={onToggleHistory} style={{ border: "none", background: "none", color: "var(--ink-3)",
-                   fontSize: 11, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                   fontSize: 14, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
             {showHistory ? "hide" : `${adjustments.length} lumpsum${adjustments.length === 1 ? "" : "s"}`}
           </button>
           {showHistory && (
@@ -2163,48 +2181,66 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
     );
   }
 
+  // Rows: "SYMBOL · client" over "qty @ price · date" on the left, then the editable SL / Risk /
+  // Capital cells (open lots only) and the P&L on the right.
+  const shortDate = (d) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "UTC" }) : "—";
+  const rcols = kind === "open"
+    ? `minmax(220px,1fr)${showSL ? " 120px" : ""}${showRisk ? " 110px" : ""}${showCapital ? " 150px" : ""} 140px`
+    : "minmax(220px,1fr) 160px";
+  const heads2 = [showClient ? "Stock · Client" : "Stock", ...(showSL ? ["SL"] : []), ...(showRisk ? ["Risk"] : []),
+                  ...(showCapital ? ["Capital"] : []), kind === "open" ? "Unrealised" : "Realised"];
+  const subNote = note ? (showCapital ? `${note} · click a row for its capital breakdown` : note) : null;
   return (
     <div style={{ ...PANEL, overflow: "hidden" }}>
-      <PanelTitle right={note ? <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{note}</span> : null}>{title}</PanelTitle>
+      <PanelTitle right={subNote ? <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{subNote}</span> : null}>{title}</PanelTitle>
       {rows.length === 0 ? (
         <div style={{ padding: "22px 22px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
       ) : (<>
-        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, padding: "10px 22px",
-                      background: "var(--table-head)", borderTop: "1px solid var(--line)", borderBottom: "1px solid var(--line)" }}>
-          {heads.map((h, i) => (
-            <div key={h} style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase",
-                                  color: "var(--ink-3)", textAlign: i >= firstNum ? "right" : "left", whiteSpace: "nowrap" }}>{h}</div>
+        <div style={{ display: "grid", gridTemplateColumns: rcols, gap: 14, padding: "14px 24px 10px", marginTop: 8,
+                      borderBottom: "1px solid var(--row-rule)" }}>
+          {heads2.map((h, i) => (
+            <div key={h} style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
+                                  color: "var(--ink-3)", textAlign: i === 0 ? "left" : "right", whiteSpace: "nowrap" }}>{h}</div>
           ))}
         </div>
         {rows.map((r, i) => {
-          // Risk is what THIS trade itself put on the table when opened — the ledger's raw entry,
-          // never the forward-folded one Capital uses, since a later lumpsum/close didn't change
-          // what was risked at entry. Prefer a value the row already carries (cross-client search)
-          // over looking it up in a shared ledger.
           const riskEntry = !showRisk ? null
             : r.risk !== undefined ? { kind: r.risk != null ? "open" : null, risk: r.risk }
             : capitalLedger.ledger.get(r.id);
           const capEntry = showCapital ? effectiveCapitalEntry(r.id, capitalLedger) : null;
           const capExpanded = showCapital && capitalDetailId === r.id && capEntry?.after != null;
+          const cost = r.buyPrice * r.qty;
+          const plPct = cost > 0 ? r.pl / cost * 100 : 0;
+          const plColor = toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)");
+          const signed = (n) => (n >= 0 ? "+" : "−") + fmt(Math.abs(n));
           return (
           <Fragment key={i}>
-          <div className="grid-row" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
-               padding: "11px 22px", borderBottom: capExpanded || i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
-            {showClient && <div style={{ fontSize: 12.5, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.client}</div>}
-            <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-              <LogoChip symbol={r.stock} size={42} />
-              <span style={{ fontSize: 12.5, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.stock}</span>
+          <div className="grid-row" onClick={showCapital ? () => onToggleCapitalDetail(r.id) : undefined}
+               style={{ display: "grid", gridTemplateColumns: rcols, gap: 14, alignItems: "center", padding: "14px 24px",
+                        cursor: showCapital ? "pointer" : "default",
+                        borderBottom: capExpanded || i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+              <LogoChip symbol={r.stock} size={44} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 17, fontWeight: 900, letterSpacing: "-.01em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {r.stock}{showClient && <span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-3)" }}> · {r.client}</span>}
+                </div>
+                <div className="num" style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 2 }}>
+                  {kind === "open"
+                    ? `${r.qty} @ ${fmt(r.buyPrice)} · bought ${shortDate(r.date)}`
+                    : `${r.qty} · ${fmt(r.buyPrice)} → ${fmt(r.sellPrice)} · exited ${shortDate(r.sellDate)}`}
+                </div>
+              </div>
             </div>
-            <div className="num" style={{ fontSize: 12.5, textAlign: "right" }}>{r.qty}</div>
-            <div className="num" style={{ fontSize: 12.5, textAlign: "right", color: "var(--ink-2)" }}>{fmt(r.buyPrice)}</div>
-            {kind === "closed" && <div className="num" style={{ fontSize: 12.5, textAlign: "right", color: "var(--ink-2)" }}>{fmt(r.sellPrice)}</div>}
             {showSL && (
-              <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
-                      saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
-                      onSave={onSaveLevel} />
+              <div onClick={e => e.stopPropagation()}>
+                <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
+                        saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
+                        onSave={onSaveLevel} />
+              </div>
             )}
             {showRisk && (
-              <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600, color: "var(--bad)" }}
+              <div className="num" style={{ fontSize: 16, textAlign: "right", fontWeight: 700, color: "var(--bad)" }}
                    title={riskEntry?.kind === "open" && riskEntry.sl !== undefined
                      ? (riskEntry.oneRule ? "No stop-loss set, so 1% of capital" : `Stop-loss ${fmt(riskEntry.sl)} → (entry − SL) × qty`)
                      : ""}>
@@ -2212,21 +2248,24 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
               </div>
             )}
             {showCapital && (
-              <CapitalCell row={r} entry={capEntry} isAdmin={isAdmin}
-                saving={capitalSavingId === r.id} editing={capitalEditingId === r.id}
-                onStartEdit={() => onStartCapitalEdit(r.id)} onCancelEdit={onCancelCapitalEdit}
-                onSave={(value) => onSaveCapitalValue(r.id, value)}
-                expanded={capExpanded} onToggleExpand={() => onToggleCapitalDetail(r.id)} />
+              <div onClick={e => e.stopPropagation()}>
+                <CapitalCell row={r} entry={capEntry} isAdmin={isAdmin}
+                  saving={capitalSavingId === r.id} editing={capitalEditingId === r.id}
+                  onStartEdit={() => onStartCapitalEdit(r.id)} onCancelEdit={onCancelCapitalEdit}
+                  onSave={(value) => onSaveCapitalValue(r.id, value)}
+                  expanded={capExpanded} onToggleExpand={() => onToggleCapitalDetail(r.id)} />
+              </div>
             )}
-            <div className="num" style={{ fontSize: 12, textAlign: "right", color: "var(--ink-3)" }}>{kind === "open" ? r.date : r.sellDate}</div>
-            <div className="num" style={{ fontSize: 12.5, textAlign: "right", fontWeight: 600,
-                 color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>{fmt(r.pl)}</div>
+            <div style={{ textAlign: "right" }}>
+              <div className="fig" style={{ fontSize: 17, fontWeight: 900, color: plColor }}>{signed(r.pl)}</div>
+              <div className="num" style={{ fontSize: 13.5, color: "var(--ink-3)", marginTop: 1 }}>{pct(plPct)}</div>
+            </div>
           </div>
           {capExpanded && (
-            <div style={{ padding: "0 22px 11px", display: "grid", gap: 3,
+            <div style={{ padding: "0 24px 14px 82px", display: "grid", gap: 3,
                           borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
               {capitalChainBetween(r.id, rows[i + 1]?.id, capitalLedger).map((step, si) => (
-                <div key={si} style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{capitalDetailText(step)}</div>
+                <div key={si} style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{capitalDetailText(step)}</div>
               ))}
             </div>
           )}
@@ -4725,13 +4764,10 @@ export default function App() {
         )}
 
         {/* Company-grouped positions: one row per company → Realised / Unrealised P&L, expand for lots */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 10, marginBottom: 14 }}>
-          <Card title="Realized P&L" value={fmt(tradePnl.realized)}
-                tone={tradePnl.realized >= 0 ? "var(--good)" : "var(--bad)"} accent={tradePnl.realized >= 0 ? "#16a34a" : "#dc2626"} />
-          <Card title="Unrealized P&L" value={fmt(tradePnl.unrealized)}
-                tone={tradePnl.unrealized >= 0 ? "var(--good)" : "var(--bad)"} accent={tradePnl.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
-          <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)}
-                tone={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "var(--good)" : "var(--bad)"} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
+          <PnlStat label="Realised P&L" value={tradePnl.realized} />
+          <PnlStat label="Unrealised P&L" value={tradePnl.unrealized} />
+          <PnlStat label="Total P&L" value={tradePnl.realized + tradePnl.unrealized} />
           {!capitalLedger && (
             <div style={{ ...PANEL, background: "var(--tint)", padding: "18px 20px 16px" }}>
               <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: "var(--accent)" }} />
