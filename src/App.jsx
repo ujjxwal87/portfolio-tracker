@@ -2945,6 +2945,32 @@ export default function App() {
     finally { setPriceLoading(false); }
   }, [allStocks]);
 
+  // Auto-refresh live prices every 5 minutes while the NSE cash market is open (Mon-Fri,
+  // 9:15-15:30 IST, plus one pass just after the close so the final prices land). The manual
+  // button still works any time. Skipped while the tab is hidden; catches up when it returns.
+  const refreshRef = useRef(refreshPrices);
+  useEffect(() => { refreshRef.current = refreshPrices; }, [refreshPrices]);
+  useEffect(() => {
+    if (!session) return;
+    const marketOpen = () => {
+      const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", weekday: "short",
+        hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(new Date()).map(x => [x.type, x.value]));
+      if (p.weekday === "Sat" || p.weekday === "Sun") return false;
+      const mins = Number(p.hour) * 60 + Number(p.minute);
+      return mins >= 9 * 60 + 15 && mins <= 15 * 60 + 35;
+    };
+    let last = Date.now();
+    const tick = () => {
+      if (document.hidden || !marketOpen()) return;
+      if (Date.now() - last < 4.5 * 60 * 1000) return;
+      last = Date.now();
+      refreshRef.current();
+    };
+    const id = setInterval(tick, 30 * 1000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, [session]);
+
   // Fallback only: fires if the initial load could not reach the price endpoint.
   useEffect(() => {
     if (!pricesPrimed.current && allStocks.length > 0) { pricesPrimed.current = true; refreshPrices(); }
