@@ -15,6 +15,10 @@ const fmtDate = (d) => { if (!d) return "—"; const dt = new Date(d); const dd 
 // Unlike fmtDate above (a plain DATE column, read as UTC to dodge a timezone shift), this is a
 // real TIMESTAMPTZ with a time-of-day that actually needs converting — India has one timezone,
 // UTC+5:30, no DST, so the offset is fixed rather than pulled from Intl.
+const fmtShortIST = (d) => { if (!d) return "—";
+  const dt = new Date(new Date(d).getTime() + 5.5 * 3600 * 1000);
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${String(dt.getUTCDate()).padStart(2, "0")} ${M[dt.getUTCMonth()]} · ${String(dt.getUTCHours()).padStart(2, "0")}:${String(dt.getUTCMinutes()).padStart(2, "0")}`; };
 const fmtDateTimeIST = (d) => { if (!d) return "—";
   const dt = new Date(new Date(d).getTime() + 5.5 * 3600 * 1000);
   const dd = String(dt.getUTCDate()).padStart(2, "0"), mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
@@ -237,7 +241,7 @@ const Sheet = ({ title, subtitle, onClose, width = 480, children, footer }) => {
 };
 
 // Header client filter — replaces the sidebar list. Same options and same filterClient state as before.
-const ClientPicker = ({ label, names, value, onChange, scopeLabel, subFor }) => {
+const ClientPicker = ({ label, names, value, onChange, scopeLabel, subFor, valueText }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -251,14 +255,12 @@ const ClientPicker = ({ label, names, value, onChange, scopeLabel, subFor }) => 
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button onClick={() => setOpen(o => !o)} aria-haspopup="listbox" aria-expanded={open} style={{
-        display: "flex", alignItems: "center", gap: 10, padding: "6px 14px 6px 6px", borderRadius: "var(--r-pill)",
+        display: "flex", alignItems: "center", gap: 10, padding: "5px 14px 5px 5px", borderRadius: "var(--r-pill)",
         border: "1px solid var(--line)", background: "var(--surface)", cursor: "pointer", textAlign: "left" }}>
-        <Avatar name={scopeLabel(value)} all={isAll(value)} />
-        <span style={{ lineHeight: 1.2 }}>
-          <span style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", letterSpacing: ".06em", textTransform: "uppercase" }}>{label}</span>
-          <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--ink)" }}>{scopeLabel(value)}</span>
-        </span>
-        <span style={{ color: "var(--ink-3)", fontSize: 11 }}>▾</span>
+        <Avatar name={scopeLabel(value)} all={isAll(value)} size={34} />
+        <span style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)" }}>{scopeLabel(value)}</span>
+        {valueText && <span className="num" style={{ fontSize: 14, color: "var(--ink-3)" }}>{valueText}</span>}
+        <span style={{ color: "var(--ink-2)", fontSize: 11 }}>▼</span>
       </button>
       {open && (
         <div role="listbox" style={{ position: "absolute", top: "calc(100% + 8px)", left: 0, zIndex: 40, width: 330,
@@ -338,14 +340,13 @@ const PnlStat = ({ label, value }) => (
 );
 
 const Card = ({ title, value, sub, accent, tone, size = 29, hypothetical }) => (
-  <div className={hypothetical ? "" : "card-hover"} style={{
-    ...PANEL, padding: "18px 20px 16px",
+  <div style={{
+    ...PANEL, padding: "20px 24px 20px",
     ...(hypothetical ? { background: "var(--surface-2)", border: "1px dashed #D3D6E2", boxShadow: "none" } : {}),
   }}>
-    <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: accent || "var(--ink-3)" }} />
-    <div style={{ fontSize: 11, color: "#64748B", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 12 }}>{title}</div>
-    <div className="fig" style={{ fontSize: size, lineHeight: 1.15, fontWeight: 800, color: tone || "var(--ink)", marginTop: 8, letterSpacing: "-.04em" }}>{value}</div>
-    {sub && <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 6, lineHeight: 1.35 }}>{sub}</div>}
+    <div style={{ fontSize: 14, color: "var(--ink-3)" }}>{title}</div>
+    <div className="fig" style={{ fontSize: Math.max(size, 30), lineHeight: 1.15, fontWeight: 900, color: tone || "var(--ink)", marginTop: 8, letterSpacing: "-.03em" }}>{value}</div>
+    {sub && <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 8, lineHeight: 1.35 }}>{sub}</div>}
   </div>
 );
 
@@ -1040,21 +1041,20 @@ function InvestmentPositions({ groups, showClient }) {
               {showClient && <div style={{ fontSize: 13, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.client}</div>}
               <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                 <LogoChip symbol={g.stock} size={34} />
-                <span style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.stock}</span>
+                <span style={{ fontSize: 17, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.stock}</span>
                 {g.lots.length > 1 && (
                   <span style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-3)", background: "#F1F4F8",
                                  borderRadius: 5, padding: "2px 6px", flex: "none" }}>{g.lots.length} lots</span>
                 )}
               </div>
-              <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{g.qty}</div>
-              <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.avgBuy)}</div>
-              <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600 }}>{fmt(g.cmp)}</div>
-              <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(g.invested)}</div>
-              <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 600,
-                   color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.value)}</div>
+              <div className="num" style={{ fontSize: 17, fontWeight: 900, textAlign: "right" }}>{g.qty}</div>
+              <div className="num" style={{ fontSize: 16, textAlign: "right" }}>{fmt(g.avgBuy)}</div>
+              <div className="num" style={{ fontSize: 14, textAlign: "right", color: "var(--ink-3)" }}>{fmt(g.cmp)}</div>
+              <div className="num" style={{ fontSize: 16, textAlign: "right" }}>{fmt(g.invested)}</div>
+              <div className="num" style={{ fontSize: 16, textAlign: "right", fontWeight: 900 }}>{fmt(g.value)}</div>
               <div style={{ textAlign: "right" }}>
-                <div className="fig" style={{ fontSize: 13, fontWeight: 600,
-                     color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(g.pl)}</div>
+                <div className="fig" style={{ fontSize: 16, fontWeight: 900,
+                     color: g.pl >= 0 ? "var(--good)" : "var(--bad)" }}>{(g.pl >= 0 ? "+" : "−") + fmt(Math.abs(g.pl))}</div>
                 <div className="num" style={{ fontSize: 10.5, color: "var(--ink-3)", marginTop: 1 }}>
                   {g.invested > 0 ? `(${g.pl >= 0 ? "+" : ""}${(g.pl / g.invested * 100).toFixed(2)}%)` : "—"}
                 </div>
@@ -2067,7 +2067,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                           levelFor, onSaveLevel, isAdmin, levelSaving, capitalLedger,
                           capitalEditingId, onStartCapitalEdit, onCancelCapitalEdit,
                           onSaveCapitalValue, capitalSavingId, capitalDetailId, onToggleCapitalDetail,
-                          layout = "table" }) {
+                          layout = "table", compact = false }) {
   const showSL = kind === "open" && typeof levelFor === "function";
   // A row can carry its own precomputed `.risk` (a cross-client search builds one ledger per
   // client behind the scenes and flattens the answer onto each row) instead of a single shared
@@ -2183,13 +2183,33 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
 
   // Rows: "SYMBOL · client" over "qty @ price · date" on the left, then the editable SL / Risk /
   // Capital cells (open lots only) and the P&L on the right.
-  const shortDate = (d) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "UTC" }) : "—";
   const rcols = kind === "open"
     ? `minmax(220px,1fr)${showSL ? " 120px" : ""}${showRisk ? " 110px" : ""}${showCapital ? " 150px" : ""} 140px`
     : "minmax(220px,1fr) 160px";
   const heads2 = [showClient ? "Stock · Client" : "Stock", ...(showSL ? ["SL"] : []), ...(showRisk ? ["Risk"] : []),
                   ...(showCapital ? ["Capital"] : []), kind === "open" ? "Unrealised" : "Realised"];
   const subNote = note ? (showCapital ? `${note} · click a row for its capital breakdown` : note) : null;
+  const shortDate = (d) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit", timeZone: "UTC" }) : "—";
+  if (compact) {
+    return (
+      <div style={{ ...PANEL, overflow: "hidden", paddingBottom: 8 }}>
+        <PanelTitle right={note ? <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{note}</span> : null}>{title}</PanelTitle>
+        {rows.length === 0 ? (
+          <div style={{ padding: "22px 24px 26px", color: "var(--ink-3)", fontSize: 13 }}>Nothing to show yet.</div>
+        ) : rows.map((r, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 24px", marginTop: i === 0 ? 10 : 0 }}>
+            <LogoChip symbol={r.stock} size={34} />
+            <div style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {r.stock}<span style={{ fontSize: 14, fontWeight: 500, color: "var(--ink-3)" }}>{showClient ? ` · ${String(r.client).split(" ")[0]}` : ""} · {shortDate(r.sellDate)}</span>
+            </div>
+            <div className="fig" style={{ fontSize: 17, fontWeight: 900, color: toneOverride || (r.pl >= 0 ? "var(--good)" : "var(--bad)") }}>
+              {(r.pl >= 0 ? "+" : "−") + fmt(Math.abs(r.pl))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div style={{ ...PANEL, overflow: "hidden" }}>
       <PanelTitle right={subNote ? <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>{subNote}</span> : null}>{title}</PanelTitle>
@@ -2669,6 +2689,20 @@ export default function App() {
     });
     return rows.sort((a, b) => b.date.localeCompare(a.date));
   }, [filterClient, tradeSearch, portfolioAll, tradeRowsAll, capitalAdjustments, ownNames, levelFor]);
+  // In All/Family scope there is no single ledger, so each recent open lot gets its risk from its
+  // own client's ledger (same trick as the cross-client search).
+  const recentOpenRows = useMemo(() => {
+    if (!(filterClient === "All" || filterClient === "Own")) return highlights.recentOpen;
+    const cache = new Map();
+    return highlights.recentOpen.map(r => {
+      if (!cache.has(r.client)) {
+        cache.set(r.client, buildCapitalLedger(r.client, portfolioAll.filter(pp => pp.client === r.client),
+          tradeRowsAll.filter(t => t.client_name === r.client), capitalAdjustments.filter(a => a.client_name === r.client), levelFor));
+      }
+      const entry = cache.get(r.client).ledger.get(r.id);
+      return { ...r, risk: entry?.kind === "open" ? entry.risk : null };
+    });
+  }, [highlights, filterClient, portfolioAll, tradeRowsAll, capitalAdjustments, levelFor]);
   // Trades tab company search: every raw fill for a symbol, within the current client scope —
   // unlike the highlight panels above, this is not capped to a handful of recent/top rows.
   const tradeSearchHits = useMemo(() => {
@@ -4118,29 +4152,30 @@ export default function App() {
       <main style={{ padding: "8px 4px 44px", minWidth: 0 }}>
        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-      <header style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-        <div>
-          <div style={{ fontSize: 12.5, color: "var(--ink-3)", fontWeight: 500 }}>{todayLine}</div>
-          <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-.02em", lineHeight: 1.15 }}>{NAV_TITLE[view]}</h1>
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 18, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 12.5, color: "var(--ink-3)", fontWeight: 500 }}>{todayLine}</div>
+            <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: "-.02em", lineHeight: 1.15 }}>{NAV_TITLE[view]}</h1>
+          </div>
+          {(isAdmin || isGuest) && view !== "clients" && (
+            <ClientPicker label={isGuest ? "Sample books" : "Client filter"} names={clientNames} value={filterClient}
+                          onChange={setFilterClient} scopeLabel={scopeLabel} subFor={pickerSub}
+                          valueText={pickerSub(filterClient).split(" · ")[0]} />
+          )}
+          {!isAdmin && !isGuest && (
+            <span style={{ padding: "9px 16px", borderRadius: "var(--r-pill)", background: "var(--surface)",
+                           border: "1px solid var(--line)", fontSize: 13, fontWeight: 700 }}>
+              Your portfolio · {session.name || session.username}
+            </span>
+          )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        {(isAdmin || isGuest) && view !== "clients" && (
-          <ClientPicker label={isGuest ? "Sample books" : "Client filter"} names={clientNames} value={filterClient}
-                        onChange={setFilterClient} scopeLabel={scopeLabel} subFor={pickerSub} />
-        )}
-        {!isAdmin && !isGuest && (
-          <span style={{ padding: "9px 16px", borderRadius: "var(--r-pill)", background: "var(--surface)",
-                         border: "1px solid var(--line)", fontSize: 13, fontWeight: 700 }}>
-            Your portfolio · {session.name || session.username}
-          </span>
-        )}
         {isAdmin && (
           <button onClick={openAddTrade} disabled={clients.length === 0}
                   style={{ height: 42, padding: "0 20px", borderRadius: "var(--r-control)", border: "none",
                            background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 13.5, cursor: "pointer",
                            opacity: clients.length === 0 ? .6 : 1 }}>+ Add trade</button>
         )}
-        </div>
       </header>
 
       {/* ── CLIENTS TAB ─────────────────────────────────────────────────────── */}
@@ -4256,20 +4291,20 @@ export default function App() {
               <div style={{ fontSize: 15, fontWeight: 700 }}>No clients yet</div>
             </div>
           ) : (<>
-            <div style={{ ...PANEL, padding: "20px 22px 0" }}>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>Leaderboard</div>
-              <div style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Total P&L since joining · realised + unrealised</div>
-              <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 14, marginTop: 18 }}>
+            <div style={{ ...PANEL, padding: "24px 28px 0" }}>
+              <div style={{ fontSize: 20, fontWeight: 900 }}>Leaderboard</div>
+              <div style={{ fontSize: 13.5, color: "var(--ink-3)" }}>Total P&L since joining · realised + unrealised</div>
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "flex-end", gap: 12, marginTop: 14 }}>
                 {podium.map((r) => {
                   const rank = ranked.indexOf(r);
                   return (
-                    <div key={r.c.id} style={{ width: 150, textAlign: "center" }}>
-                      <Avatar name={r.c.name} size={44} />
-                      <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.c.name}</div>
-                      <div className="fig" style={{ fontSize: 13, fontWeight: 900, color: tone(r.pl), marginBottom: 8 }}>{fmt(r.pl)}</div>
-                      <div style={{ height: HEIGHT[rank], borderRadius: "14px 14px 0 0", background: rank === 0 ? "var(--ink)" : "var(--accent-soft)",
-                                    color: rank === 0 ? "#fff" : "#4335C9", display: "grid", placeItems: "start center", paddingTop: 10,
-                                    fontSize: 26, fontWeight: 900 }}>{rank + 1}</div>
+                    <div key={r.c.id} style={{ width: 200, textAlign: "center" }}>
+                      <Avatar name={r.c.name} size={52} />
+                      <div style={{ fontSize: 16, fontWeight: 700, marginTop: 8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(r.c.name).split(" ")[0]}</div>
+                      <div className="fig" style={{ fontSize: 16, fontWeight: 900, color: tone(r.pl), marginBottom: 10 }}>{shortINR(r.pl, true)}</div>
+                      <div style={{ height: HEIGHT[rank], borderRadius: "14px 14px 0 0", background: "var(--tint)",
+                                    color: "var(--accent)", display: "grid", placeItems: "start center", paddingTop: 12,
+                                    fontSize: 34, fontWeight: 900 }}>{rank + 1}</div>
                     </div>
                   );
                 })}
@@ -4292,7 +4327,7 @@ export default function App() {
                       <Avatar name={c.name} size={34} />
                       <span style={{ minWidth: 0 }}>
                         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</span>
+                          <span style={{ fontSize: 17, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{String(c.name).split(" ")[0]}</span>
                           {c.is_own_money && <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 99, background: "#FFF6DD", color: "#8A6200" }}>Family</span>}
                         </span>
                         <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)" }}>
@@ -4305,18 +4340,18 @@ export default function App() {
                       <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email || "—"}</div>
                       <div className="num" style={{ color: "var(--ink-3)" }}>{c.phone || "—"}</div>
                     </div>
-                    <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: "right" }}>{r.n}</div>
+                    <div className="num" style={{ fontSize: 17, fontWeight: 900, textAlign: "right" }}>{r.n}</div>
                     <div className="num" style={{ fontSize: 12, color: "var(--ink-2)" }}
                          title={c.trades_synced_at ? "Last time this client's trades were pulled/reconciled from a broker" : "Never synced from a broker"}>
-                      {fmtDateTimeIST(c.trades_synced_at)}
+                      {fmtShortIST(c.trades_synced_at)}
                     </div>
                     <div>
-                      <div className="fig" style={{ fontSize: 13, fontWeight: 700, color: tone(r.pl) }}>{fmt(r.pl)}</div>
+                      <div className="fig" style={{ fontSize: 17, fontWeight: 900, color: tone(r.pl) }}>{(r.pl >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(r.pl)).toLocaleString("en-IN")}</div>
                       <div style={{ height: 4, borderRadius: 99, background: "var(--row-rule)", marginTop: 4 }}>
-                        <div style={{ height: 4, borderRadius: 99, width: `${Math.abs(r.pl) / maxAbs * 100}%`, background: r.pl >= 0 ? "#9ED5AE" : "#EBA3A3" }} />
+                        <div style={{ height: 4, borderRadius: 99, width: `${Math.abs(r.pl) / maxAbs * 100}%`, background: "var(--accent)" }} />
                       </div>
                     </div>
-                    <div className="num" style={{ fontSize: 13, fontWeight: 700, textAlign: "right", color: tone(r.ret) }}>{pct(r.ret)}</div>
+                    <div className="num" style={{ fontSize: 14, textAlign: "right", color: tone(r.ret) }}>{pct(r.ret)}</div>
                     <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
                       <button onClick={() => handleClientLogin(c)} style={{ ...btnS, padding: "6px 12px", fontSize: 12, borderRadius: 999, boxShadow: "none" }}>Login</button>
                       <button onClick={() => openEditClient(c)} style={{ ...btnS, padding: "6px 12px", fontSize: 12, borderRadius: 999, boxShadow: "none", color: "var(--accent)" }}>Edit</button>
@@ -4394,11 +4429,12 @@ export default function App() {
             <div style={{ ...CAP, marginTop: 4 }}>Add clients first, then log trades in the Trades tab.</div>
           </div>
         ) : (
-        <div style={{ display: "grid", gridTemplateColumns: showList ? "280px 1fr" : "1fr", gap: 16, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: showList ? "320px 1fr" : "1fr", gap: 16, alignItems: "start" }}>
           {showList && (
             <div style={{ ...PANEL, padding: 12, display: "flex", flexDirection: "column", gap: 2 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--ink-3)", padding: "6px 8px 8px" }}>
-                {isGuest ? "Sample books" : "Clients"}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", padding: "10px 10px 10px" }}>
+                <span style={{ fontSize: 20, fontWeight: 900 }}>{isGuest ? "Sample books" : "Clients"}</span>
+                <span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>Value · return</span>
               </div>
               {clientRows.map(r => {
                 const on = filterClient === r.c;
@@ -4409,10 +4445,10 @@ export default function App() {
                     background: on ? "var(--ink)" : "transparent", color: on ? "#fff" : "var(--ink)" }}>
                     <Avatar name={scopeLabel(r.c)} all={r.c === "All" || r.c === "Own"} size={34} />
                     <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel(r.c)}</span>
-                      <span className="num" style={{ display: "block", fontSize: 11.5, color: on ? "var(--hero-sub)" : "var(--ink-3)" }}>{lakhs(r.val)} · {r.open} open</span>
+                      <span style={{ display: "block", fontSize: 16, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{scopeLabel(r.c)}</span>
+                      <span className="num" style={{ display: "block", fontSize: 13, color: on ? "var(--hero-sub)" : "var(--ink-3)" }}>{lakhs(r.val)} · {r.open} holdings</span>
                     </span>
-                    <span className="num" style={{ fontSize: 12, fontWeight: 700, color: on ? (r.ret >= 0 ? "#6EE7B7" : "#FCA5A5") : tone(r.ret) }}>{pct(r.ret)}</span>
+                    <span className="num" style={{ fontSize: 15, fontWeight: 700, color: on ? (r.ret >= 0 ? "#6EE7B7" : "#FCA5A5") : tone(r.ret) }}>{pct(r.ret)}</span>
                   </button>
                 );
               })}
@@ -4459,21 +4495,24 @@ export default function App() {
             <div style={PANEL}>
               <PanelTitle right={
                 <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-                  {pnlTotalChartData.length > 0 && (() => { const l = pnlTotalChartData[pnlTotalChartData.length - 1]; const v = l.realized + l.unrealized;
-                    return <span className="num" style={{ fontSize: 12.5, color: "var(--ink-3)" }}>now <b style={{ color: tone(v) }}>{signedFmt(v)}</b></span>; })()}
                   <Segmented options={PNL_VIEWS.map(v => ({ value: v, label: PNL_VIEW_LABEL[v] }))}
                              value={pnlTotalView} onChange={setPnlTotalView} />
                 </div>
-              }>Total P&L (Realised + Unrealised)</PanelTitle>
+              }>
+                <span style={{ display: "block" }}>Total P&L (Realised + Unrealised)</span>
+                {pnlTotalChartData.length > 0 && (() => { const l = pnlTotalChartData[pnlTotalChartData.length - 1]; const v = l.realized + l.unrealized;
+                  return <span className="num" style={{ display: "block", fontSize: 13.5, fontWeight: 500, color: "var(--ink-3)", letterSpacing: 0, marginTop: 2 }}>
+                    Running total at each period end · now <b style={{ color: tone(v) }}>{signedFmt(v)}</b></span>; })()}
+              </PanelTitle>
               <div style={{ padding: "10px 14px 16px" }}>
                 {pnlTotalChartData.length > 0 ? <PnlTotalBarChart points={pnlTotalChartData} /> :
                   <div style={{ padding: 30, textAlign: "center", color: "var(--ink-3)", fontSize: 13 }}>No data for this period.</div>}
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: isAdmin ? "1.3fr 1.3fr 1fr" : "1fr 1fr", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16 }}>
               <div style={{ ...PANEL, padding: 20 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>Allocation <span style={{ fontSize: 12, fontWeight: 500, color: "var(--ink-3)" }}>by sector</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}><span style={{ fontSize: 20, fontWeight: 900 }}>Allocation</span><span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>By sector</span></div>
                 {allocTotal > 0 ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                     <svg width="124" height="124" viewBox="0 0 124 124" style={{ flex: "none" }}>
@@ -4497,32 +4536,34 @@ export default function App() {
               </div>
 
               <div style={{ ...PANEL, padding: 20 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>Movers today</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 10 }}><span style={{ fontSize: 20, fontWeight: 900 }}>Movers today</span><span style={{ fontSize: 12.5, color: "var(--ink-3)" }}>NSE</span></div>
                 {movers.length === 0 ? <div style={CAP}>No price history loaded yet.</div> : movers.map(r => (
                   <div key={r.stock} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: "1px solid var(--row-rule)" }}>
                     <LogoChip symbol={r.stock} size={32} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: 13, fontWeight: 700 }}>{r.stock}</span>
-                      <span className="num" style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)" }}>{fmt(r.cmp)}</span>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 17, fontWeight: 900 }}>{r.stock}</span>
+                    <span style={{ textAlign: "right" }}>
+                      <span className="num" style={{ display: "block", fontSize: 17, fontWeight: 700 }}>{fmt(r.cmp)}</span>
+                      <span className="num" style={{ display: "block", fontSize: 13.5, fontWeight: 500, color: tone(r.dayPct) }}>{pct(r.dayPct)}</span>
                     </span>
-                    <span className="num" style={{ fontSize: 13, fontWeight: 700, color: tone(r.dayPct) }}>{pct(r.dayPct)}</span>
                   </div>
                 ))}
               </div>
 
-              {isAdmin && (
+            </div>
+            {isAdmin && (
+              <div style={{ display: "grid", gridTemplateColumns: "1.15fr 1fr", gap: 16 }}>
                 <div style={{ ...PANEL, padding: 20, textAlign: "center" }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 10, textAlign: "left" }}>Win rate</div>
-                  <svg width="110" height="110" viewBox="0 0 110 110">
+                  <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 10, textAlign: "left" }}>Win rate</div>
+                  <svg width="170" height="170" viewBox="0 0 110 110" style={{ margin: "6px 0" }}>
                     <circle cx="55" cy="55" r="44" fill="none" stroke="var(--row-rule)" strokeWidth="12" />
-                    <circle cx="55" cy="55" r="44" fill="none" stroke="var(--good)" strokeWidth="12" strokeLinecap="round"
+                    <circle cx="55" cy="55" r="44" fill="none" stroke="var(--accent)" strokeWidth="12" strokeLinecap="round"
                             strokeDasharray={`${winPct / 100 * 2 * Math.PI * 44} ${2 * Math.PI * 44}`} transform="rotate(-90 55 55)" />
-                    <text x="55" y="61" textAnchor="middle" fontSize="22" fontWeight="900" fill="var(--ink)">{winPct.toFixed(0)}%</text>
+                    <text x="55" y="61" textAnchor="middle" fontSize="20" fontWeight="900" fill="var(--ink)">{winPct.toFixed(0)}%</text>
                   </svg>
                   <div style={{ ...CAP, marginTop: 6 }}>{winCount} of {decisiveLots} decisive exits in profit</div>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
         )}
@@ -4551,7 +4592,7 @@ export default function App() {
         const heroVal = heldAll.reduce((s, h) => s + h.currentVal, 0);
         const heroInv = heldAll.reduce((s, h) => s + h.investedHolding, 0);
         const cols = "1.5fr .75fr .55fr .85fr .85fr .95fr .95fr 1fr .95fr 1fr 28px";
-        const heads = ["Stock", "Kind", "Qty", "Avg buy", "LTP", "Invested", "Value", "Unrealised", "Realised", "Weight", ""];
+        const heads = ["Stock · Client", "Kind", "Qty", "Avg buy", "LTP", "Invested", "Value", "Unrealised", "Realised", "Weight", ""];
         const tone = (n) => n >= 0 ? "var(--good)" : "var(--bad)";
         const rowKey = (h) => `${h.client}||${h.stock}`;
         return (<>
@@ -4593,13 +4634,11 @@ export default function App() {
             )}
           </Hero>
 
-          <div style={{ alignSelf: "flex-start" }}>
-            <Segmented options={STATUS_TABS.map(([k, l]) => ({ value: k, label: `${l} · ${counts[k]}` }))}
-                       value={pfStatus} onChange={setPfStatus} />
-          </div>
-
           {rows.length === 0 ? (
             <div style={{ ...PANEL, padding: 32, textAlign: "center" }}>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+                <Segmented options={STATUS_TABS.map(([k, l]) => ({ value: k, label: `${l} ${counts[k]}` }))} value={pfStatus} onChange={setPfStatus} />
+              </div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>
                 {searching ? `No ${STATUS_TABS.find(t => t[0] === pfStatus)[1].toLowerCase()} position matches "${holdingSearch.trim()}"`
                            : `No ${STATUS_TABS.find(t => t[0] === pfStatus)[1].toLowerCase()} positions`}
@@ -4607,10 +4646,14 @@ export default function App() {
             </div>
           ) : (
             <div style={{ ...PANEL, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "20px 24px 14px" }}>
+                <Segmented options={STATUS_TABS.map(([k, l]) => ({ value: k, label: `${l} ${counts[k]}` }))} value={pfStatus} onChange={setPfStatus} />
+                <span style={{ fontSize: 13, color: "var(--ink-3)" }}>Tap a row for open and booked lots</span>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
-                            padding: "12px 22px", background: "var(--table-head)", borderBottom: "1px solid var(--row-rule)" }}>
+                            padding: "10px 24px", borderBottom: "1px solid var(--row-rule)" }}>
                 {heads.map((h, i) => (
-                  <div key={i} style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
+                  <div key={i} style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase",
                                         color: "var(--ink-3)", textAlign: i >= 2 && i < 10 ? "right" : "left" }}>{h}</div>
                 ))}
               </div>
@@ -4622,14 +4665,14 @@ export default function App() {
                 return (
                   <div key={key} style={{ borderBottom: i === rows.length - 1 ? "none" : "1px solid var(--row-rule)" }}>
                     <div className="grid-row" onClick={() => setPfOpen(p => ({ ...p, [key]: !p[key] }))}
-                         style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "12px 22px", cursor: "pointer" }}>
+                         style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: "13px 24px", cursor: "pointer" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
                         <LogoChip symbol={h.stock} size={36} />
                         <span style={{ minWidth: 0 }}>
-                          <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</span>
+                          <span style={{ display: "block", fontSize: 17, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.stock}</span>
                           {showClient && (
-                            <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, color: "var(--ink-3)" }}>
-                              <Avatar name={h.client} size={14} />{h.client}
+                            <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "var(--ink-3)" }}>
+                              <Avatar name={h.client} size={16} />{String(h.client).split(" ")[0]}
                             </span>
                           )}
                         </span>
@@ -4644,20 +4687,20 @@ export default function App() {
                           </Badge>
                         </button>
                       </div>
-                      <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{isOpen ? h.netQty : "—"}</div>
-                      <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{isOpen ? fmt(h.avgBuyPrice) : "—"}</div>
-                      <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 700 }}>{h.cmp ? fmt(h.cmp) : "—"}</div>
-                      <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{isOpen ? fmt(h.investedHolding) : "—"}</div>
-                      <div className="num" style={{ fontSize: 13, textAlign: "right", fontWeight: 700 }}>{isOpen ? fmt(h.currentVal) : "—"}</div>
+                      <div className="num" style={{ fontSize: 17, fontWeight: 900, textAlign: "right" }}>{isOpen ? h.netQty : "—"}</div>
+                      <div className="num" style={{ fontSize: 16, textAlign: "right" }}>{isOpen ? fmt(h.avgBuyPrice) : "—"}</div>
+                      <div className="num" style={{ fontSize: 14, textAlign: "right", color: "var(--ink-3)" }}>{h.cmp ? fmt(h.cmp) : "—"}</div>
+                      <div className="num" style={{ fontSize: 16, textAlign: "right" }}>{isOpen ? fmt(h.investedHolding) : "—"}</div>
+                      <div className="num" style={{ fontSize: 16, textAlign: "right", fontWeight: 900 }}>{isOpen ? fmt(h.currentVal) : "—"}</div>
                       <div style={{ textAlign: "right" }}>
                         {isOpen ? (<>
-                          <div className="fig" style={{ fontSize: 13, fontWeight: 700, color: tone(h.unrealizedPL) }}>{fmt(h.unrealizedPL)}</div>
-                          <div className="num" style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 1 }}>
+                          <div className="fig" style={{ fontSize: 16, fontWeight: 900, color: tone(h.unrealizedPL) }}>{(h.unrealizedPL >= 0 ? "+" : "−") + fmt(Math.abs(h.unrealizedPL))}</div>
+                          <div className="num" style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 1 }}>
                             {h.investedHolding > 0 ? pct(h.unrealizedPL / h.investedHolding * 100) : "—"}
                           </div>
                         </>) : <span className="num" style={{ color: "var(--ink-3)" }}>—</span>}
                       </div>
-                      <div className="fig" style={{ fontSize: 13, textAlign: "right", fontWeight: 700, color: h.matchDetails.length ? tone(h.realizedPL) : "var(--ink-3)" }}>
+                      <div className="fig" style={{ fontSize: 16, textAlign: "right", fontWeight: 900, color: h.matchDetails.length ? tone(h.realizedPL) : "var(--ink-3)" }}>
                         {h.matchDetails.length ? fmt(h.realizedPL) : "—"}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
@@ -4706,8 +4749,8 @@ export default function App() {
                 );
               })}
               <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center",
-                            padding: "13px 22px", borderTop: "1px solid var(--line)", background: "var(--table-head)", fontWeight: 700 }}>
-                <div style={{ fontSize: 13 }}>Total</div>
+                            padding: "14px 24px", borderTop: "1px solid var(--row-rule)", background: "var(--surface-2)", fontWeight: 700 }}>
+                <div style={{ fontSize: 16, fontWeight: 900 }}>Total · {(STATUS_TABS.find(t => t[0] === pfStatus) || [,""])[1]}</div>
                 <div /><div /><div /><div />
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalInvested)}</div>
                 <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{fmt(totalVal)}</div>
@@ -4859,24 +4902,26 @@ export default function App() {
                           capitalSavingId={capitalSaving} capitalDetailId={capitalDetailId}
                           onToggleCapitalDetail={(id) => setCapitalDetailId(prev => prev === id ? null : id)}
                           />
-          <HighlightPanel title="Recent closed trades" note="Newest exits"
-                          rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
-                          />
-          <HighlightPanel title="Top 5 profitable trades" note="Best booked exits"
-                          rows={highlights.best} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
-                          />
-          {isAdmin && (
-            <HighlightPanel title="Top 5 losing trades" note="Admin only · hidden from client logins"
-                            rows={highlights.worst} kind="closed" showClient={filterClient === "All" || filterClient === "Own"}
-                            />
-          )}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, alignItems: "start" }}>
+            <HighlightPanel title="Recent closed trades" note="Newest exits"
+                            rows={highlights.recentClosed} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
+            <div style={{ display: "grid", gap: 16 }}>
+              <HighlightPanel title="Top 5 profitable trades" note="Best booked exits" compact
+                              rows={highlights.best} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
+              {isAdmin && (
+                <HighlightPanel title="Top 5 losing trades" note="Admin only · hidden from client logins" compact
+                                rows={highlights.worst} kind="closed" showClient={filterClient === "All" || filterClient === "Own"} />
+              )}
+            </div>
+          </div>
         </div>
         )}
 
 
           <div style={{ marginTop: 16 }}>
-                      <button onClick={() => setShowRawLog(v => !v)} style={{ ...btnS, fontSize: 12 }}>
-            {showRawLog ? "▾ Hide raw trade log" : `▸ Show raw trade log${isAdmin ? " (edit / delete)" : ""}`}
+                      <button onClick={() => setShowRawLog(v => !v)} style={{ ...PANEL, width: "100%", textAlign: "left", border: "none", cursor: "pointer",
+                  padding: "18px 24px", color: "var(--accent)", fontWeight: 700, fontSize: 15 }}>
+            {showRawLog ? "Hide raw trade log" : `Show raw trade log${isAdmin ? " (edit / delete)" : ""}`}
           </button>
           {showRawLog && (
             <div style={{ overflowX: "auto", marginTop: 10 }}>
@@ -4965,10 +5010,8 @@ export default function App() {
           <h2 style={{ margin: "6px 0 0", fontSize: 34, fontWeight: 800, letterSpacing: "-.03em" }}>
             {investments.open.length} open, {investments.closed.length} closed
           </h2>
-          <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.72)", marginTop: 6 }}>
-            Held <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(investments.value)}</strong>
-            {" · "}Unrealized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(investments.unrealized)}</strong>
-            {" · "}Realized <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{fmt(investments.realized)}</strong>
+          <div style={{ fontSize: 13.5, color: "var(--hero-sub)", marginTop: 6 }}>
+            Held for the long term · tagged “Investment” at entry, so they stay out of trade stats and swing capital
           </div>
         </Hero>
 
@@ -5055,7 +5098,7 @@ export default function App() {
                     </span>
                     <span style={{ position: "relative", height: 12, background: "var(--row-rule)", borderRadius: 99 }}>
                       <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${w}%`, borderRadius: 99,
-                                     background: r.portfolio_xirr_pct >= 0 ? "#9ED5AE" : "#EBA3A3" }} />
+                                     background: "var(--accent)" }} />
                       {r.index_xirr_pct != null && (
                         <span style={{ position: "absolute", top: -4, bottom: -4, left: `${Math.min(Math.abs(r.index_xirr_pct) / scale * 100, 100)}%`,
                                        borderLeft: "2px dashed var(--ink-2)" }} />
@@ -5101,18 +5144,18 @@ export default function App() {
           </div>
 
           {bmk && sel && (
-            <div style={{ ...PANEL, background: "var(--good-soft)", padding: "24px 26px 20px" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-                Alpha generated vs {sel.label}
+            <div style={{ ...PANEL, background: "#0F9F6E", color: "#fff", padding: "24px 26px 20px" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "rgba(255,255,255,.85)" }}>
+                Alpha vs {sel.label}
               </div>
-              <div className="fig" style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-.03em", marginTop: 6, color: tone(ahead) }}>
-                {ahead >= 0 ? "+" : ""}{ahead.toFixed(2)} pp
+              <div className="fig" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-.03em", marginTop: 6, color: "#fff" }}>
+                {ahead >= 0 ? "+" : "−"}{Math.abs(ahead).toFixed(2)} pp
               </div>
-              <div style={{ fontSize: 13, color: "var(--ink-2)", marginTop: 6 }}>
-                <strong className="fig" style={{ color: "var(--ink)" }}>{fmt(Math.abs(bmk.portfolio_value - sel.value))}</strong>{" "}
+              <div style={{ fontSize: 13.5, color: "rgba(255,255,255,.9)", marginTop: 6 }}>
+                <strong className="fig" style={{ color: "#fff" }}>{fmt(Math.abs(bmk.portfolio_value - sel.value))}</strong>{" "}
                 {bmk.portfolio_value >= sel.value ? "ahead of" : "behind"} {sel.label} with the same deposits
               </div>
-              <div style={{ display: "flex", gap: 30, flexWrap: "wrap", marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(15,159,110,.2)" }}>
+              <div style={{ display: "flex", gap: 30, flexWrap: "wrap", marginTop: 18, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,.28)" }}>
                 <div>
                   <div style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Your XIRR</div>
                   <div className="fig" style={{ fontSize: 14, fontWeight: 700 }}>{bmk.portfolio_xirr_pct}%</div>
@@ -5173,10 +5216,10 @@ export default function App() {
             {label} {sortBy === col ? (perfTbl.dir === "desc" ? "↓" : "↑") : "↕"}
           </div>
         );
-        const cols = "1.5fr .85fr .5fr .8fr .8fr .55fr 1.2fr .95fr 1.3fr .95fr 20px";
+        const cols = "1.5fr .7fr .5fr .85fr .85fr .75fr 1.3fr 1fr 1.4fr 1fr 18px";
         const stat = (label, value, color) => (
-          <div><div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase" }}>{label}</div>
-            <div className="fig" style={{ fontSize: 18, fontWeight: 900, marginTop: 2, color: color || "var(--ink)" }}>{value}</div></div>);
+          <div><div style={{ fontSize: 13, color: "var(--ink-3)" }}>{label}</div>
+            <div className="fig" style={{ fontSize: 26, fontWeight: 900, marginTop: 2, color: color || "var(--ink)" }}>{value}</div></div>);
         return (<>
           {perfMonths.length === 0 ? (
             <div style={{ ...PANEL, padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>
@@ -5190,97 +5233,91 @@ export default function App() {
               <button key={m} onClick={() => setPerfMonth(m)} style={{ flex: "none", height: 34, padding: "0 14px", borderRadius: 999, whiteSpace: "nowrap", cursor: "pointer",
                       fontSize: 12.5, fontWeight: 700, border: m === perfMonth ? "1px solid var(--accent)" : "1px solid var(--line)",
                       background: m === perfMonth ? "var(--accent)" : "var(--surface)", color: m === perfMonth ? "#fff" : "var(--ink-2)" }}>
-                {monthLabel(m)}
+                {MONTHS[Number(m.split("-")[1]) - 1]}{m.slice(0, 4) !== perfMonth.slice(0, 4) ? ` '${m.slice(2, 4)}` : ""}
               </button>
             ))}
             <button onClick={() => monthIdx < perfMonths.length - 1 && setPerfMonth(perfMonths[monthIdx + 1])} disabled={monthIdx >= perfMonths.length - 1}
                     style={{ flex: "none", width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--surface)", cursor: monthIdx < perfMonths.length - 1 ? "pointer" : "default", opacity: monthIdx < perfMonths.length - 1 ? 1 : .4 }}>›</button>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16 }}>
-            <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: 24, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-              <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase", color: "var(--hero-sub)" }}>
-                Net booked · {monthLabel(perfMonth)} · {scopeLabel(filterClient)}</div>
-              <div className="fig" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-.03em", marginTop: 6, color: k.net >= 0 ? "#fff" : "#FCA5A5" }}>
-                {k.net >= 0 ? "+" : "−"}{fmt(Math.abs(k.net))}</div>
-              <div style={{ fontSize: 13, color: "var(--hero-sub)", marginTop: 4 }}>{k.count} closed trade{k.count === 1 ? "" : "s"} · {fmt(k.charges)} charges deducted</div>
+          <div style={{ ...PANEL, padding: "22px 28px", display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 28, alignItems: "center" }}>
+            <div>
+              <div style={{ fontSize: 14, color: "var(--ink-3)" }}>Net booked · {monthLabel(perfMonth)}</div>
+              <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", color: tone(k.net), marginTop: 4 }}>
+                {k.net >= 0 ? "+" : "−"}₹{Math.round(Math.abs(k.net)).toLocaleString("en-IN")}</div>
+              <div style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 2 }}>{k.count} closed trade{k.count === 1 ? "" : "s"}</div>
             </div>
-            <div style={{ ...PANEL, padding: 20 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                {stat("Win rate", k.winRate == null ? "—" : `${k.winRate.toFixed(0)}%`, k.winRate == null ? null : tone(k.winRate - 50))}
-                {stat("Profit factor", k.profitFactor == null ? "—" : k.profitFactor.toFixed(2))}
-                {stat("Avg win", fmt(k.avgWin), "var(--good)")}
-                {stat("Avg loss", fmt(k.avgLoss), "var(--bad)")}
-              </div>
-              <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 10 }}>
-                {k.wins} of {decisive} decisive exits in profit (win ≥ {WIN_PCT}%, loss ≤ {LOSS_PCT}%) · {k.neutral} neutral
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <PerfEquityCurve points={perfEquity.points} peak={perfEquity.peak} maxDD={perfEquity.maxDD} monthEnd={perfEquity.monthEnd} />
-              </div>
+            <div style={{ minWidth: 0 }}>
+              <PerfEquityCurve points={perfEquity.points} peak={perfEquity.peak} maxDD={perfEquity.maxDD} monthEnd={perfEquity.monthEnd} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, auto)", gap: 28 }}>
+              {stat("Win rate", k.winRate == null ? "—" : `${k.winRate.toFixed(0)}%`)}
+              {stat("Profit factor", k.profitFactor == null ? "—" : k.profitFactor.toFixed(2))}
+              {stat("Avg win", shortINR(k.avgWin, true), "var(--good)")}
+              {stat("Avg loss", shortINR(-k.avgLoss), "var(--bad)")}
             </div>
           </div>
 
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            {[["all", "All", perfMonthTrades.length], ["win", "Winners", perfMonthTrades.filter(x => x.net > 0).length],
+              ["loss", "Losers", perfMonthTrades.filter(x => x.net < 0).length], ["review", "Needs review", needs]].map(([v, l, n]) => (
+              <button key={v} onClick={() => setFilterVal(v)} style={{ height: 38, padding: "0 18px", borderRadius: 999, cursor: "pointer", fontSize: 14, fontWeight: 700,
+                      border: filterVal === v ? "1px solid var(--accent)" : "1px solid var(--line)",
+                      background: filterVal === v ? "var(--accent)" : "var(--surface)", color: filterVal === v ? "#fff" : "var(--ink-2)" }}>
+                {l} <span style={{ fontWeight: 500, opacity: .75, marginLeft: 4 }}>{n}</span>
+              </button>
+            ))}
+            {perfDay && <span onClick={() => setPerfDay(null)} style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 99, background: "var(--accent-soft)", color: "#4335C9", cursor: "pointer" }}>{fmtDate(perfDay)} ×</span>}
+            {perfStrategy !== "All" && <span onClick={() => setPerfStrategy("All")} style={{ fontSize: 12, fontWeight: 700, padding: "5px 12px", borderRadius: 99, background: "var(--accent-soft)", color: "#4335C9", cursor: "pointer" }}>{perfStrategy} ×</span>}
+          </div>
+
           <div style={{ ...PANEL, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "16px 22px 12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Trades · {monthLabel(perfMonth)}</h3>
-                {perfDay && <span onClick={() => setPerfDay(null)} style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "var(--accent-soft)", color: "#4335C9", cursor: "pointer" }}>{fmtDate(perfDay)} ×</span>}
-                {perfStrategy !== "All" && <span onClick={() => setPerfStrategy("All")} style={{ fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "var(--accent-soft)", color: "#4335C9", cursor: "pointer" }}>{perfStrategy} ×</span>}
-              </div>
-              <Segmented value={filterVal} onChange={setFilterVal} options={[
-                { value: "all", label: `All · ${perfMonthTrades.length}` },
-                { value: "win", label: `Winners · ${perfMonthTrades.filter(x => x.net > 0).length}` },
-                { value: "loss", label: `Losers · ${perfMonthTrades.filter(x => x.net < 0).length}` },
-                { value: "review", label: `Needs review · ${needs}` },
-              ]} />
-            </div>
             {rows.length === 0 ? (
               <div style={{ padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>No closed trades match these filters.</div>
             ) : (<>
-              <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "10px 22px", background: "var(--table-head)",
-                            fontSize: 11, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-                <div>Stock</div>{sortHead("Exit", "exit", "left")}<div style={{ textAlign: "right" }}>Qty</div>
+              <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "16px 24px 10px",
+                            fontSize: 12.5, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+                <div>Stock · Client</div>{sortHead("Exit", "exit", "left")}<div style={{ textAlign: "right" }}>Qty</div>
                 <div style={{ textAlign: "right" }}>Bought</div><div style={{ textAlign: "right" }}>Sold</div>
-                {sortHead("Held", "held")}{sortHead("Return", "ret")}{sortHead("Net P&L", "net")}<div>Setup</div><div>Review</div><div />
+                {sortHead("Held", "held")}{sortHead("Return", "ret")}{sortHead("Net P&L", "net")}<div>Setup · Discipline</div><div>Review</div><div />
               </div>
               {rows.map((t, i) => {
                 const reviewed = !!t.review?.reviewed;
                 const w = Math.min(50, Math.abs(t.returnPct) / maxRet * 50);
                 return (
                   <div key={t.key} className="grid-row" onClick={() => setOpenReviewKey(t.key)}
-                       style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "11px 22px", cursor: "pointer",
+                       style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "12px 24px", cursor: "pointer",
                                 borderTop: "1px solid var(--row-rule)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <LogoChip symbol={t.stock} size={34} />
                       <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", fontSize: 13.5, fontWeight: 700 }}>{t.stock}</span>
-                        <span style={{ display: "block", fontSize: 11.5, color: "var(--ink-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.client}</span>
+                        <span style={{ display: "block", fontSize: 17, fontWeight: 900 }}>{t.stock}</span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}><Avatar name={t.client} size={16} />{String(t.client).split(" ")[0]}</span>
                       </span>
                     </div>
-                    <div className="num" style={{ fontSize: 12.5, color: "var(--ink-2)" }}>{fmtDate(t.sellDate)}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{t.qty}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(t.buyPrice)}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right", color: "var(--ink-2)" }}>{fmt(t.sellPrice)}</div>
-                    <div className="num" style={{ fontSize: 13, textAlign: "right" }}>{t.holdDays}d</div>
+                    <div className="num" style={{ fontSize: 15, color: "var(--ink-2)" }}>{new Date(t.sellDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}</div>
+                    <div className="num" style={{ fontSize: 17, fontWeight: 700, textAlign: "right" }}>{t.qty}</div>
+                    <div className="num" style={{ fontSize: 14, textAlign: "right", color: "var(--ink-3)" }}>{fmt(t.buyPrice)}</div>
+                    <div className="num" style={{ fontSize: 17, textAlign: "right" }}>{fmt(t.sellPrice)}</div>
+                    <div className="num" style={{ fontSize: 14, textAlign: "right", color: "var(--ink-3)" }}>{t.holdDays === 0 ? "Intraday" : `${t.holdDays} days`}</div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
                       <span style={{ position: "relative", width: 56, height: 6, background: "var(--row-rule)", borderRadius: 3 }}>
                         <span style={{ position: "absolute", left: "50%", top: -2, bottom: -2, width: 1, background: "#D3D6E2" }} />
                         <span style={{ position: "absolute", top: 0, bottom: 0, borderRadius: 3, left: t.returnPct >= 0 ? "50%" : `${50 - w}%`, width: `${w}%`,
                                        background: t.returnPct >= 0 ? "#9ED5AE" : "#EBA3A3" }} />
                       </span>
-                      <span className="num" style={{ fontSize: 12.5, fontWeight: 700, minWidth: 52, textAlign: "right", color: tone(t.returnPct) }}>{pct(t.returnPct)}</span>
+                      <span className="num" style={{ fontSize: 14, fontWeight: 700, minWidth: 56, textAlign: "right", color: tone(t.returnPct) }}>{pct(t.returnPct)}</span>
                     </div>
-                    <div className="fig" style={{ fontSize: 13.5, fontWeight: 900, textAlign: "right", color: tone(t.net) }}>{fmt(t.net)}</div>
+                    <div className="fig" style={{ fontSize: 17, fontWeight: 900, textAlign: "right", color: tone(t.net) }}>{(t.net >= 0 ? "+" : "−") + "₹" + Math.round(Math.abs(t.net)).toLocaleString("en-IN")}</div>
                     <div style={{ fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {t.review?.strategy ? `${t.review.strategy}${t.review.discipline ? ` · ${t.review.discipline}/5` : ""}` : "—"}
                     </div>
                     <div><Badge color={reviewed ? "green" : "amber"}>{reviewed ? "Reviewed ✓" : "Needs review"}</Badge></div>
-                    <div style={{ color: "var(--ink-3)" }}>›</div>
+                    <div style={{ color: "var(--accent)", fontWeight: 900 }}>›</div>
                   </div>
                 );
               })}
-              <div style={{ padding: "10px 22px 14px", fontSize: 11.5, color: "var(--ink-3)", borderTop: "1px solid var(--row-rule)" }}>P&L is net of charges.</div>
+              <div style={{ padding: "10px 22px 14px", fontSize: 11.5, color: "var(--ink-3)", borderTop: "1px solid var(--row-rule)" }}>Click a row to open its retrospect · P&L is net of charges</div>
             </>)}
           </div>
           </>)}
