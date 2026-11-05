@@ -4239,12 +4239,21 @@ export default function App() {
         const tone = (n) => n >= 0 ? "var(--good)" : "var(--bad)";
         const scopeName = filterClient === "All" ? (hidingOwn ? "All clients · client money only" : "All clients") : scopeLabel(filterClient);
         // Previous close per symbol, from the daily history already loaded for the P&L chart.
+        // The history's newest bar can be TODAY's still-forming candle, so it is never used as
+        // "yesterday": take the last bar dated before today (IST). Off-hours (weekend/holiday),
+        // when the live price just equals the last close, step back one more session so the
+        // number shows the most recent day's move instead of zero.
+        const todayIST = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
         const prevClose = (sym) => {
           const h = dailyPrices[sym]; if (!h) return null;
           const ds = Object.keys(h).sort(); if (ds.length === 0) return null;
-          const last = h[ds[ds.length - 1]], live = cmp[sym];
-          if (live && Math.abs(live - last) > 0.005) return last;
-          return ds.length > 1 ? h[ds[ds.length - 2]] : null;
+          const before = ds.filter(d => d < todayIST);
+          const live = cmp[sym];
+          if (before.length === 0) return null;
+          const lastBefore = h[before[before.length - 1]];
+          if (ds[ds.length - 1] < todayIST && live && Math.abs(live / lastBefore - 1) < 0.0005)
+            return before.length > 1 ? h[before[before.length - 2]] : null;
+          return lastBefore;
         };
         const dayRows = holdings.map(h => {
           const pc = prevClose(h.stock);
