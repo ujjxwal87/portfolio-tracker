@@ -3310,10 +3310,17 @@ export default function App() {
   // Admin-only for now: measure against peak capital staked, not net. Withdrawing profit shrinks
   // net_invested and inflates the return against it (Sohil 1.25x, Vinti 1.28x).
   // One return figure everywhere: money-weighted (XIRR), so every deposit counts from its own date.
+  // Under a year of history an annualised figure overstates a short run (4% in two months reads
+  // as 24%), so the headline is plain P&L over the peak capital tied up at once; from a year
+  // on it switches to the money-weighted annualised rate.
   const usePeak = false;
-  const returnPct = bmk0 && bmk0.portfolio_xirr_pct != null ? bmk0.portfolio_xirr_pct : stats.totalReturn;
+  const firstTradeDate = filteredTrades.reduce((m, t) => (m === null || String(t.date) < m ? String(t.date) : m), null);
+  const historyDays = firstTradeDate ? (Date.now() - new Date(firstTradeDate).getTime()) / 86400000 : 0;
+  const useSimple = historyDays < 365;
+  const hasXirr = bmk0 && bmk0.portfolio_xirr_pct != null;
+  const returnPct = !useSimple && hasXirr ? bmk0.portfolio_xirr_pct : stats.totalReturn;
   const alphaPP = bmk0 && bmk0.alpha_xirr_pp != null ? bmk0.alpha_xirr_pp : 0;
-  const returnBasis = bmk0 && bmk0.portfolio_xirr_pct != null ? "XIRR · money-weighted" : "on capital deployed";
+  const returnBasis = !useSimple && hasXirr ? "XIRR · annualised" : "P&L ÷ peak capital";
   // While the money-weighted figure is still loading, show nothing rather than flash the
   // cumulative-cost fallback and then correct it upward.
   const returnReady = benchmarkState !== "loading";
