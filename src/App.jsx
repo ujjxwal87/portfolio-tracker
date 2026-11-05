@@ -4062,8 +4062,12 @@ export default function App() {
         const ranked = clients.map(c => {
           const rows = portfolioAll.filter(p => p.client === c.name);
           const pl = rows.reduce((a, p) => a + p.totalPL, 0);
-          const cost = rows.reduce((a, p) => a + p.investedHolding + p.matchDetails.reduce((x, m) => x + m.buyPrice * m.qty, 0), 0);
-          return { c, pl, ret: cost > 0 ? pl / cost * 100 : 0, n: trades.filter(t => t.client_id === c.id).length };
+          let committed = 0, peak = 0;
+          trades.filter(t => t.client_id === c.id).sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(t => {
+            committed += (t.type === "BUY" ? 1 : -1) * t.quantity * Number(t.price);
+            if (committed > peak) peak = committed;
+          });
+          return { c, pl, ret: peak > 0 ? pl / peak * 100 : 0, n: trades.filter(t => t.client_id === c.id).length };
         }).sort((a, b) => b.pl - a.pl);
         const maxAbs = Math.max(1, ...ranked.map(r => Math.abs(r.pl)));
         const podium = [ranked[1], ranked[0], ranked[2]].filter(Boolean);
@@ -4255,8 +4259,14 @@ export default function App() {
           const val = rows.reduce((a, p) => a + (p.netQty > 0 ? p.currentVal : 0), 0);
           const open = rows.filter(p => p.netQty > 0).length;
           const pl = rows.reduce((a, p) => a + p.totalPL, 0);
-          const cost = rows.reduce((a, p) => a + p.investedHolding + p.matchDetails.reduce((x, m) => x + m.buyPrice * m.qty, 0), 0);
-          return { c, val, open, ret: cost > 0 ? pl / cost * 100 : 0 };
+          // Same basis as the hero Return: P&L over the most capital ever tied up at once.
+          const scoped = trades.filter(t => c === "All" ? !ownNames.has(t.client_name) : c === "Own" ? ownNames.has(t.client_name) : t.client_name === c);
+          let committed = 0, peak = 0;
+          [...scoped].sort((a, b) => String(a.date).localeCompare(String(b.date))).forEach(t => {
+            committed += (t.type === "BUY" ? 1 : -1) * t.quantity * Number(t.price);
+            if (committed > peak) peak = committed;
+          });
+          return { c, val, open, ret: peak > 0 ? pl / peak * 100 : 0 };
         });
         const allocTotal = holdings.reduce((s, h) => s + h.currentVal, 0);
         const ALLOC = ["#1D4ED8", "#0E7490", "#B45309", "#7C3AED", "#BE185D", "#4D7C0F", "#475569"];
