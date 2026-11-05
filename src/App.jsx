@@ -961,7 +961,7 @@ function InvestmentPositions({ groups, showClient }) {
     const c = typeof va === "string" ? va.localeCompare(vb) : va - vb;
     return sort.dir === "asc" ? c : -c;
   }) : groups;
-  const cols = showClient ? "18px 1.1fr 1.2fr .7fr .9fr .9fr 1fr 1fr 1fr" : "18px 1.2fr .7fr .9fr .9fr 1fr 1fr 1fr";
+  const cols = showClient ? "18px 1fr 1.7fr .6fr .9fr .9fr 1fr 1fr 1fr" : "18px 1.7fr .6fr .9fr .9fr 1fr 1fr 1fr";
   const headDefs = [...(showClient ? [["client", "Client"]] : []),
                     ["stock", "Stock"], ["qty", "Qty"], ["avgBuy", "Avg Buy"], ["cmp", "CMP"],
                     ["invested", "Invested"], ["value", "Current Value"], ["pl", "P&L"]];
@@ -996,8 +996,8 @@ function InvestmentPositions({ groups, showClient }) {
                             transform: isOpen ? "rotate(90deg)" : "none" }}>▸</div>
               {showClient && <div style={{ fontSize: 13, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.client}</div>}
               <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                <LogoChip symbol={g.stock} />
-                <span style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.stock}</span>
+                <LogoChip symbol={g.stock} size={34} />
+                <span style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.stock}</span>
                 {g.lots.length > 1 && (
                   <span style={{ fontSize: 10, fontWeight: 700, color: "var(--ink-3)", background: "#F1F4F8",
                                  borderRadius: 5, padding: "2px 6px", flex: "none" }}>{g.lots.length} lots</span>
@@ -4067,7 +4067,7 @@ export default function App() {
         }).sort((a, b) => b.pl - a.pl);
         const maxAbs = Math.max(1, ...ranked.map(r => Math.abs(r.pl)));
         const podium = [ranked[1], ranked[0], ranked[2]].filter(Boolean);
-        const HEIGHT = { 0: 112, 1: 148, 2: 92 };
+        const HEIGHT = { 0: 148, 1: 112, 2: 92 };
         return (<>
           <Hero view="clients" eyebrow="Under management"
             right={<button onClick={openAddClient} style={{ height: 42, padding: "0 20px", borderRadius: "var(--r-control)", border: "none",
@@ -4458,7 +4458,7 @@ export default function App() {
             </div>
             {isAdmin && (
               <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ position: "relative", flex: "0 1 340px" }}>
+                <div style={{ position: "relative", flex: "0 1 440px" }}>
                   <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
                                  fontSize: 13, color: "var(--hero-sub)", pointerEvents: "none" }}>⌕</span>
                   <input value={holdingSearch} onChange={e => setHoldingSearch(e.target.value)}
@@ -4624,7 +4624,7 @@ export default function App() {
             {isAdmin && <>{" · "}Win rate <strong className="fig" style={{ color: "#fff", fontWeight: 600 }}>{stats.winRate.toFixed(0)}%</strong></>}
           </div>
           <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ position: "relative", flex: "0 1 340px" }}>
+            <div style={{ position: "relative", flex: "0 1 440px" }}>
               <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)",
                              fontSize: 13, color: "rgba(255,255,255,.55)", pointerEvents: "none" }}>⌕</span>
               <input value={tradeSearch} onChange={e => setTradeSearch(e.target.value)}
@@ -4656,6 +4656,15 @@ export default function App() {
                 tone={tradePnl.unrealized >= 0 ? "var(--good)" : "var(--bad)"} accent={tradePnl.unrealized >= 0 ? "#16a34a" : "#dc2626"} />
           <Card title="Total P&L" value={fmt(tradePnl.realized + tradePnl.unrealized)}
                 tone={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "var(--good)" : "var(--bad)"} accent={(tradePnl.realized + tradePnl.unrealized) >= 0 ? "#16a34a" : "#dc2626"} />
+          {!capitalLedger && (
+            <div style={{ ...PANEL, background: "var(--tint)", padding: "18px 20px 16px" }}>
+              <span style={{ display: "block", width: 44, height: 4, borderRadius: 99, background: "var(--accent)" }} />
+              <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", marginTop: 12 }}>Swing Capital</div>
+              <div style={{ fontSize: 12.5, color: "var(--ink-2)", marginTop: 8, lineHeight: 1.45 }}>
+                Swing capital is a per-client ledger. Pick a client in the header to see it.
+              </div>
+            </div>
+          )}
           {capitalLedger && (
             <SwingCapitalCard latest={capitalLedger.latest} isAdmin={isAdmin}
               clientId={clientIdByName[filterClient]} adjustments={clientCapitalAdjustments}
@@ -4857,7 +4866,7 @@ export default function App() {
             or flip its Kind badge in the raw trade log on the Trades tab.
           </div>
         ) : (<>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "14px 0" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
             <Card title="Invested" value={fmt(investments.cost)} accent="#7C3AED"
                   sub={`${investments.open.length} open lot${investments.open.length === 1 ? "" : "s"}`} />
             <Card title="Current Value" value={fmt(investments.value)} accent="#7C3AED"
@@ -5062,22 +5071,22 @@ export default function App() {
               No closed trades yet for this scope.
             </div>
           ) : (<>
-          <div style={{ ...PANEL, padding: 12, display: "flex", alignItems: "center", gap: 6, overflowX: "auto" }}>
+          <div className="sc" style={{ ...PANEL, padding: 12, display: "flex", alignItems: "center", gap: 6, overflowX: "auto" }}>
             <button onClick={() => monthIdx > 0 && setPerfMonth(perfMonths[monthIdx - 1])} disabled={monthIdx <= 0}
-                    style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--surface)", cursor: monthIdx > 0 ? "pointer" : "default", opacity: monthIdx > 0 ? 1 : .4 }}>‹</button>
+                    style={{ flex: "none", width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--surface)", cursor: monthIdx > 0 ? "pointer" : "default", opacity: monthIdx > 0 ? 1 : .4 }}>‹</button>
             {perfMonths.map(m => (
-              <button key={m} onClick={() => setPerfMonth(m)} style={{ height: 34, padding: "0 14px", borderRadius: 999, whiteSpace: "nowrap", cursor: "pointer",
+              <button key={m} onClick={() => setPerfMonth(m)} style={{ flex: "none", height: 34, padding: "0 14px", borderRadius: 999, whiteSpace: "nowrap", cursor: "pointer",
                       fontSize: 12.5, fontWeight: 700, border: m === perfMonth ? "1px solid var(--accent)" : "1px solid var(--line)",
                       background: m === perfMonth ? "var(--accent)" : "var(--surface)", color: m === perfMonth ? "#fff" : "var(--ink-2)" }}>
                 {monthLabel(m)}
               </button>
             ))}
             <button onClick={() => monthIdx < perfMonths.length - 1 && setPerfMonth(perfMonths[monthIdx + 1])} disabled={monthIdx >= perfMonths.length - 1}
-                    style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--surface)", cursor: monthIdx < perfMonths.length - 1 ? "pointer" : "default", opacity: monthIdx < perfMonths.length - 1 ? 1 : .4 }}>›</button>
+                    style={{ flex: "none", width: 34, height: 34, borderRadius: "50%", border: "1px solid var(--line)", background: "var(--surface)", cursor: monthIdx < perfMonths.length - 1 ? "pointer" : "default", opacity: monthIdx < perfMonths.length - 1 ? 1 : .4 }}>›</button>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 16 }}>
-            <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: 24 }}>
+            <div style={{ background: "var(--ink)", color: "#fff", borderRadius: "var(--r-card)", padding: 24, display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ fontSize: 11.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase", color: "var(--hero-sub)" }}>
                 Net booked · {monthLabel(perfMonth)} · {scopeLabel(filterClient)}</div>
               <div className="fig" style={{ fontSize: 44, fontWeight: 900, letterSpacing: "-.03em", marginTop: 6, color: k.net >= 0 ? "#fff" : "#FCA5A5" }}>
