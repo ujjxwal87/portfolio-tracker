@@ -18,6 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.join(HERE, "..")
 load_dotenv(os.path.join(ROOT, "backend", ".env"))
 BROKER = "Zerodha"
+PRE_JOIN_LOTS = {("Tanishka Bansal", "GILT5YBEES"), ("Tanishka Bansal", "LTF")}
 
 
 def merge(path):
@@ -63,11 +64,22 @@ def main():
                          dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
                          password=os.getenv("DB_PASSWORD"), sslmode="require")
     cur = c.cursor()
-    cur.execute("select id from portfolio_tracker.clients where name=%s", (args.client,))
+    cur.execute("select id, joining_date from portfolio_tracker.clients where name=%s", (args.client,))
     row = cur.fetchone()
     if not row:
         sys.exit(f"no client named {args.client!r}")
-    cid = row[0]
+    cid, joined = row
+    # Anything before the joining date is untracked by design, and so is the later sale of a lot
+    # bought then — drop the former here, and check the latter against the negative-holdings list.
+    if joined:
+        early = [k for k in merged if k[1] < joined.isoformat()]
+        for k in early:
+            del merged[k]
+        if early:
+            print(f"  ! {len(early)} rows before joining date {joined} ignored")
+    # Sales of lots bought before joining (their buys are ignored above, so these would oversell).
+    for k in [k for k in merged if (args.client, k[0]) in PRE_JOIN_LOTS and k[2] == "SELL"]:
+        del merged[k]
 
     # A tradebook was actually pulled and parsed at this point, so this client has been checked
     # as of now — stamp it whether or not the diff below finds anything new. Otherwise "no new
