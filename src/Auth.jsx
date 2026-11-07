@@ -19,18 +19,17 @@ function useNarrow() {
 // Ink panel, matching the app's dark hero cards.
 const ART_BG = { backgroundColor: "#16182B" };
 
-const Logo = ({ size = 38 }) => (
-  <div style={{ width: size, height: size, borderRadius: size * 0.32, display: "grid",
-                placeItems: "center", background: "linear-gradient(135deg,#B8860B,#F5D67B)",
-                color: "#3D2B00", fontSize: size * 0.45, fontWeight: 900, flex: "none" }}>M</div>
+const Logo = ({ size = 34, dark }) => (
+  <img src={dark ? "/mudra-mark-on-dark.svg" : "/mudra-mark.svg"} width={size} height={size} alt="" style={{ flex: "none" }} />
 );
 
 const Wordmark = ({ dark }) => (
   <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-    <Logo />
+    <Logo dark={dark} />
     <div>
-      <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: "-.02em",
-                    color: dark ? "#fff" : "var(--ink)" }}>Mudra Securities</div>
+      <div style={{ fontSize: 15, letterSpacing: "-.02em" }}>
+        <span style={{ fontWeight: 900, color: dark ? "#fff" : "var(--ink)" }}>mudra</span>{" "}
+        <span style={{ fontWeight: 500, color: "#C9A227" }}>securities</span></div>
       <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: ".11em", textTransform: "uppercase",
                     color: dark ? "#A9ADC6" : "var(--ink-3)" }}>Wealth tracker</div>
     </div>

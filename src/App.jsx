@@ -4097,11 +4097,9 @@ export default function App() {
                       borderRadius: 24, boxShadow: "var(--shadow-card)", padding: 16,
                       display: "flex", flexDirection: "column", gap: 18, overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "2px 4px" }}>
-          <div style={{ width: 36, height: 36, borderRadius: 11, display: "grid", placeItems: "center", flex: "none",
-                        background: "linear-gradient(135deg,var(--brand-gold-1),var(--brand-gold-2))",
-                        color: "var(--brand-gold-ink)", fontWeight: 900, fontSize: 17 }}>M</div>
+          <img src="/mudra-mark.svg" width="34" height="34" alt="" style={{ flex: "none" }} />
           <div>
-            <div style={{ fontSize: 14.5, fontWeight: 900, letterSpacing: "-.01em" }}>Mudra Securities</div>
+            <div style={{ fontSize: 15, letterSpacing: "-.01em" }}><span style={{ fontWeight: 900 }}>mudra</span> <span style={{ fontWeight: 500, color: "#C9A227" }}>securities</span></div>
             <div style={{ fontSize: 11, color: "var(--ink-3)", fontWeight: 500 }}>FIFO · NSE live</div>
           </div>
         </div>
