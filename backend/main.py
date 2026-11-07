@@ -676,6 +676,22 @@ def get_prices(symbols: Optional[str] = None, force: bool = False,
 
 # ── Monthly first-trading-day prices for portfolio stocks ──────────────────────
 
+# Splits Yahoo's history misses: closes before the ex-date are still pre-split, while the trades
+# (from the broker) are already adjusted. Without this, Groww's silver/gold ETFs look ~10x higher on
+# 30 Jan 2026 and the charts show a fake ₹1.47L January gain. {symbol: [(ex_date ISO, ratio)]}
+_MISSED_SPLITS = {
+    "GROWWSLVR": [("2026-02-02", 10)],
+    "GROWWGOLD": [("2026-02-02", 10)],
+}
+
+
+def _split_adjust(sym: str, day_iso: str, close: float) -> float:
+    for ex_date, ratio in _MISSED_SPLITS.get(sym, []):
+        if day_iso < ex_date:
+            close = close / ratio
+    return round(close, 2)
+
+
 @app.get("/api/prices/monthly")
 def get_monthly_prices(symbols: str, _: auth.CurrentUser = Depends(auth.current_user)):
     """Returns the closing price on the first trading day of each month from Jan 2026."""
@@ -695,7 +711,7 @@ def get_monthly_prices(symbols: str, _: auth.CurrentUser = Depends(auth.current_
         timestamps = data.get("timestamp", [])
         closes = data["indicators"]["quote"][0].get("close", [])
         daily = {
-            datetime.utcfromtimestamp(ts).date(): round(float(c), 2)
+            datetime.utcfromtimestamp(ts).date(): _split_adjust(sym, datetime.utcfromtimestamp(ts).date().isoformat(), float(c))
             for ts, c in zip(timestamps, closes) if c is not None
         }
         monthly = {}
@@ -751,7 +767,7 @@ def get_price_history(symbols: str, start: str = "2026-01-01", _: auth.CurrentUs
         timestamps = data.get("timestamp", [])
         closes = data["indicators"]["quote"][0].get("close", [])
         daily = {
-            datetime.utcfromtimestamp(ts).date().isoformat(): round(float(c), 2)
+            datetime.utcfromtimestamp(ts).date().isoformat(): _split_adjust(sym, datetime.utcfromtimestamp(ts).date().isoformat(), float(c))
             for ts, c in zip(timestamps, closes) if c is not None
         }
         return sym, daily
