@@ -1516,68 +1516,70 @@ const btnIcon = { width: 32, height: 32, borderRadius: 9, border: "1px solid var
                    color: "var(--ink-2)", fontSize: 16, cursor: "pointer", flex: "none" };
 
 function PnlTotalBarChart({ points }) {
+  // Approved style "B · Value labels": a value on every bar, no gridlines, only the ₹0 baseline, slim bars.
   const [hover, setHover] = useState(-1);
-  const W = 760, H = 300, ML = 58, MR = 16, MT = 18, MB = 40;
+  const W = 760, H = 300, ML = 12, MR = 12, MT = 26, MB = 36;
   const plotW = W - ML - MR, plotH = H - MT - MB;
   const totals = points.map(p => p.realized + p.unrealized);
   let vmax = Math.max(0, ...totals), vmin = Math.min(0, ...totals);
-  if (vmax === vmin) { vmax += 1; vmin -= 1; }
-  const pad = (vmax - vmin) * 0.08; vmax += pad; vmin -= pad;
-  const rawStep = (vmax - vmin) / 5;
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const step = [1, 2, 2.5, 5, 10].find(m => m * mag >= rawStep) * mag;
-  vmin = Math.floor(vmin / step) * step;
-  vmax = Math.ceil(vmax / step) * step;
+  if (vmax === vmin) vmax += 1;
+  const span = vmax - vmin;
+  if (vmax > 0) vmax += span * 0.35;          // headroom for the label above the tallest bar
+  if (vmin < 0) vmin -= span * 0.2;           // room for labels under negative bars
   const yOf = (v) => MT + plotH * (vmax - v) / (vmax - vmin);
   const y0 = yOf(0);
-  const band = plotW / points.length;
-  const barW = band * 0.5;
-  const ticks = [];
-  for (let v = vmin; v <= vmax + step / 2; v += step) ticks.push(Math.abs(v) < step / 1e6 ? 0 : v);
-  const lblEvery = points.length > 14 ? 4 : points.length > 8 ? 2 : 1;
-  const signed = (n) => (n >= 0 ? "+" : "−") + fmt(Math.abs(n));
+  const n = points.length, band = plotW / n;
+  const barW = Math.min(band * 0.38, plotW * 0.06);
+  const dense = n > 14;
+  const xLblEvery = dense ? 4 : n > 8 ? 2 : 1;
+  const signed = (v) => (v >= 0 ? "+" : "−") + fmt(Math.abs(v));
+  const short = (v) => shortINR(v);
   return (
     <div style={{ position: "relative" }}>
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block", overflow: "visible" }}>
-        {ticks.map((t, i) => (
-          <g key={i}>
-            <line x1={ML} x2={W - MR} y1={yOf(t)} y2={yOf(t)} stroke={Math.abs(t) < 1e-6 ? "#D3D6E2" : "#F0F1F6"} strokeWidth={Math.abs(t) < 1e-6 ? 1.5 : 1} />
-            <text x={ML - 8} y={yOf(t) + 3} textAnchor="end" fontSize="10" fill="#6B7088">{fmtCompact(t)}</text>
-          </g>
-        ))}
+        <line x1={ML} x2={W - MR} y1={y0} y2={y0} stroke="#D3D6E2" strokeWidth={2} />
+        <text x={ML} y={y0 - 6} fontSize="10" fill="#6B7088">₹0</text>
         {points.map((p, i) => {
-          const total = totals[i];
-          const x = ML + band * i + (band - barW) / 2;
-          const y = Math.min(y0, yOf(total));
-          const h = Math.max(1, Math.abs(yOf(total) - y0));
-          const on = hover === i;
+          const total = totals[i], pos = total >= 0, on = hover === i;
+          const cx = ML + band * (i + 0.5), x = cx - barW / 2;
+          const yv = yOf(total), h = Math.max(1, Math.abs(yv - y0));
+          const r = Math.min(6, barW / 2, h);
+          // Rounded on the outer end only.
+          const d = pos
+            ? `M${x},${y0} V${yv + r} Q${x},${yv} ${x + r},${yv} H${x + barW - r} Q${x + barW},${yv} ${x + barW},${yv + r} V${y0} Z`
+            : `M${x},${y0} V${yv - r} Q${x},${yv} ${x + r},${yv} H${x + barW - r} Q${x + barW},${yv} ${x + barW},${yv - r} V${y0} Z`;
+          const showVal = !dense || i % 2 === (n - 1) % 2 || on || i === n - 1;
           return (
-            <rect key={i} x={x} y={y} width={barW} height={h} rx={6}
-                  fill={total >= 0 ? (on ? "#16A34A" : "#9ED5AE") : (on ? "#DC2626" : "#EBA3A3")} />
+            <g key={i}>
+              <path d={d} fill={pos ? (on ? "#16A34A" : "#9ED5AE") : (on ? "#DC2626" : "#EBA3A3")} />
+              {showVal && (
+                <text x={cx} y={pos ? yv - 7 : yv + 15} textAnchor="middle" fontSize="11" fontWeight="700"
+                      fill={pos ? "#0B7A55" : "#C2353A"}>{short(total)}</text>
+              )}
+              {(i % xLblEvery === (n - 1) % xLblEvery) && (
+                <text x={cx} y={H - MB + 22} textAnchor="middle" fontSize="10.5" fill="#3B3F57" fontWeight="500">{p.label}</text>
+              )}
+              <rect x={ML + band * i} y={MT - 20} width={band} height={plotH + 20} fill="transparent"
+                    onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "pointer" }} />
+            </g>
           );
         })}
-        {points.map((p, i) => (
-          <g key={i}>
-            {(i % lblEvery === 0 || i === points.length - 1) && (
-              <text x={ML + band * (i + 0.5)} y={H - MB + 16} textAnchor="middle" fontSize="10.5" fill="#3B3F57" fontWeight="500">{p.label}</text>
-            )}
-            <rect x={ML + band * i} y={MT} width={band} height={plotH} fill="transparent"
-                  onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(-1)} style={{ cursor: "pointer" }} />
-          </g>
-        ))}
       </svg>
-      {hover >= 0 && (
-        <div style={{
-          position: "absolute", left: `${((hover + 0.5) / points.length) * 100}%`, top: 0,
-          transform: `translateX(${hover > points.length / 2 ? "-105%" : "5%"})`,
-          background: "var(--ink)", color: "#fff", borderRadius: 12, padding: "9px 12px", fontSize: 11.5,
-          pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "var(--shadow-pop)", zIndex: 5,
-        }}>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>{points[hover].label}{points[hover].sub ? ` · ${points[hover].sub}` : ""}</div>
-          <div>Total P&amp;L: <b>{fmt(totals[hover])}</b></div>
-          <div style={{ color: "var(--hero-sub)", marginTop: 2 }}>Realised {signed(points[hover].realized)} · Unrealised {signed(points[hover].unrealized)}</div>
-        </div>
-      )}
+      {hover >= 0 && (() => {
+        const t = totals[hover], ty = (t >= 0 ? yOf(t) : y0) / H * 100;
+        return (
+          <div style={{
+            position: "absolute", left: `${(ML + band * (hover + 0.5)) / W * 100}%`, top: `${ty}%`,
+            transform: `translate(${hover > n * 0.75 ? "-90%" : hover < n * 0.25 ? "-10%" : "-50%"}, calc(-100% - 26px))`,
+            background: "var(--ink)", color: "#fff", borderRadius: 12, padding: "9px 12px", fontSize: 11.5,
+            pointerEvents: "none", whiteSpace: "nowrap", boxShadow: "var(--shadow-pop)", zIndex: 5,
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>{points[hover].label}{points[hover].sub ? ` · ${points[hover].sub}` : ""}</div>
+            <div>Total P&amp;L <b>{fmt(t)}</b></div>
+            <div style={{ color: "var(--hero-sub)", marginTop: 2 }}>Realised · unrealised {signed(points[hover].realized)} · {signed(points[hover].unrealized)}</div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -4448,12 +4450,12 @@ export default function App() {
               <div style={{ ...PANEL, padding: "22px 26px", display: "flex", flexDirection: "column", justifyContent: "center" }}>
                 <div>
                   <div style={{ fontSize: 24, fontWeight: 900 }}>Unrealised</div>
-                  <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", marginTop: 8, color: tone(stats.totalUnrealizedPL) }}>{shortINR(stats.totalUnrealizedPL, true)}</div>
+                  <div className="fig" style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-.02em", marginTop: 8, color: tone(stats.totalUnrealizedPL), wordBreak: "break-word" }}>{signedFmt(stats.totalUnrealizedPL)}</div>
                 </div>
                 <div style={{ height: 1, background: "var(--row-rule)", margin: "22px 0" }} />
                 <div>
                   <div style={{ fontSize: 24, fontWeight: 900 }}>Realised</div>
-                  <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", marginTop: 8, color: tone(stats.totalRealizedPL) }}>{shortINR(stats.totalRealizedPL, true)}</div>
+                  <div className="fig" style={{ fontSize: 38, fontWeight: 900, letterSpacing: "-.02em", marginTop: 8, color: tone(stats.totalRealizedPL), wordBreak: "break-word" }}>{signedFmt(stats.totalRealizedPL)}</div>
                 </div>
               </div>
             </div>
