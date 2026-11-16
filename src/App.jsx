@@ -1315,7 +1315,7 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
           <LogoChip symbol={t.stock} size={46} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 18, fontWeight: 800 }}>{t.stock}</div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{t.client} · {t.qty} shares · {fmtDate(t.buyDate)} → {fmtDate(t.sellDate)}</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{t.client} · {t.qty} shares · {fmtDate(t.buyDate)} → {t.open ? "open" : fmtDate(t.sellDate)}</div>
           </div>
           <button onClick={onPrev} style={{ ...btnIcon }}>‹</button>
           <button onClick={onNext} style={{ ...btnIcon }}>›</button>
@@ -1323,15 +1323,15 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
         </div>
         <div className="fig" style={{ fontSize: 32, fontWeight: 700, marginTop: 10, color: t.net >= 0 ? "var(--good)" : "var(--bad)" }}>{fmt(t.net)}</div>
         <div style={{ fontSize: 12.5, color: "var(--ink-3)", marginTop: 2 }}>
-          {t.returnPct >= 0 ? "+" : ""}{t.returnPct.toFixed(2)}%{t.rMultiple != null ? ` · ${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : ""} · net of charges · held {t.holdDays} days
+          {t.returnPct >= 0 ? "+" : ""}{t.returnPct.toFixed(2)}%{t.rMultiple != null ? ` · ${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : ""} · {t.open ? "unrealised at live price · est. exit charges" : "net of charges"} · held {t.holdDays} days
         </div>
       </div>
 
       <div style={{ flex: 1, overflowY: "auto", padding: "18px 24px 24px", display: "grid", gap: 14 }}>
         <div style={SECTION}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div style={SECTION_LABEL}>Plan vs actual</div>
-            <div style={{ display: "flex", gap: 2, background: "var(--canvas)", padding: 4, borderRadius: 999 }}>
+            <div style={SECTION_LABEL}>{t.open ? "Trade plan" : "Plan vs actual"}</div>
+            {!t.open && <div style={{ display: "flex", gap: 2, background: "var(--canvas)", padding: 4, borderRadius: 999 }}>
               {[["Yes", { followed_plan: true, plan_partly: false }, "#15803d"],
                 ["Partly", { followed_plan: null, plan_partly: true }, "#D97706"],
                 ["No", { followed_plan: false, plan_partly: false }, "#dc2626"]].map(([label, patch, color]) => {
@@ -1343,7 +1343,7 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
                   {label}
                 </button>);
               })}
-            </div>
+            </div>}
           </div>
           {hasPlan ? (
             <div style={{ position: "relative", height: 56, marginTop: 14 }}>
@@ -1369,7 +1369,7 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
           )}
           <table style={{ width: "100%", fontSize: 12.5, marginTop: 14, borderCollapse: "collapse" }}>
             <thead><tr style={{ color: "var(--ink-3)", fontSize: 10.5, textTransform: "uppercase" }}>
-              <td></td><td style={{ textAlign: "right", paddingBottom: 6 }}>Planned</td><td style={{ textAlign: "right", paddingBottom: 6 }}>Actual</td>
+              <td></td><td style={{ textAlign: "right", paddingBottom: 6 }}>Planned</td><td style={{ textAlign: "right", paddingBottom: 6 }}>{t.open ? "Now" : "Actual"}</td>
             </tr></thead>
             <tbody>
               <tr><td style={{ color: "var(--ink-3)" }}>Entry</td><td style={{ textAlign: "right" }}>{fmt(t.plannedEntry)}</td>
@@ -1385,8 +1385,9 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
                 <td style={{ textAlign: "right" }}>{t.rMultiple != null ? `${t.rMultiple >= 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : "—"}</td></tr>
             </tbody>
           </table>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
-            {[["Planned stop-loss", "planned_sl", t.plannedSL], ["Planned target", "planned_target", t.plannedTarget]].map(([label, field, cur]) => (
+          <div style={{ display: "grid", gridTemplateColumns: t.open ? "1fr 1fr 1fr" : "1fr 1fr", gap: 10, marginTop: 14 }}>
+            {[...(t.open ? [["Planned entry", "planned_entry", t.plannedEntry]] : []),
+              ["Planned stop-loss", "planned_sl", t.plannedSL], ["Planned target", "planned_target", t.plannedTarget]].map(([label, field, cur]) => (
               <div key={field}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--ink-3)", textTransform: "uppercase", marginBottom: 4 }}>{label}</div>
                 <input type="number" step="0.05" key={`${t.key}-${field}-${cur ?? ""}`} defaultValue={cur ?? ""} placeholder="—"
@@ -1431,11 +1432,11 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
                     style={pill(r.strategy === s, "#EEF2FF", "#3730A3")}>{s}</span>
             ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: t.open ? "1fr" : "1fr 1fr", gap: 10, marginTop: 12 }}>
             <div><div style={{ fontSize: 10.5, color: "var(--ink-3)", marginBottom: 4 }}>Why I entered</div>
               <textarea rows={3} style={TEXTAREA} value={entryReason} onChange={e => setEntryReason(e.target.value)} /></div>
-            <div><div style={{ fontSize: 10.5, color: "var(--ink-3)", marginBottom: 4 }}>Why I exited</div>
-              <textarea rows={3} style={TEXTAREA} value={exitReason} onChange={e => setExitReason(e.target.value)} /></div>
+            {!t.open && <div><div style={{ fontSize: 10.5, color: "var(--ink-3)", marginBottom: 4 }}>Why I exited</div>
+              <textarea rows={3} style={TEXTAREA} value={exitReason} onChange={e => setExitReason(e.target.value)} /></div>}
           </div>
         </div>
 
@@ -1447,6 +1448,7 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
                     style={pill(r.emotion === e, EMOTIONS_GOOD.includes(e) ? "#ECFDF3" : "#FEF2F2", EMOTIONS_GOOD.includes(e) ? "#15803d" : "#B91C1C")}>{e}</span>
             ))}
           </div>
+          {!t.open && <>
           <div style={{ ...SECTION_LABEL, marginTop: 14 }}>Discipline score</div>
           <div style={{ display: "flex", gap: 6 }}>
             {[1, 2, 3, 4, 5].map(n => (
@@ -1459,9 +1461,10 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
             ))}
           </div>
           <div style={{ fontSize: 11, color: "var(--ink-3)", marginTop: 6 }}>{r.discipline ? DISCIPLINE_CAPTIONS[r.discipline] : "Pick a score"}</div>
+          </>}
         </div>
 
-        <div style={SECTION}>
+        {!t.open && <div style={SECTION}>
           <div style={{ display: "flex", justifyContent: "space-between" }}>
             <div style={SECTION_LABEL}>Mistakes checklist</div>
             <span style={{ fontSize: 11, color: "var(--ink-3)" }}>{mistakes.length} flagged</span>
@@ -1477,7 +1480,7 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
               </label>
             ))}
           </div>
-        </div>
+        </div>}
 
         <div style={SECTION}>
           <div style={SECTION_LABEL}>Chart screenshot</div>
@@ -1493,16 +1496,16 @@ function TradeReviewDrawer({ t, onClose, onSave, onPrev, onNext }) {
           )}
         </div>
 
-        <div style={SECTION}>
+        {!t.open && <div style={SECTION}>
           <div style={SECTION_LABEL}>Lesson learned</div>
           <textarea rows={2} style={TEXTAREA} placeholder="One rule to keep or change next time" value={lesson} onChange={e => setLesson(e.target.value)} />
-        </div>
+        </div>}
       </div>
 
       <div style={{ background: "#fff", borderTop: "1px solid var(--line)", padding: "12px 20px",
                     display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>Changes save automatically · mark reviewed when done</span>
-        {r.reviewed ? (
+        <span style={{ fontSize: 11.5, color: "var(--ink-3)" }}>{t.open ? "Changes save automatically · the plan carries into the review when you exit" : "Changes save automatically · mark reviewed when done"}</span>
+        {t.open ? null : r.reviewed ? (
           <span style={{ fontSize: 12, fontWeight: 700, padding: "8px 14px", borderRadius: 10, background: "#ECFDF3", color: "#15803d" }}>✓ Reviewed</span>
         ) : (
           <button onClick={() => save({ reviewed: true })} style={{ fontSize: 12, fontWeight: 700, padding: "8px 14px", borderRadius: 10,
@@ -2805,13 +2808,13 @@ export default function App() {
     if (!isAdmin) return;
     apiFetch("/trade-reviews").then(rows => {
       const map = {};
-      rows.forEach(r => { map[`${r.buy_trade_id}|${r.sell_trade_id}`] = r; });
+      rows.forEach(r => { map[`${r.buy_trade_id}|${r.sell_trade_id ?? "open"}`] = r; });
       setReviews(map);
     }).catch(() => {});
   }, [isAdmin]);
 
   const saveReview = useCallback((buyId, sellId, patch) => {
-    const key = `${buyId}|${sellId}`;
+    const key = `${buyId}|${sellId ?? "open"}`;
     setReviews(prev => ({ ...prev, [key]: { ...(prev[key] || {}), buy_trade_id: buyId, sell_trade_id: sellId, ...patch } }));
     apiFetch("/trade-reviews", { method: "PUT", body: JSON.stringify({ buy_trade_id: buyId, sell_trade_id: sellId, ...patch }) })
       .then(row => setReviews(prev => ({ ...prev, [key]: row })))
@@ -2827,7 +2830,11 @@ export default function App() {
     portfolio.forEach(p => p.matchDetails.forEach(m => {
       if (m.kind !== "trade") return;
       const key = `${m.buyId}|${m.sellId}`;
-      const review = reviews[key] || null;
+      // The plan journalled while the lot was open carries into every exit's review; anything
+      // filled in on the exit's own review wins.
+      const plan = reviews[`${m.buyId}|open`], own = reviews[key];
+      const review = (plan || own) ? { ...(plan || {}),
+        ...(own ? Object.fromEntries(Object.entries(own).filter(([, v]) => v != null)) : {}) } : null;
       const charges = computeCharges(m.qty, m.buyPrice, m.sellPrice);
       const net = m.pl - charges.total;
       const holdDays = Math.max(0, Math.round((new Date(m.sellDate) - new Date(m.buyDate)) / 86400000));
@@ -2847,8 +2854,8 @@ export default function App() {
     }));
     // Still-open lots show up from the day they're bought, marked to the live price. They sit
     // on their buy date (sellDate is reused as "the day this trade lands on" so the month,
-    // calendar and equity curve need no special case) and can't be reviewed until exited,
-    // because a review is keyed by the buy+sell pair.
+    // calendar and equity curve need no special case). Their review is the entry plan
+    // (sell_trade_id NULL), which carries into the exit's review once sold.
     const today = new Date().toISOString().slice(0, 10);
     portfolio.forEach(p => (p.holdingLots || []).forEach(l => {
       if ((l.kind || "trade") !== "trade") return;
@@ -2856,15 +2863,17 @@ export default function App() {
       const m = { qty: l.remainQty, buyPrice: l.price, sellPrice: price, pl: (price - l.price) * l.remainQty };
       const charges = computeCharges(m.qty, m.buyPrice, m.sellPrice);
       const lvl = levelFor(p.client, p.stock);
-      const plannedSL = lvl?.stop_loss ?? null;
-      const riskPerShare = plannedSL != null ? l.price - plannedSL : null;
+      const review = reviews[`${l.id}|open`] || null;
+      const plannedSL = review?.planned_sl ?? lvl?.stop_loss ?? null;
+      const plannedEntry = review?.planned_entry ?? l.price;
+      const riskPerShare = plannedSL != null ? plannedEntry - plannedSL : null;
       out.push({
         key: `${l.id}|open`, buyId: l.id, sellId: null, open: true, client: p.client, stock: p.stock, qty: m.qty,
         buyPrice: l.price, sellPrice: price, buyDate: l.date, sellDate: l.date,
         gross: m.pl, charges, net: m.pl - charges.total,
         holdDays: Math.max(0, Math.round((new Date(today) - new Date(l.date)) / 86400000)),
-        returnPct: lotPct(m), review: null,
-        plannedSL, plannedEntry: l.price, plannedTarget: null, riskPerShare,
+        returnPct: lotPct(m), review,
+        plannedSL, plannedEntry, plannedTarget: review?.planned_target ?? null, riskPerShare,
         rMultiple: (riskPerShare && riskPerShare > 0) ? (price - l.price) / riskPerShare : null,
         win: isDecisiveWin(m), loss: isDecisiveLoss(m), neutral: isNeutralTrade(m),
       });
@@ -5186,7 +5195,7 @@ export default function App() {
         const openTrade = openReviewKey ? perfFilteredTrades.find(t => t.key === openReviewKey)
           || closedTrades.find(t => t.key === openReviewKey) : null;
         const navReview = (dir) => {
-          const list = perfFilteredTrades.filter(t => !t.open);
+          const list = perfFilteredTrades;
           const i = list.findIndex(t => t.key === openReviewKey);
           if (i === -1 || list.length === 0) return;
           setOpenReviewKey(list[(i + dir + list.length) % list.length].key);
@@ -5278,9 +5287,9 @@ export default function App() {
                 const reviewed = !!t.review?.reviewed;
                 const w = Math.min(50, Math.abs(t.returnPct) / maxRet * 50);
                 return (
-                  <div key={t.key} className="grid-row" onClick={() => !t.open && setOpenReviewKey(t.key)}
-                       title={t.open ? "Still open — P&L is unrealised at the live price; review it once it's exited" : undefined}
-                       style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "12px 24px", cursor: t.open ? "default" : "pointer",
+                  <div key={t.key} className="grid-row" onClick={() => setOpenReviewKey(t.key)}
+                       title={t.open ? "Still open — P&L is unrealised at the live price. Click to write your trade plan." : undefined}
+                       style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "12px 24px", cursor: "pointer",
                                 borderTop: "1px solid var(--row-rule)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <LogoChip symbol={t.stock} size={34} />
@@ -5306,9 +5315,9 @@ export default function App() {
                     <div style={{ fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {t.review?.strategy ? `${t.review.strategy}${t.review.discipline ? ` · ${t.review.discipline}/5` : ""}` : "—"}
                     </div>
-                    <div>{t.open ? <span style={{ fontSize: 12, color: "var(--ink-3)" }}>After exit</span>
+                    <div>{t.open ? <Badge color={t.review ? "blue" : "gray"}>{t.review ? "Plan added" : "Add plan"}</Badge>
                       : <Badge color={reviewed ? "green" : "amber"}>{reviewed ? "Reviewed ✓" : "Needs review"}</Badge>}</div>
-                    <div style={{ color: "var(--accent)", fontWeight: 900 }}>{t.open ? "" : "›"}</div>
+                    <div style={{ color: "var(--accent)", fontWeight: 900 }}>›</div>
                   </div>
                 );
               })}

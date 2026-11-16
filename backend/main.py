@@ -1349,7 +1349,8 @@ def search_stocks(q: str = "", _: auth.CurrentUser = Depends(auth.current_user))
 
 class TradeReviewBody(BaseModel):
     buy_trade_id: str
-    sell_trade_id: str
+    # None = the entry plan for a still-open lot (see migrations/017_trade_review_open_plan.sql).
+    sell_trade_id: Optional[str] = None
     strategy: Optional[str] = None
     planned_entry: Optional[float] = None
     planned_sl: Optional[float] = None
@@ -1403,6 +1404,10 @@ def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(
          else f"{c} = EXCLUDED.{c}")
         for c in present)
     set_sql = (set_sql + ", " if set_sql else "") + "updated_at = NOW()"
+    # NULLs never collide in a plain unique constraint, so an open-trade plan row upserts
+    # against its own partial unique index instead.
+    conflict = ("(buy_trade_id, sell_trade_id)" if body.sell_trade_id is not None
+                else "(buy_trade_id) WHERE sell_trade_id IS NULL")
     with get_db() as conn:
         with conn.cursor(cursor_factory=__import__("psycopg2").extras.RealDictCursor) as cur:
             cur.execute(
@@ -1420,7 +1425,7 @@ def upsert_trade_review(body: TradeReviewBody, user: auth.CurrentUser = Depends(
                         %(planned_target)s, %(followed_plan)s, COALESCE(%(plan_partly)s, FALSE), %(entry_reason)s, %(exit_reason)s,
                         %(emotion)s, %(discipline)s, COALESCE(%(mistakes)s, '{}'), %(chart_url)s,
                         COALESCE(%(reviewed)s, FALSE), NOW())
-                ON CONFLICT (buy_trade_id, sell_trade_id) DO UPDATE SET """ + set_sql + """
+                ON CONFLICT """ + conflict + """ DO UPDATE SET """ + set_sql + """
                 RETURNING *
                 """,
                 {"buy_trade_id": body.buy_trade_id, "sell_trade_id": body.sell_trade_id, **values},
