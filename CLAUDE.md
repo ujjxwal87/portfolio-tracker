@@ -1,18 +1,23 @@
 # Portfolio Tracker — project notes
 
-## Hosting & deploy
+## Hosting & deploy (Render + Supabase)
 
-- **Hosted on Render.** Both the frontend (Vite build served by `npm start` → `serve -s dist`)
-  and the FastAPI backend (`backend/`, free tier — local disk is wiped on every redeploy).
-- **Deploy = push to `main` on the `ujj` remote** (`github.com/ujjxwal87/portfolio-tracker`).
-  `main` tracks `ujj/main`.
-- Live frontend: https://portfolio-tracker-web-g1xf.onrender.com
-- Render's own auto-deploy was unreliable (pushes on 16 Nov 2026 never built), so deploys are
-  triggered by the GitHub Action `.github/workflows/render-deploy.yml`. It POSTs Render deploy
-  hooks stored as repo secrets `RENDER_DEPLOY_HOOK_WEB` (frontend) and `RENDER_DEPLOY_HOOK_API`
-  (backend, optional). Hook URLs come from Render → service → Settings → Deploy Hook.
-- To check a deploy actually landed: `gh run list -w render-deploy.yml`, then fetch the live
-  page's `/assets/index-*.js` and grep for a string from the new code.
-- Work directly on `main` — no feature branches for this project.
-- Before pushing, run `npx vite build` to make sure the frontend builds.
-- The `origin` / `new-origin` remotes (DfZErOs repo) are not the deploy target.
+| Piece | Where |
+|---|---|
+| Frontend (Vite static site) | https://portfolio-tracker-web-g1xf.onrender.com — build `npm install && npm run build`, publish `dist`, repo root |
+| Backend (FastAPI web service) | https://portfolio-tracker-api-wzbw.onrender.com — Root Directory `backend`, env `PYTHON_VERSION=3.11.9` |
+| Database | Supabase (Postgres, SSL required) |
+| Repo Render builds from | **`github.com/DfZErOs/Portfolio-tracker`**, branch `main` |
+
+- **Deploy = push `main` to the DfZErOs repo.** Render auto-builds from it.
+  The `ujjxwal87/portfolio-tracker` repo (remote `ujj`) is NOT watched by Render — pushing there
+  deploys nothing (this is what went wrong on 16 Nov 2026).
+- Pushing to DfZErOs needs that GitHub account's credentials (fine-grained token with the repo
+  selected, Contents: Read and write). The Render account is most likely "Sign in with GitHub"
+  as **DfZErOs**.
+- Work directly on `main`. Run `npx vite build` before pushing.
+- Env vars live in Render's Environment tab, never in a committed `.env`.
+  `FRONTEND_ORIGIN` on the backend must equal the frontend URL exactly (CORS).
+- Free tier sleeps when idle; first request can take ~50s. Backend disk is wiped on redeploy.
+- Check a deploy actually landed: fetch the live page, find its `/assets/index-*.js`, and grep
+  it for a string from the new code. Hard refresh (Cmd+Shift+R) in the browser.
