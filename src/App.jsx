@@ -2845,6 +2845,30 @@ export default function App() {
         win: isDecisiveWin(m), loss: isDecisiveLoss(m), neutral: isNeutralTrade(m),
       });
     }));
+    // Still-open lots show up from the day they're bought, marked to the live price. They sit
+    // on their buy date (sellDate is reused as "the day this trade lands on" so the month,
+    // calendar and equity curve need no special case) and can't be reviewed until exited,
+    // because a review is keyed by the buy+sell pair.
+    const today = new Date().toISOString().slice(0, 10);
+    portfolio.forEach(p => (p.holdingLots || []).forEach(l => {
+      if ((l.kind || "trade") !== "trade") return;
+      const price = p.cmp || l.price;
+      const m = { qty: l.remainQty, buyPrice: l.price, sellPrice: price, pl: (price - l.price) * l.remainQty };
+      const charges = computeCharges(m.qty, m.buyPrice, m.sellPrice);
+      const lvl = levelFor(p.client, p.stock);
+      const plannedSL = lvl?.stop_loss ?? null;
+      const riskPerShare = plannedSL != null ? l.price - plannedSL : null;
+      out.push({
+        key: `${l.id}|open`, buyId: l.id, sellId: null, open: true, client: p.client, stock: p.stock, qty: m.qty,
+        buyPrice: l.price, sellPrice: price, buyDate: l.date, sellDate: l.date,
+        gross: m.pl, charges, net: m.pl - charges.total,
+        holdDays: Math.max(0, Math.round((new Date(today) - new Date(l.date)) / 86400000)),
+        returnPct: lotPct(m), review: null,
+        plannedSL, plannedEntry: l.price, plannedTarget: null, riskPerShare,
+        rMultiple: (riskPerShare && riskPerShare > 0) ? (price - l.price) / riskPerShare : null,
+        win: isDecisiveWin(m), loss: isDecisiveLoss(m), neutral: isNeutralTrade(m),
+      });
+    }));
     return out;
   }, [portfolio, reviews, isAdmin, levelFor]);
 
@@ -2952,6 +2976,7 @@ export default function App() {
 
   const perfMistakes = useMemo(() => {
     const reviewed = perfMonthTrades.filter(t => t.review?.reviewed);
+    const closedCount = perfMonthTrades.filter(t => !t.open).length;
     const by = {};
     reviewed.forEach(t => (t.review.mistakes || []).forEach(m => {
       if (!by[m]) by[m] = { mistake: m, count: 0, cost: 0 };
@@ -2961,7 +2986,7 @@ export default function App() {
     const discRows = reviewed.filter(t => t.review.discipline != null);
     const avgDiscipline = discRows.length ? discRows.reduce((s, t) => s + t.review.discipline, 0) / discRows.length : null;
     return {
-      reviewedCount: reviewed.length, total: perfMonthTrades.length,
+      reviewedCount: reviewed.length, total: closedCount,
       planFollowedPct: reviewed.length ? (followed / reviewed.length) * 100 : null,
       avgDiscipline,
       top: Object.values(by).sort((a, b) => b.count - a.count).slice(0, 5),
@@ -2977,7 +3002,7 @@ export default function App() {
     if (perfStrategy !== "All") rows = rows.filter(t => (t.review?.strategy || "Unspecified") === perfStrategy);
     if (perfOutcome === "win") rows = rows.filter(t => t.net > 0);
     else if (perfOutcome === "loss") rows = rows.filter(t => t.net < 0);
-    if (perfNeedsReview) rows = rows.filter(t => !t.review?.reviewed);
+    if (perfNeedsReview) rows = rows.filter(t => !t.open && !t.review?.reviewed);
     const sorted = [...rows];
     if (perfSort === "biggestWin") sorted.sort((a, b) => b.net - a.net);
     else if (perfSort === "biggestLoss") sorted.sort((a, b) => a.net - b.net);
@@ -5161,7 +5186,7 @@ export default function App() {
         const openTrade = openReviewKey ? perfFilteredTrades.find(t => t.key === openReviewKey)
           || closedTrades.find(t => t.key === openReviewKey) : null;
         const navReview = (dir) => {
-          const list = perfFilteredTrades;
+          const list = perfFilteredTrades.filter(t => !t.open);
           const i = list.findIndex(t => t.key === openReviewKey);
           if (i === -1 || list.length === 0) return;
           setOpenReviewKey(list[(i + dir + list.length) % list.length].key);
@@ -5169,7 +5194,7 @@ export default function App() {
         const decisive = k.wins + k.losses;
         const filterVal = perfNeedsReview ? "review" : perfOutcome;
         const setFilterVal = (v) => { if (v === "review") { setPerfNeedsReview(true); setPerfOutcome("all"); } else { setPerfNeedsReview(false); setPerfOutcome(v); } };
-        const needs = perfMonthTrades.filter(x => !x.review?.reviewed).length;
+        const needs = perfMonthTrades.filter(x => !x.open && !x.review?.reviewed).length;
         const sortBy = perfTbl.col;
         const rows = [...perfFilteredTrades].sort((a, b) => {
           const v = (t) => sortBy === "exit" ? t.sellDate : sortBy === "held" ? t.holdDays : sortBy === "ret" ? t.returnPct : t.net;
@@ -5191,7 +5216,7 @@ export default function App() {
         return (<>
           {perfMonths.length === 0 ? (
             <div style={{ ...PANEL, padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>
-              No closed trades yet for this scope.
+              No trades yet for this scope.
             </div>
           ) : (<>
           <div className="sc" style={{ ...PANEL, padding: 12, display: "flex", alignItems: "center", gap: 6, overflowX: "auto" }}>
@@ -5213,7 +5238,7 @@ export default function App() {
               <div style={{ fontSize: 14, color: "var(--ink-3)" }}>Net booked · {monthLabel(perfMonth)}</div>
               <div className="fig" style={{ fontSize: 46, fontWeight: 900, letterSpacing: "-.03em", color: tone(k.net), marginTop: 4 }}>
                 {k.net >= 0 ? "+" : "−"}₹{Math.round(Math.abs(k.net)).toLocaleString("en-IN")}</div>
-              <div style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 2 }}>{k.count} closed trade{k.count === 1 ? "" : "s"}</div>
+              <div style={{ fontSize: 14, color: "var(--ink-3)", marginTop: 2 }}>{k.count} trade{k.count === 1 ? "" : "s"}{perfMonthTrades.some(x => x.open) ? ` · ${perfMonthTrades.filter(x => x.open).length} open` : ""}</div>
             </div>
             <div style={{ minWidth: 0 }}>
               <PerfEquityCurve points={perfEquity.points} peak={perfEquity.peak} maxDD={perfEquity.maxDD} monthEnd={perfEquity.monthEnd} />
@@ -5241,7 +5266,7 @@ export default function App() {
 
           <div style={{ ...PANEL, overflow: "hidden" }}>
             {rows.length === 0 ? (
-              <div style={{ padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>No closed trades match these filters.</div>
+              <div style={{ padding: 32, textAlign: "center", color: "var(--ink-3)", fontSize: 13.5 }}>No trades match these filters.</div>
             ) : (<>
               <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10, padding: "16px 24px 10px",
                             fontSize: 12.5, fontWeight: 700, letterSpacing: ".04em", textTransform: "uppercase", color: "var(--ink-3)" }}>
@@ -5253,8 +5278,9 @@ export default function App() {
                 const reviewed = !!t.review?.reviewed;
                 const w = Math.min(50, Math.abs(t.returnPct) / maxRet * 50);
                 return (
-                  <div key={t.key} className="grid-row" onClick={() => setOpenReviewKey(t.key)}
-                       style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "12px 24px", cursor: "pointer",
+                  <div key={t.key} className="grid-row" onClick={() => !t.open && setOpenReviewKey(t.key)}
+                       title={t.open ? "Still open — P&L is unrealised at the live price; review it once it's exited" : undefined}
+                       style={{ display: "grid", gridTemplateColumns: cols, gap: 10, alignItems: "center", padding: "12px 24px", cursor: t.open ? "default" : "pointer",
                                 borderTop: "1px solid var(--row-rule)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                       <LogoChip symbol={t.stock} size={34} />
@@ -5263,7 +5289,7 @@ export default function App() {
                         <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, color: "var(--ink-3)", whiteSpace: "nowrap" }}><Avatar name={t.client} size={16} />{String(t.client).split(" ")[0]}</span>
                       </span>
                     </div>
-                    <div className="num" style={{ fontSize: 15, color: "var(--ink-2)" }}>{new Date(t.sellDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}</div>
+                    <div className="num" style={{ fontSize: 15, color: "var(--ink-2)" }}>{t.open ? <Badge color="blue">Open</Badge> : new Date(t.sellDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" })}</div>
                     <div className="num" style={{ fontSize: 17, fontWeight: 700, textAlign: "right" }}>{t.qty}</div>
                     <div className="num" style={{ fontSize: 14, textAlign: "right", color: "var(--ink-3)" }}>{fmt(t.buyPrice)}</div>
                     <div className="num" style={{ fontSize: 17, textAlign: "right" }}>{fmt(t.sellPrice)}</div>
@@ -5280,8 +5306,9 @@ export default function App() {
                     <div style={{ fontSize: 12, color: "var(--ink-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {t.review?.strategy ? `${t.review.strategy}${t.review.discipline ? ` · ${t.review.discipline}/5` : ""}` : "—"}
                     </div>
-                    <div><Badge color={reviewed ? "green" : "amber"}>{reviewed ? "Reviewed ✓" : "Needs review"}</Badge></div>
-                    <div style={{ color: "var(--accent)", fontWeight: 900 }}>›</div>
+                    <div>{t.open ? <span style={{ fontSize: 12, color: "var(--ink-3)" }}>After exit</span>
+                      : <Badge color={reviewed ? "green" : "amber"}>{reviewed ? "Reviewed ✓" : "Needs review"}</Badge>}</div>
+                    <div style={{ color: "var(--accent)", fontWeight: 900 }}>{t.open ? "" : "›"}</div>
                   </div>
                 );
               })}
