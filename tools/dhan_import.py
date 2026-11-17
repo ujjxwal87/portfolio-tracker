@@ -248,6 +248,19 @@ def main():
 
     print(f"Fetching Dhan trades {args.frm} → {args.to} …")
     fills = fetch_trades(token, args.frm, args.to)
+    # Dhan's history endpoint only holds completed days — today's fills live solely in the
+    # day's trade book (GET /trades), so a run that covers today must read that too.
+    today = datetime.date.today().isoformat()
+    if args.to >= today:
+        seen = {(f.get("orderId"), f.get("exchangeTradeId")) for f in fills}
+        todays = [f for f in (api("/trades", token) or [])
+                  if (f.get("orderId"), f.get("exchangeTradeId")) not in seen]
+        for f in todays:
+            # The day book has no `instrument` field; merge() keys equity off it.
+            if not f.get("instrument") and str(f.get("exchangeSegment", "")).endswith("_EQ"):
+                f["instrument"] = "EQUITY"
+        print(f"  today's trade book: {len(todays)} fills")
+        fills += todays
     print(f"{len(fills)} fills\n")
 
     # The token worked and Dhan was actually queried, so this client has been checked as of now
