@@ -96,8 +96,12 @@ def security_map():
     securityId, isin and a display-name customSymbol ("Hindustan Aeronautics"). The scrip
     master is the only way to get the ticker the rest of this DB is keyed on.
     """
-    if not os.path.exists(SCRIP_CSV):
-        print("downloading Dhan scrip master (~26 MB, one-off)…")
+    # Refresh weekly: a stale copy can't resolve anything listed since (new IPOs like JPL/NSE
+    # were silently skipped as "unresolvable fills" when this was a one-off download).
+    import time
+    stale = os.path.exists(SCRIP_CSV) and time.time() - os.path.getmtime(SCRIP_CSV) > 7 * 86400
+    if not os.path.exists(SCRIP_CSV) or stale:
+        print("downloading Dhan scrip master (~26 MB, refreshed weekly)…")
         r = requests.get(SCRIP_URL, timeout=180)
         r.raise_for_status()
         open(SCRIP_CSV, "wb").write(r.content)
