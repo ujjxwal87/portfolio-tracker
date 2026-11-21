@@ -1810,7 +1810,7 @@ function ClientTradeStatsPanel({ rows, scopedTo }) {
 // than one extra click: "All clients" writes the shared level (every client holding the symbol gets
 // it — the normal case), the client's own name writes an override for them alone. A row already on
 // an override says so, so a shared edit can't be mistaken for changing what that client sees.
-function SLCell({ row, level, isAdmin, saving, onSave }) {
+function SLCell({ row, level, isAdmin, saving, onSave, lotId, onSaveLot }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const sl = level?.stop_loss ?? null;
@@ -1824,7 +1824,7 @@ function SLCell({ row, level, isAdmin, saving, onSave }) {
       const raw = draft.trim();
       const value = raw === "" ? null : Number(raw);
       if (raw !== "" && (!Number.isFinite(value) || value <= 0)) return;
-      onSave(row.stock, value, clientName);
+      if (lotId) onSaveLot(lotId, value); else onSave(row.stock, value, clientName);
       setEditing(false);
     };
     return (
@@ -1836,6 +1836,11 @@ function SLCell({ row, level, isAdmin, saving, onSave }) {
                style={{ width: 82, padding: "3px 6px", fontSize: 12, textAlign: "right",
                         border: "1px solid var(--accent)", borderRadius: 6 }} />
         <div style={{ display: "flex", gap: 4 }}>
+          {lotId ? (
+            <button onClick={() => commit(null)} title="Stop for this buy only — blank clears it"
+                    style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
+                             border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer" }}>This lot</button>
+          ) : (<>
           <button onClick={() => commit(null)} title="Apply to every client holding this stock"
                   style={{ fontSize: 9.5, fontWeight: 700, padding: "2px 5px", borderRadius: 5,
                            border: "none", background: "var(--accent)", color: "#fff", cursor: "pointer" }}>All</button>
@@ -1845,6 +1850,7 @@ function SLCell({ row, level, isAdmin, saving, onSave }) {
                            color: "var(--ink-2)", cursor: "pointer" }}>
             {String(row.client || "").split(" ")[0] || "This"}
           </button>
+          </>)}
           <button onClick={() => setEditing(false)}
                   style={{ fontSize: 9.5, padding: "2px 5px", borderRadius: 5, border: "1px solid var(--line)",
                            background: "var(--surface)", color: "var(--ink-3)", cursor: "pointer" }}>×</button>
@@ -1865,7 +1871,7 @@ function SLCell({ row, level, isAdmin, saving, onSave }) {
              color: breached ? "var(--bad)" : "var(--ink)" }}>{fmt(sl)}</div>
         <div className="num" style={{ fontSize: 13, color: breached ? "var(--bad)" : "var(--ink-3)" }}>
           {breached ? "BREACHED" : away != null ? `${away.toFixed(1)}% away` : ""}
-          {level?.own ? " · own" : ""}
+          {level?.lot ? " · this lot" : level?.own ? " · own" : ""}
         </div>
       </>)}
     </div>
@@ -2070,11 +2076,14 @@ function SwingCapitalCard({ latest, isAdmin, clientId, adjustments, ledger, addi
 // closed lots carry a sell price and a booked P&L. Open lots additionally carry an SL column when
 // `levelFor` is supplied.
 function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverride,
-                          levelFor, onSaveLevel, isAdmin, levelSaving, capitalLedger,
+                          levelFor, onSaveLevel, onSaveLot, isAdmin, levelSaving, capitalLedger,
                           capitalEditingId, onStartCapitalEdit, onCancelCapitalEdit,
                           onSaveCapitalValue, capitalSavingId, capitalDetailId, onToggleCapitalDetail,
                           layout = "table", compact = false }) {
   const showSL = kind === "open" && typeof levelFor === "function";
+  // A lot's own stop beats the symbol's shared level, mirroring buildCapitalLedger.
+  const lotLevelOf = (r) => r.stop_loss != null
+    ? { stop_loss: Number(r.stop_loss), lot: true } : levelFor(r.client, r.stock);
   // A row can carry its own precomputed `.risk` (a cross-client search builds one ledger per
   // client behind the scenes and flattens the answer onto each row) instead of a single shared
   // capitalLedger — Capital has no cross-client equivalent, so it stays tied to capitalLedger alone.
@@ -2144,8 +2153,8 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
                     )}
                     {showSL && (
                       <div style={{ textAlign: "right" }}><div style={fieldLabel}>SL</div>
-                        <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
-                                saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
+                        <SLCell row={r} level={lotLevelOf(r)} isAdmin={isAdmin} lotId={r.id} onSaveLot={onSaveLot}
+                                saving={levelSaving === `lot|${r.id}`}
                                 onSave={onSaveLevel} />
                       </div>
                     )}
@@ -2260,8 +2269,8 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
             </div>
             {showSL && (
               <div onClick={e => e.stopPropagation()}>
-                <SLCell row={r} level={levelFor(r.client, r.stock)} isAdmin={isAdmin}
-                        saving={levelSaving === `ALL|${r.stock}` || levelSaving === `${r.client}|${r.stock}`}
+                <SLCell row={r} level={lotLevelOf(r)} isAdmin={isAdmin} lotId={r.id} onSaveLot={onSaveLot}
+                        saving={levelSaving === `lot|${r.id}`}
                         onSave={onSaveLevel} />
               </div>
             )}
@@ -2597,7 +2606,7 @@ export default function App() {
     const openLots = portfolio.filter(p => p.netQty > 0).flatMap(p =>
       p.holdingLots.filter(l => (l.kind || "trade") === "trade").map(l => ({
         id: l.id, client: p.client, stock: p.stock, qty: l.remainQty, buyPrice: l.price, date: l.date,
-        created_at: l.created_at, cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
+        created_at: l.created_at, stop_loss: l.stop_loss, cmp: p.cmp, pl: (p.cmp - l.price) * l.remainQty,
       })));
     const closed = portfolio.flatMap(p => p.matchDetails.filter(m => m.kind === "trade")
       .map(m => ({ client: p.client, stock: p.stock, ...m })));
@@ -3233,6 +3242,15 @@ export default function App() {
       setTrades(prev => prev.map(x => x.id === t.id ? { ...x, kind } : x));
     } catch (e) { alert(e.message); }
     finally { setKindSaving(null); }
+  };
+
+  const saveLotStop = async (id, stop_loss) => {
+    setLevelSaving(`lot|${id}`);
+    try {
+      await apiFetch(`/trades/${id}/stop-loss`, { method: "PATCH", body: JSON.stringify({ stop_loss }) });
+      setTrades(prev => prev.map(x => x.id === id ? { ...x, stop_loss } : x));
+    } catch (e) { alert(e.message); }
+    finally { setLevelSaving(""); }
   };
 
   const saveCapital = async (id, capital) => {
@@ -4901,7 +4919,7 @@ export default function App() {
                                              scopedTo={filterClient === "All" ? null : scopeLabel(filterClient)} />}
           <HighlightPanel title="Recent open trades" note="Newest 10 lots still held"
                           rows={highlights.recentOpen} kind="open" showClient={filterClient === "All" || filterClient === "Own"}
-                          levelFor={levelFor} onSaveLevel={saveLevel} isAdmin={isAdmin}
+                          levelFor={levelFor} onSaveLevel={saveLevel} onSaveLot={saveLotStop} isAdmin={isAdmin}
                           levelSaving={levelSaving} capitalLedger={capitalLedger}
                           capitalEditingId={capitalEditingId}
                           onStartCapitalEdit={setCapitalEditingId}

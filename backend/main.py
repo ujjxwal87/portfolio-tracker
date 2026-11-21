@@ -211,6 +211,11 @@ class TradeCapital(BaseModel):
     capital: Optional[float] = None
 
 
+class TradeStop(BaseModel):
+    # None clears this buy's own stop, so it falls back to the symbol's shared level.
+    stop_loss: Optional[float] = None
+
+
 class TradeKindBulk(BaseModel):
     ids: List[str]
     kind: Literal["trade", "investment"]
@@ -456,6 +461,24 @@ def set_trade_kind(trade_id: str, body: TradeKind,
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Trade not found")
     return {"id": trade_id, "kind": body.kind}
+
+
+@app.patch("/api/trades/{trade_id}/stop-loss")
+def set_trade_stop_loss(trade_id: str, body: TradeStop,
+                        user: auth.CurrentUser = Depends(auth.require_admin)):
+    auth.assert_owns_client(user, _trade_client_id(trade_id))
+    if body.stop_loss is not None and body.stop_loss <= 0:
+        raise HTTPException(400, "Stop-loss must be positive")
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE portfolio_tracker.trades SET stop_loss=%s, updated_at=NOW() "
+                "WHERE id=%s AND type='BUY' RETURNING id",
+                (body.stop_loss, trade_id),
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Buy trade not found")
+    return {"id": trade_id, "stop_loss": body.stop_loss}
 
 
 @app.patch("/api/trades/{trade_id}/capital")
