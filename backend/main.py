@@ -198,6 +198,8 @@ class TradeCreate(BaseModel):
     notes: Optional[str] = None
     # Set on the BUY leg only; a SELL inherits from the lot it closes, so its value is never read.
     kind: Literal["trade", "investment"] = "trade"
+    # Set on the BUY leg only. NULL = use the symbol's level (stock_levels) as before.
+    stop_loss: Optional[float] = None
 
 
 class TradeKind(BaseModel):
@@ -308,7 +310,7 @@ def list_trades(user: auth.CurrentUser = Depends(auth.current_user)):
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.kind, t.capital, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.capital, t.stop_loss, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 """ + where + "ORDER BY t.date ASC, t.created_at ASC",
@@ -339,8 +341,8 @@ def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.requir
             cur.execute(
                 """
                 INSERT INTO portfolio_tracker.trades
-                    (client_id, stock_symbol, type, quantity, price, date, notes, kind)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    (client_id, stock_symbol, type, quantity, price, date, notes, kind, stop_loss)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -352,6 +354,7 @@ def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.requir
                     body.date,
                     body.notes,
                     body.kind,
+                    body.stop_loss if body.type == "BUY" else None,
                 ),
             )
             new_id = cur.fetchone()["id"]
@@ -359,7 +362,7 @@ def create_trade(body: TradeCreate, user: auth.CurrentUser = Depends(auth.requir
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.kind, t.capital, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.capital, t.stop_loss, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 WHERE t.id = %s
@@ -381,7 +384,7 @@ def update_trade(trade_id: str, body: TradeCreate,
                 """
                 UPDATE portfolio_tracker.trades
                 SET client_id=%s, stock_symbol=%s, type=%s, quantity=%s,
-                    price=%s, date=%s, notes=%s, kind=%s, updated_at=NOW()
+                    price=%s, date=%s, notes=%s, kind=%s, stop_loss=%s, updated_at=NOW()
                 WHERE id=%s
                 RETURNING id
                 """,
@@ -394,6 +397,7 @@ def update_trade(trade_id: str, body: TradeCreate,
                     body.date,
                     body.notes,
                     body.kind,
+                    body.stop_loss if body.type == "BUY" else None,
                     trade_id,
                 ),
             )
@@ -404,7 +408,7 @@ def update_trade(trade_id: str, body: TradeCreate,
                 """
                 SELECT t.id, t.client_id, c.name AS client_name,
                        t.stock_symbol, t.type, t.quantity, t.price,
-                       t.date, t.notes, t.kind, t.capital, t.created_at, t.updated_at
+                       t.date, t.notes, t.kind, t.capital, t.stop_loss, t.created_at, t.updated_at
                 FROM portfolio_tracker.trades t
                 JOIN portfolio_tracker.clients c ON t.client_id = c.id
                 WHERE t.id = %s

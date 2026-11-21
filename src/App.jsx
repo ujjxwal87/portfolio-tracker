@@ -655,7 +655,8 @@ function resolvePortfolio(trades, cmp) {
 function buildCapitalLedger(clientName, clientPortfolio, clientTradeRows, clientAdjustments, levelFor) {
   const buyRiskOf = (buyRow, before) => {
     const lvl = levelFor(clientName, buyRow.stock_symbol);
-    const sl = lvl?.stop_loss ?? null;
+    // The stop typed on this very buy wins; the symbol's shared level is only the default.
+    const sl = buyRow.stop_loss != null ? Number(buyRow.stop_loss) : (lvl?.stop_loss ?? null);
     const oneRule = sl == null || sl >= Number(buyRow.price);
     const risk = oneRule ? before * 0.01 : (Number(buyRow.price) - sl) * buyRow.quantity;
     return { risk, sl, oneRule };
@@ -2302,7 +2303,7 @@ function HighlightPanel({ title, note, rows, kind, showClient, tone: toneOverrid
 }
 
 const EMPTY_CLIENT_FORM = { name: "", phone: "", email: "", joining_date: "", benchmark_keys: [], is_own_money: false };
-const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "", kind: "trade" };
+const EMPTY_TRADE_FORM = { client_id: "", stock_symbol: "", type: "BUY", quantity: "", price: "", date: "", notes: "", kind: "trade", stop_loss: "" };
 
 export default function App() {
   const [clients, setClients] = useState([]);
@@ -3169,7 +3170,7 @@ export default function App() {
   const cancelForm = () => { setShowForm(false); setEditingId(null); setForm(EMPTY_TRADE_FORM); };
 
   const startEdit = (t) => {
-    setForm({ client_id: t.client_id, stock_symbol: t.stock_symbol, type: t.type, quantity: String(t.quantity), price: String(t.price), date: typeof t.date === "string" ? t.date.slice(0, 10) : t.date, notes: t.notes || "", kind: t.kind || "trade" });
+    setForm({ client_id: t.client_id, stock_symbol: t.stock_symbol, type: t.type, quantity: String(t.quantity), price: String(t.price), date: typeof t.date === "string" ? t.date.slice(0, 10) : t.date, notes: t.notes || "", kind: t.kind || "trade", stop_loss: t.stop_loss != null ? String(t.stop_loss) : "" });
     setEditingId(t.id);
     setShowForm(true);
   };
@@ -3184,7 +3185,8 @@ export default function App() {
       if (Number(form.quantity) > net) { alert(`Cannot sell ${form.quantity}. Only ${net} shares held.`); return; }
     }
     setTradeSaving(true);
-    const payload = { ...form, stock_symbol: form.stock_symbol.toUpperCase(), quantity: Number(form.quantity), price: parseFloat(form.price) };
+    const payload = { ...form, stock_symbol: form.stock_symbol.toUpperCase(), quantity: Number(form.quantity), price: parseFloat(form.price),
+      stop_loss: form.type === "BUY" && form.stop_loss !== "" ? parseFloat(form.stop_loss) : null };
     try {
       if (editingId) {
         const updated = await apiFetch(`/trades/${editingId}`, { method: "PUT", body: JSON.stringify(payload) });
@@ -4089,6 +4091,10 @@ export default function App() {
                   {[["trade", "Trade"], ["investment", "Investment"]].map(([k, l]) =>
                     segTab(l, form.kind === k, () => setForm(p => ({ ...p, kind: k }))))}
                 </div>
+              )}
+              {form.type === "BUY" && (
+                <input style={MINPUT} type="number" inputMode="decimal" step="0.01" placeholder="Stop-loss for this buy (optional)"
+                       value={form.stop_loss} onChange={e => setForm(p => ({ ...p, stop_loss: e.target.value }))} />
               )}
               <input style={MINPUT} placeholder="Optional notes…" value={form.notes}
                      onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
@@ -5374,11 +5380,16 @@ export default function App() {
                 <Segmented options={[{ value: "trade", label: "Trade" }, { value: "investment", label: "Investment" }]}
                            value={form.kind} onChange={k => setForm(p => ({ ...p, kind: k }))} /></div>
             )}
+            {form.type === "BUY" && (
+              <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Stop-loss for this buy</label>
+                <input type="number" step="0.01" style={inp} value={form.stop_loss} placeholder="Optional — blank uses the stock's shared stop"
+                       onChange={e => setForm(p => ({ ...p, stop_loss: e.target.value }))} /></div>
+            )}
             <div><label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ink-2)", display: "block", marginBottom: 5 }}>Notes</label>
               <input style={inp} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Optional notes…" />
               <div style={{ fontSize: 11.5, color: "var(--ink-3)", marginTop: 5 }}>Write "intraday" to match same-day buys and sells first.</div></div>
             <div style={{ background: "var(--tint)", borderRadius: 14, padding: "12px 14px", fontSize: 12, color: "var(--ink-2)", lineHeight: 1.5 }}>
-              A SELL is checked against what the client holds (FIFO). A BUY reserves swing-capital risk: (entry − stop-loss) × qty, or 1% of capital when no stop-loss is set.
+              A SELL is checked against what the client holds (FIFO). A BUY reserves swing-capital risk: (entry − stop-loss) × qty, using the stop typed on that buy (else the stock's shared stop), or 1% of capital when none is set.
             </div>
           </div>
         </Sheet>
